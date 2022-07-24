@@ -68,7 +68,7 @@
   },
   "homepage": "https://datastream.js.org",
   "devDependencies": {
-    "@datastream/core": "file:./"
+    "@datastream/core": "0.0.0"
   },
-  "gitHead": ""
+  "gitHead": "7b91942dda5aaa9d96caad34f639f2edd6b33357"
 }

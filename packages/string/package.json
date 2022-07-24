@@ -28,11 +28,9 @@
           "default": "./index.node.cjs"
         }
       },
-
-        "import": {
-          "types": "./index.d.ts",
-          "default": "./index.web.mjs"
-
+      "import": {
+        "types": "./index.d.ts",
+        "default": "./index.web.mjs"
       }
     }
   },
@@ -72,5 +70,5 @@
   "dependencies": {
     "@datastream/core": "0.0.0"
   },
-  "gitHead": ""
+  "gitHead": "7b91942dda5aaa9d96caad34f639f2edd6b33357"
 }

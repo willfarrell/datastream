@@ -69,8 +69,8 @@
   "homepage": "https://datastream.js.org",
   "dependencies": {
     "@datastream/core": "0.0.0",
-    "@datastream/digest": "file:./",
+    "@datastream/digest": "0.0.0",
     "hash-wasm": "4.9.0"
   },
-  "gitHead": ""
+  "gitHead": "7b91942dda5aaa9d96caad34f639f2edd6b33357"
 }
