@@ -30,7 +30,7 @@
 </p>
 </div>
 
-- `@datastream/core`
+- [`@datastream/core`](#core)
   - pipeline
   - pipejoin
   - streamToArray
@@ -74,6 +74,8 @@
 npm install @datastream/core @datastream/{module}
 ```
 
+<a id="core"></a>
+## Core
 ## Examples
 ```javascript
 import {pipejoin, streamToArray, createReadableStream} from '@datastream/core'
