@@ -1,3 +1,8 @@
+*.cjs
+*.cjs.map
+*.mjs
+*.mjs.map
+
 # Logs
 logs
 *.log
@@ -102,3 +107,10 @@ dist
 
 # TernJS port file
 .tern-port
+
+# IDE
+.idea
+*.iml
+
+# OS
+.DS_Store

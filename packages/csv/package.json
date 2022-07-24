@@ -1,0 +1,116 @@
+{
+  "name": "@datastream/csv",
+  "version": "0.0.0",
+  "description": "",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "engineStrict": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./index.web.mjs",
+  "module": "./index.web.mjs",
+  "exports": {
+    ".": {
+      "node": {
+        "webstream": {
+          "types": "./index.d.ts",
+          "default": "./index.web.mjs"
+        },
+        "import": {
+          "types": "./index.d.ts",
+          "default": "./index.node.mjs"
+        },
+        "require": {
+          "types": "./index.d.ts",
+          "default": "./index.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./index.d.ts",
+        "default": "./index.web.mjs"
+      }
+    },
+    "./parse": {
+      "node": {
+        "webstream": {
+          "types": "./parse.d.ts",
+          "default": "./parse.web.mjs"
+        },
+        "import": {
+          "types": "./parse.d.ts",
+          "default": "./parse.node.mjs"
+        },
+        "require": {
+          "types": "./parse.d.ts",
+          "default": "./parse.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./parse.d.ts",
+        "default": "./parse.web.mjs"
+      }
+    },
+    "./format": {
+      "node": {
+        "webstream": {
+          "types": "./format.d.ts",
+          "default": "./format.web.mjs"
+        },
+        "import": {
+          "types": "./format.d.ts",
+          "default": "./format.node.mjs"
+        },
+        "require": {
+          "types": "./format.d.ts",
+          "default": "./format.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./format.d.ts",
+        "default": "./format.web.mjs"
+      }
+    }
+  },
+  "types": "index.d.ts",
+  "files": [
+    "*.web.mjs",
+    "*.web.mjs.map",
+    "*.node.mjs",
+    "*.node.mjs.map",
+    "*.node.cjs",
+    "*.node.cjs.map",
+    "*.d.ts"
+  ],
+  "scripts": {
+    "test": "npm run test:unit",
+    "test:unit": "ava",
+    "test:benchmark": "node __benchmarks__/index.js"
+  },
+  "license": "MIT",
+  "keywords": [
+    "Web Stream API",
+    "Node Stream API"
+  ],
+  "author": {
+    "name": "datastream contributors",
+    "url": "https://github.com/willfarrell/datastream/graphs/contributors"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github:willfarrell/datastream",
+    "directory": "packages/csv"
+  },
+  "bugs": {
+    "url": "https://github.com/willfarrell/datastream/issues"
+  },
+  "homepage": "https://datastream.js.org",
+  "dependencies": {
+    "@datastream/core": "0.0.0",
+    "@datastream/csv":"file:./",
+    "csv-rex": "file:../../../csv-rex/"
+  },
+  "gitHead": ""
+}
