@@ -1,0 +1,64 @@
+{
+  "name": "@datastream/monorepo",
+  "version": "0.0.0",
+  "description": "Streams made easy.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "engineStrict": true,
+  "scripts": {
+    "prepare": "husky install",
+    "commit-msg": "commitlint --config commitlint.config.cjs --edit",
+    "pre-commit": "lint-staged",
+    "install": "lerna bootstrap",
+    "lint": "lint-staged",
+    "test": "npm run build && node --test --conditions=node packages && node --test --conditions=webstream packages",
+    "build": "bin/esbuild",
+    "release:tag": "git tag $npm_package_version && git push --tags",
+    "lerna:rm": "npm run lerna:rm:node_modules && npm run lerna:rm:lock",
+    "lerna:rm:lock": "lerna exec -- rm -rf package-lock.json",
+    "lerna:rm:node_modules": "lerna exec -- rm -rf node_modules",
+    "lerna:update": "lerna exec --bail --concurrency 5 npm update && npm install",
+    "lerna:outdated": "lerna exec --concurrency 5 npm outdated",
+    "lerna:audit": "lerna exec --concurrency 2 npm audit fix",
+    "lerna:sync": "lerna exec --bail --concurrency 2 npm install && lerna publish --exact --yes --skip-npm --skip-git --repo-version $npm_package_version",
+    "lerna:publish": "lerna publish --exact --yes --skip-git --repo-version $npm_package_version",
+    "lerna:publish:next": "lerna publish --exact --yes --skip-git --repo-version $npm_package_version --dist-tag next"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/middyjs/middy.git"
+  },
+  "keywords": [
+    "Lambda",
+    "Middleware",
+    "Serverless",
+    "Framework",
+    "AWS",
+    "AWS Lambda"
+  ],
+  "author": {
+    "name": "Middy contributors",
+    "url": "https://github.com/middyjs/middy/graphs/contributors"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/middyjs/middy/issues"
+  },
+  "homepage": "https://middy.js.org",
+  "devDependencies": {
+    "@commitlint/cli": "^17.0.0",
+    "@commitlint/config-conventional": "^17.0.0",
+    "ava": "4.3.1",
+    "benchmark": "^2.1.4",
+    "c8": "7.12.0",
+    "esbuild": "0.14.49",
+    "husky": "^8.0.0",
+    "lerna": "^5.1.8",
+    "lint-staged": "^13.0.0",
+    "prettier": "^2.0.0",
+    "sinon": "^14.0.0"
+  },
+  "dependencies": {}
+}

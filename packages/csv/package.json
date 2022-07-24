@@ -109,8 +109,8 @@
   "homepage": "https://datastream.js.org",
   "dependencies": {
     "@datastream/core": "0.0.0",
-    "@datastream/csv":"file:./",
-    "csv-rex": "file:../../../csv-rex/"
+    "@datastream/csv": "file:./",
+    "csv-rex": "0.2.0"
   },
   "gitHead": ""
 }

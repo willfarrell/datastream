@@ -34,3 +34,7 @@ Commonly used stream patterns for Web Streams API and NodeJS Stream.
 - `@datastream/digest`
   - digestStream [PassThrough]
 
+### Advanced
+- `@datastream/csv[/{parse,format}]`
+  - csvParseStream [Transform]
+  - csvFormatStream [Transform]
