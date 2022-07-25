@@ -76,15 +76,34 @@ npm install @datastream/core @datastream/{module}
 
 <a id="core"></a>
 ## Core
-## Examples
+
+- `pipeline(stream[], options)`: Connects streams and awaits until completion. Returns results from stream taps. Will add in a terminating Writable if missing.
+- `pipejoin(stream[])`: Connects streams and returns resulting stream for use with async iterators
+- `streamToArray(stream)`: Returns array from stream chunks. stream must not end with Writable.
+- `streamToString(stream)`: Returns string from stream chunks. stream must not end with Writable.
+- `isReadable(stream)`: Return bool is stream is Readable
+- `isWritable(stream)`: Return bool is stream is Writable
+- `makeOptions(options)`: Make options interoperable between Readable/Writable and Transform
+- `creatReadableStream(input, options)`: Create a Readable stream from input (string, array, iterable) with options.
+- `creatTransformStream((chunk)=>{}, options)`: Create a Transform stream that allows mutation of chunk before being passed.
+- `creatWritableStream((chunk)=>{}, options)`: Create a Writable stream that allows mutation of chunk before being passed.
+
+- `options`:
+  - `highWaterMark`
+  - `chunkSize`
+  - `signal`
+
+### Examples
+#### 
 ```javascript
-import {pipejoin, streamToArray, createReadableStream} from '@datastream/core'
-import {objectOut} from '@datastream/object'
+import {pipejoin, streamToArray, createReadableStream, createTransformStream} from '@datastream/core'
 import {csvParseStream} from '@datastream/csv'
 
+let count
 const streams = [
   createReadableStream('a,b,c\r\n1,2,3'),
-  csvParseStream(),
+  createTransformStream(() => { count += 1}),
+  createTransformStream(console.log),
 ]
 
 const river = pipejoin(streams)
