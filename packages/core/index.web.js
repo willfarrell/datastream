@@ -85,14 +85,15 @@ export const makeOptions = ({highWaterMark, chunkSize, ...options} = {}) => {
 export const createReadableStream = (input, options) => {
   return new ReadableStream({
     async start(controller) {
+      // Can this all be moved to pull()?
       if (typeof input === 'string') {
-        const highWaterMark = options?.highWaterMark ?? 16 * 1024
+        const chunkSize = options?.chunkSize ?? options?.highWaterMark ?? 16 * 1024
         let position = 0
         const length = input.length
         while (position < length) {
-          const chunk = input.substring(position, position + highWaterMark)
+          const chunk = input.substring(position, position + chunkSize)
           controller.enqueue(chunk)
-          position += highWaterMark
+          position += chunkSize
         }
       } else if (Array.isArray(input)) {
         for(const chunk of input) {

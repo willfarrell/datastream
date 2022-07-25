@@ -1,4 +1,4 @@
-import { Readable, Transform, PassThrough, Writable } from 'node:stream';
+import { Readable, Transform, Writable } from 'node:stream';
 import { pipeline as pipelinePromise } from 'node:stream/promises';
 
 export const pipeline = async (streams, { signal } = {}) => {
@@ -73,15 +73,27 @@ export const makeOptions = ({highWaterMark, chunkSize, objectMode, ...options} =
 	}
 }
 
-export const createReadableStream = (data, options) => {
-	return Readable.from(data, options)
+export const createReadableStream = (input, options) => {
+	if (typeof input === 'string') {
+		function* iterator() {
+			const size = options?.chunkSize ?? options?.highWaterMark ?? 16 * 1024
+			let position = 0
+			const length = input.length
+			while (position < length) {
+				yield input.substring(position, position + size)
+				position += size
+			}
+		}
+		return Readable.from(iterator(), {objectMode: true, ...options})
+	}
+	return Readable.from(input, {objectMode: true, ...options}) // string doesn't chunk, and is slow
 }
 
 export const createTransformStream = (fn = () => {}, options) => {
 	return new Transform({
 		...makeOptions({objectMode: true, ...options}),
 		transform(chunk, encoding, callback) {
-			fn(chunk)
+			chunk = fn(chunk) ?? chunk
 			this.push(chunk)
 			callback()
 		}

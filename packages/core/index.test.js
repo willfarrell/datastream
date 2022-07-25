@@ -100,6 +100,7 @@ for(const execArgv of process.execArgv) {
     equal(isWritable(streams[0]), false)
     deepEqual(output, input)
   })
+
   test(`${variant}: createReadableStream should create a readable stream from array`, async (t) => {
     const input = ['a','b','c']
     const streams = [
@@ -128,6 +129,17 @@ for(const execArgv of process.execArgv) {
     equal(isReadable(streams[0]), true)
     equal(isWritable(streams[0]), false)
     deepEqual(output, ['a','b','c'])
+  })
+
+  test(`${variant}: createReadableStream should chunk long strings`, async (t) => {
+    const input = 'x'.repeat(17*1024) // where 16*1024 is the default chunkSize/highWaterMark
+    const streams = [
+      createReadableStream(input)
+    ]
+    const stream = pipejoin(streams)
+    const output = await streamToArray(stream)
+
+    equal(output.length, 2)
   })
 
   // *** createTransformStream *** //
