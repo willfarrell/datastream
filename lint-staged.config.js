@@ -1,4 +1,4 @@
 export default {
   '**/*.{json,yml}': ['prettier --write'],
-  '**/*.js': ['prettier --write', 'standard --fix']
+  'packages/*/*.js': ['prettier --write', 'standard --fix']
 }

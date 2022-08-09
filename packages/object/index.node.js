@@ -1,5 +1,9 @@
 import { Transform } from 'node:stream'
-import { makeOptions, createReadableStream, createTransformStream } from '@datastream/core'
+import {
+  makeOptions,
+  createReadableStream,
+  createTransformStream
+} from '@datastream/core'
 
 export const objectReadableStream = (array = [], options) => {
   return createReadableStream(array, options)
@@ -11,7 +15,7 @@ export const objectCountStream = (options) => {
     value += 1
   }
   const stream = createTransformStream(transform, options)
-  stream.result = () => ({key:options?.key ?? 'count', value})
+  stream.result = () => ({ key: options?.key ?? 'count', value })
   return stream
 }
 
@@ -48,8 +52,11 @@ export const objectOutputStream = (options) => {
   const transform = (chunk) => {
     value.push(chunk)
   }
-  const stream = createTransformStream(transform, {...options, objectMode:true})
-  stream.result = () => ({key: options?.key ?? 'output', value})
+  const stream = createTransformStream(transform, {
+    ...options,
+    objectMode: true
+  })
+  stream.result = () => ({ key: options?.key ?? 'output', value })
   return stream
 }
 

@@ -1,9 +1,9 @@
-
+/* global ReadableStream, TransformStream, WritableStream */
 export const pipeline = async (streams, options) => {
   // Ensure stream ends with only writable
   const lastStream = streams[streams.length - 1]
   if (isReadable(lastStream)) {
-    streams.push(createWritableStream(() => {},options))
+    streams.push(createWritableStream(() => {}, options))
   }
 
   await pipejoin(streams)
@@ -31,7 +31,7 @@ export const pipejoin = (streams) => {
 
 // const arr = await streamToArray(read.pipeThrough(transform))
 export const streamToArray = async (stream) => {
-  let value = []
+  const value = []
   for await (const chunk of stream) {
     value.push(chunk)
   }
@@ -46,7 +46,7 @@ export const streamToString = async (stream) => {
   return value
 }
 
-/*export const streamToBuffer = async (stream) => {
+/* export const streamToBuffer = async (stream) => {
   let byteLength = 0
   let value = []
   for await (const chunk of stream) {
@@ -58,7 +58,7 @@ export const streamToString = async (stream) => {
     buffer.set(...set)
     return buffer
   })
-}*/
+} */
 
 export const isReadable = (stream) => {
   return typeof stream.pipeTo === 'function' || !!stream.readable || false // TODO find better solution
@@ -68,7 +68,7 @@ export const isWritable = (stream) => {
   return typeof stream.pipeTo === 'undefined' || !!stream.writable || false // TODO find better solution
 }
 
-export const makeOptions = ({highWaterMark, chunkSize, ...options} = {}) => {
+export const makeOptions = ({ highWaterMark, chunkSize, ...options } = {}) => {
   return {
     writableStrategy: {
       highWaterMark,
@@ -83,45 +83,55 @@ export const makeOptions = ({highWaterMark, chunkSize, ...options} = {}) => {
 }
 
 export const createReadableStream = (input, options) => {
-  return new ReadableStream({
-    async start(controller) {
-      // Can this all be moved to pull()?
-      if (typeof input === 'string') {
-        const chunkSize = options?.chunkSize ?? options?.highWaterMark ?? 16 * 1024
-        let position = 0
-        const length = input.length
-        while (position < length) {
-          const chunk = input.substring(position, position + chunkSize)
-          controller.enqueue(chunk)
-          position += chunkSize
+  return new ReadableStream(
+    {
+      async start (controller) {
+        // Can this all be moved to pull()?
+        if (typeof input === 'string') {
+          const chunkSize =
+            options?.chunkSize ?? options?.highWaterMark ?? 16 * 1024
+          let position = 0
+          const length = input.length
+          while (position < length) {
+            const chunk = input.substring(position, position + chunkSize)
+            controller.enqueue(chunk)
+            position += chunkSize
+          }
+        } else if (Array.isArray(input)) {
+          for (const chunk of input) {
+            controller.enqueue(chunk)
+          }
+        } else {
+          for await (const chunk of input) {
+            controller.enqueue(chunk)
+          }
         }
-      } else if (Array.isArray(input)) {
-        for(const chunk of input) {
-          controller.enqueue(chunk)
-        }
-      } else {
-        for await (const chunk of input) {
-          controller.enqueue(chunk)
-        }
+        controller.close()
       }
-      controller.close()
-    }
-  }, makeOptions(options))
+    },
+    makeOptions(options)
+  )
 }
-export const createTransformStream = (fn = () => {}, options) => {
-  return new TransformStream({
-    start() {},
-    transform(chunk, controller) {
-      fn(chunk)
-      controller.enqueue(chunk)
-    }
-  }, makeOptions(options))
+export const createTransformStream = (fn = (chunk) => chunk, options) => {
+  return new TransformStream(
+    {
+      start () {},
+      transform (chunk, controller) {
+        chunk = fn(chunk)
+        controller.enqueue(chunk)
+      }
+    },
+    makeOptions(options)
+  )
 }
 
 export const createWritableStream = (fn = () => {}, options) => {
-  return new WritableStream({
-    write(chunk) {
-      fn(chunk)
-    }
-  }, makeOptions(options))
+  return new WritableStream(
+    {
+      write (chunk) {
+        fn(chunk)
+      }
+    },
+    makeOptions(options)
+  )
 }

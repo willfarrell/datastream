@@ -1,12 +1,18 @@
-import test from 'node:test';
-import { equal, deepEqual } from 'node:assert';
+import test from 'node:test'
+import { equal, deepEqual } from 'node:assert'
 
-import {pipeline, pipejoin, streamToArray, streamToString, createReadableStream} from '@datastream/core'
+import {
+  pipeline,
+  pipejoin,
+  streamToArray,
+  streamToString,
+  createReadableStream
+} from '@datastream/core'
 
 import { csvParseStream, csvFormatStream } from '@datastream/csv'
 
 let variant = 'unknown'
-for(const execArgv of process.execArgv) {
+for (const execArgv of process.execArgv) {
   const flag = '--conditions='
   if (execArgv.includes('--conditions=')) {
     variant = execArgv.replace(flag, '')
@@ -22,18 +28,24 @@ test(`${variant}: csvParseStream should parse csv to object[]`, async (t) => {
   const stream = pipejoin(streams)
   const output = await streamToArray(stream)
 
-  deepEqual(output, [{a:'1',b:'2',c:'3',d:'4'},{a:'1',b:'2',c:'3',d:'4'}])
+  deepEqual(output, [
+    { a: '1', b: '2', c: '3', d: '4' },
+    { a: '1', b: '2', c: '3', d: '4' }
+  ])
 })
 
 test(`${variant}: csvParseStream should parse csv to string[]`, async (t) => {
   const streams = [
     createReadableStream('1,2,3,4\r\n1,2,3,4\r\n'),
-    csvParseStream({header:false})
+    csvParseStream({ header: false })
   ]
   const stream = pipejoin(streams)
   const output = await streamToArray(stream)
 
-  deepEqual(output, [['1','2','3','4'],['1','2','3','4']])
+  deepEqual(output, [
+    ['1', '2', '3', '4'],
+    ['1', '2', '3', '4']
+  ])
 })
 
 test(`${variant}: csvParseStream should return csv parsing errors`, async (t) => {
@@ -43,21 +55,17 @@ test(`${variant}: csvParseStream should return csv parsing errors`, async (t) =>
   ]
   const result = await pipeline(streams)
 
-  const {key, value} = streams[1].result()
+  const { key, value } = streams[1].result()
 
   const csvErrors = {
     FieldsMismatchTooFew: {
       id: 'FieldsMismatchTooFew',
-      idx: [
-        2
-      ],
+      idx: [2],
       message: 'Too few fields were parsed, expected 4.'
     },
     FieldsMismatchTooMany: {
       id: 'FieldsMismatchTooMany',
-      idx: [
-        3
-      ],
+      idx: [3],
       message: 'Too many fields were parsed, expected 4.'
     }
   }
@@ -69,7 +77,10 @@ test(`${variant}: csvParseStream should return csv parsing errors`, async (t) =>
 // *** csvFormatStream *** //
 test(`${variant}: csvFormatStream should format csv from object[]`, async (t) => {
   const streams = [
-    createReadableStream([{a:'1',b:'2',c:'3',d:'4'},{a:'1',b:'2',c:'3',d:'4'}]),
+    createReadableStream([
+      { a: '1', b: '2', c: '3', d: '4' },
+      { a: '1', b: '2', c: '3', d: '4' }
+    ]),
     csvFormatStream()
   ]
   const stream = pipejoin(streams)
@@ -80,8 +91,11 @@ test(`${variant}: csvFormatStream should format csv from object[]`, async (t) =>
 
 test(`${variant}: csvFormatStream should format csv from string[]`, async (t) => {
   const streams = [
-    createReadableStream([['1','2','3','4'],['1','2','3','4']]),
-    csvFormatStream({header:['a','b','c','d']})
+    createReadableStream([
+      ['1', '2', '3', '4'],
+      ['1', '2', '3', '4']
+    ]),
+    csvFormatStream({ header: ['a', 'b', 'c', 'd'] })
   ]
   const stream = pipejoin(streams)
   const output = await streamToString(stream)

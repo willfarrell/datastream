@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 const algorithmMap = {
   'SHA2-256': 'SHA256',
   'SHA2-384': 'SHA384',
-  'SHA2-512': 'SHA512',
+  'SHA2-512': 'SHA512'
 }
 
 export const digestStream = async (algorithm, options) => {
@@ -14,11 +14,14 @@ export const digestStream = async (algorithm, options) => {
   const transform = (chunk) => {
     hash.update(chunk)
   }
-  const stream = createTransformStream(transform, {...options, objectMode: false})
+  const stream = createTransformStream(transform, {
+    ...options,
+    objectMode: false
+  })
   let checksum
   stream.result = () => {
     checksum ??= hash.digest('hex')
-    return {key: options?.key ?? 'digest', value: `${algorithm}:${checksum}`}
+    return { key: options?.key ?? 'digest', value: `${algorithm}:${checksum}` }
   }
   return stream
 }

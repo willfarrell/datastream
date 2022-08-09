@@ -1,5 +1,9 @@
-
-import { makeOptions, createReadableStream, createTransformStream } from '@datastream/core'
+/* global TransformStream */
+import {
+  makeOptions,
+  createReadableStream,
+  createTransformStream
+} from '@datastream/core'
 
 export const objectReadableStream = (array = [], options) => {
   return createReadableStream(array, options)
@@ -11,30 +15,33 @@ export const objectCountStream = (options) => {
     value += 1
   }
   const stream = createTransformStream(transform, options)
-  stream.result = () => ({key: options?.key ?? 'count', value})
+  stream.result = () => ({ key: options?.key ?? 'count', value })
   return stream
 }
 
 export const objectBatchStream = (keys, options) => {
   let previousId
   let batch
-  return new TransformStream({
-    transform (chunk, controller) {
-      const id = keys.map((key) => chunk[key]).join('#')
-      if (previousId !== id) {
-        if (batch) {
-          controller.enqueue(batch)
+  return new TransformStream(
+    {
+      transform (chunk, controller) {
+        const id = keys.map((key) => chunk[key]).join('#')
+        if (previousId !== id) {
+          if (batch) {
+            controller.enqueue(batch)
+          }
+          previousId = id
+          batch = []
         }
-        previousId = id
-        batch = []
+        batch.push(chunk)
+      },
+      flush (controller) {
+        controller.enqueue(batch)
+        controller.terminate()
       }
-      batch.push(chunk)
     },
-    flush (controller) {
-      controller.enqueue(batch)
-      controller.terminate()
-    }
-  }, makeOptions(options))
+    makeOptions(options)
+  )
 }
 
 export const objectOutputStream = (options) => {
@@ -43,7 +50,7 @@ export const objectOutputStream = (options) => {
     value.push(chunk)
   }
   const stream = createTransformStream(transform, options)
-  stream.result = () => ({key: options?.key ?? 'output', value})
+  stream.result = () => ({ key: options?.key ?? 'output', value })
   return stream
 }
 

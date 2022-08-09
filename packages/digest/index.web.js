@@ -1,5 +1,10 @@
 import { createTransformStream } from '@datastream/core'
-import { createSHA256, createSHA384, createSHA512, createSHA3 } from 'hash-wasm'
+import {
+  createSHA256,
+  createSHA384,
+  createSHA512,
+  createSHA3
+} from 'hash-wasm'
 
 const algorithms = {
   'SHA2-256': createSHA256(),
@@ -19,10 +24,9 @@ export const digestStream = async (algorithm, options) => {
   let checksum
   stream.result = () => {
     checksum ??= hash.digest()
-    return {key: options?.key ?? 'digest', value: `${algorithm}:${checksum}`}
+    return { key: options?.key ?? 'digest', value: `${algorithm}:${checksum}` }
   }
   return stream
 }
 
 export default digestStream
-  

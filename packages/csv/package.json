@@ -110,7 +110,7 @@
   "dependencies": {
     "@datastream/core": "0.0.0",
     "@datastream/csv": "0.0.0",
-    "csv-rex": "0.2.0"
+    "csv-rex": "0.3.0"
   },
   "gitHead": "7b91942dda5aaa9d96caad34f639f2edd6b33357"
 }
