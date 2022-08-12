@@ -111,6 +111,7 @@ dist
 # IDE
 .idea
 *.iml
+.nova
 
 # OS
 .DS_Store

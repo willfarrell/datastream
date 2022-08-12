@@ -19,6 +19,34 @@ export const objectCountStream = (options) => {
   return stream
 }
 
+export const objectRateStream = (keys, options) => {
+  let value = 0
+  let time
+  const stream = new Transform({
+    ...makeOptions(options),
+    readableObjectMode: true,
+    writableObjectMode: true,
+    async transform (chunk, encoding, callback) {
+      value += 1
+      time ??= process.hrtime.bigint()
+      this.push(chunk)
+      callback()
+    },
+    async flush (callback) {
+      time =
+        Number.parseInt((process.hrtime.bigint() - time).toString()) /
+        1_000_000_000 // /s
+      callback()
+    }
+  })
+  stream.result = () => ({
+    key: options?.key ?? 'rate',
+    value: value / time,
+    unit: 'chunk/s'
+  })
+  return stream
+}
+
 export const objectBatchStream = (keys, options) => {
   let previousId
   let batch
