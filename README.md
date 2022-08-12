@@ -41,7 +41,7 @@
   - createReadableStream
   - createTransformStream
   - createWritableStream
- 
+
 ## Streams
 
 - Readable: The start of a pipeline of streams that injects data into a stream.
@@ -50,31 +50,49 @@
 - Writable: The end of a pipeline of streams that stores data from the stream.
 
 ### Basics
-- `@datastream/string`
+
+- [`@datastream/string`](#string)
   - stringReadableStream [Readable]
   - stringLengthStream [PassThrough]
   - stringOutputStream [PassThrough]
-- `@datastream/object`
+- [`@datastream/object`](#object)
   - objectReadableStream [Readable]
   - objectCountStream [PassThrough]
   - objectBatchStream [Transform]
   - objectOutputStream [PassThrough]
 
 ### Common
-- `@datastream/digest`
+
+- [`@datastream/fetch`](#fetch)
+  - fetchStream [Readable]
+- [`@datastream/charset[/{detect,decode,encode}]`](#charset)
+  - charsetDetectStream [PassThrough]
+  - charsetDecodeStream [Transform]
+  - charsetEncodeStream [Transform]
+- [`@datastream/compression[/{gzip,deflate}]`](#compression)
+  - gzipCompressionStream [Transform]
+  - gzipDecompressionStream [Transform]
+  - deflateCompressionStream [Transform]
+  - deflateDecompressionStream [Transform]
+- [`@datastream/digest`](#digest)
   - digestStream [PassThrough]
 
 ### Advanced
-- `@datastream/csv[/{parse,format}]`
+
+- [`@datastream/csv[/{parse,format}]`](#csv)
   - csvParseStream [Transform]
   - csvFormatStream [Transform]
+- [`@datastream/json-schema[/{parse,validate,format}]`](#json-schema)
+  - jsonSchemaValidateStream [Transform]
 
 ## Setup
+
 ```bash
 npm install @datastream/core @datastream/{module}
 ```
 
 <a id="core"></a>
+
 ## Core
 
 - `pipeline(stream[], options)`: Connects streams and awaits until completion. Returns results from stream taps. Will add in a terminating Writable if missing.
@@ -85,7 +103,7 @@ npm install @datastream/core @datastream/{module}
 - `isWritable(stream)`: Return bool is stream is Writable
 - `makeOptions(options)`: Make options interoperable between Readable/Writable and Transform
 - `creatReadableStream(input, options)`: Create a Readable stream from input (string, array, iterable) with options.
-- `creatTransformStream((chunk)=>{}, options)`: Create a Transform stream that allows mutation of chunk before being passed.
+- `creatTransformStream((chunk)=>chunk, options)`: Create a Transform stream that allows mutation of chunk before being passed.
 - `creatWritableStream((chunk)=>{}, options)`: Create a Writable stream that allows mutation of chunk before being passed.
 
 - `options`:
@@ -94,15 +112,24 @@ npm install @datastream/core @datastream/{module}
   - `signal`
 
 ### Examples
-#### 
+
+####
+
 ```javascript
-import {pipejoin, streamToArray, createReadableStream, createTransformStream} from '@datastream/core'
-import {csvParseStream} from '@datastream/csv'
+import {
+  pipejoin,
+  streamToArray,
+  createReadableStream,
+  createTransformStream,
+} from '@datastream/core'
+import { csvParseStream } from '@datastream/csv'
 
 let count
 const streams = [
   createReadableStream('a,b,c\r\n1,2,3'),
-  createTransformStream(() => { count += 1}),
+  createTransformStream(() => {
+    count += 1
+  }),
   createTransformStream(console.log),
 ]
 
