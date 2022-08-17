@@ -44,6 +44,68 @@ export const objectBatchStream = (keys, options) => {
   )
 }
 
+const objectPivotLongToWideDefaults = {
+  delimiter: ' '
+}
+export const objectPivotLongToWideStream = (config, options) => {
+  const { keys, valueParam, delimiter } = {
+    ...objectPivotLongToWideDefaults,
+    ...config
+  }
+  // if (!Array.isArray(keys)) keys = [keys]
+  const transform = (chunks) => {
+    if (!Array.isArray(chunks)) {
+      throw new Error('Expected chunk to be array, use with objectBatchStream')
+    }
+    const row = chunks[0]
+
+    for (const chunk of chunks) {
+      const keyParam = keys.map((key) => chunk[key]).join(delimiter)
+      row[keyParam] = chunk[valueParam]
+    }
+
+    for (const key of keys) {
+      delete row[key]
+    }
+    delete row[valueParam]
+
+    return row
+  }
+  return createTransformStream(transform, { ...options, objectMode: true })
+}
+
+const objectPivotWideToLongDefaults = {
+  keyParam: 'keyParam',
+  valueParam: 'valueParam'
+}
+export const objectPivotWideToLongStream = (config, options) => {
+  const { keys, keyParam, valueParam } = {
+    ...objectPivotWideToLongDefaults,
+    ...config
+  }
+
+  return new TransformStream(
+    {
+      transform (chunk, controller) {
+        const row = { ...chunk }
+        for (const key of keys) {
+          delete row[key]
+        }
+        for (const key of keys) {
+          if (chunk[key]) {
+            controller.enqueue({
+              ...row,
+              [keyParam]: key,
+              [valueParam]: chunk[key]
+            })
+          }
+        }
+      }
+    },
+    makeOptions(options)
+  )
+}
+
 export const objectOutputStream = (options) => {
   const value = []
   const transform = (chunk) => {
@@ -58,5 +120,7 @@ export default {
   readableStream: objectReadableStream,
   countStream: objectCountStream,
   batchStream: objectBatchStream,
+  pivotLongToWideStream: objectPivotLongToWideStream,
+  pivotWideToLongStream: objectPivotWideToLongStream,
   outputStream: objectOutputStream
 }

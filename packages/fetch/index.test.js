@@ -4,7 +4,7 @@ import { deepEqual } from 'node:assert'
 // import sinon from 'sinon'
 import { streamToArray } from '@datastream/core'
 
-import { fetchParallel } from '@datastream/fetch'
+import { fetchStream, setDefaults } from '@datastream/fetch'
 
 let variant = 'unknown'
 for (const execArgv of process.execArgv) {
@@ -23,6 +23,14 @@ const mockResponses = {
         'Content-Type': 'text/csv; charset=UTF-8'
       })
     }),
+  'https://example.org/csv?delimiter=_': () =>
+    new Response('a_b_c\n1_2_3', {
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({
+        'Content-Type': 'text/csv; charset=UTF-8'
+      })
+    }),
   'https://example.org/json-obj/1': () =>
     new Response(JSON.stringify({ key: 'item', value: 1 }), {
       status: 200,
@@ -33,6 +41,15 @@ const mockResponses = {
     }),
   'https://example.org/json-obj/2': () =>
     new Response(JSON.stringify({ key: 'item', value: 2 }), {
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({
+        'Content-Type': 'application/json; charset=UTF-8',
+        Link: '<https://example.org/json-obj/3>; rel="next"'
+      })
+    }),
+  'https://example.org/json-obj/3': () =>
+    new Response(JSON.stringify({ key: 'item', value: 3 }), {
       status: 200,
       statusText: 'OK',
       headers: new Headers({
@@ -81,6 +98,7 @@ const mockResponses = {
 }
 // global override
 global.fetch = (request) => {
+  console.log(request.url)
   const mockResponse = mockResponses[request.url]()
   if (mockResponse) {
     return Promise.resolve(mockResponse)
@@ -89,11 +107,10 @@ global.fetch = (request) => {
 }
 
 // *** fetchParallel *** //
-test(`${variant}: fetchParallel should fetch csv`, async (t) => {
-  const config = [
-    { url: 'https://example.org/csv', headers: { Accept: 'text/csv' } }
-  ]
-  const stream = fetchParallel(config)
+test(`${variant}: fetchStream should fetch csv`, async (t) => {
+  setDefaults({ headers: { Accept: 'text/csv' } })
+  const config = [{ url: 'https://example.org/csv' }]
+  const stream = fetchStream(config)
   const output = await streamToArray(stream)
 
   deepEqual(output, [
@@ -101,29 +118,42 @@ test(`${variant}: fetchParallel should fetch csv`, async (t) => {
   ])
 })
 
-test(`${variant}: fetchParallel should fetch json objects in parallel`, async (t) => {
+test(`${variant}: fetchStream should fetch with qs`, async (t) => {
+  setDefaults({ headers: { Accept: 'text/csv' } })
+  const config = [{ url: 'https://example.org/csv', qs: { delimiter: '_' } }]
+  const stream = fetchStream(config)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [
+    Uint8Array.from('a_b_c\n1_2_3'.split('').map((x) => x.charCodeAt()))
+  ])
+})
+
+test(`${variant}: fetchStream should fetch json objects in parallel`, async (t) => {
+  setDefaults({ dataPath: '', headers: { Accept: 'application/json' } })
   const config = [
-    { url: 'https://example.org/json-obj/1', dataPath: '' },
-    { url: 'https://example.org/json-obj/2', dataPath: '' }
+    { url: 'https://example.org/json-obj/1' },
+    { url: 'https://example.org/json-obj/2' }
   ]
-  const stream = fetchParallel(config)
+  const stream = fetchStream(config)
   const output = await streamToArray(stream)
 
   deepEqual(output, [
     { key: 'item', value: 1 },
-    { key: 'item', value: 2 }
+    { key: 'item', value: 2 },
+    { key: 'item', value: 3 }
   ])
 })
 
-test(`${variant}: fetchParallel should fetch paginated json in series`, async (t) => {
-  const config = [
-    {
-      url: 'https://example.org/json-arr/1',
-      dataPath: 'data',
-      nextPath: 'next'
-    }
-  ]
-  const stream = fetchParallel(config)
+test(`${variant}: fetchStream should fetch paginated json in series`, async (t) => {
+  setDefaults({ headers: { Accept: 'application/json' } })
+  const config = {
+    url: 'https://example.org/json-arr/1',
+    dataPath: 'data',
+    nextPath: 'next'
+  }
+
+  const stream = fetchStream(config)
   const output = await streamToArray(stream)
 
   deepEqual(output, [

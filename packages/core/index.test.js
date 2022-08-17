@@ -10,6 +10,7 @@ import {
   isWritable,
   makeOptions,
   createReadableStream,
+  createPassThroughStream,
   createTransformStream,
   createWritableStream
 } from '@datastream/core'
@@ -132,6 +133,23 @@ test(`${variant}: createReadableStream should chunk long strings`, async (t) => 
   equal(output.length, 2)
 })
 
+// *** createPassThroughStream *** //
+test(`${variant}: createPassThroughStream should create a passs through stream`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = sinon.spy()
+  const streams = [
+    createReadableStream(input),
+    createPassThroughStream(transform)
+  ]
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  equal(isReadable(streams[1]), true)
+  equal(isWritable(streams[1]), true)
+  equal(transform.callCount, 3)
+  deepEqual(output, input)
+})
+
 // *** createTransformStream *** //
 test(`${variant}: createTransformStream should create a transform stream`, async (t) => {
   const input = ['a', 'b', 'c']
@@ -146,7 +164,7 @@ test(`${variant}: createTransformStream should create a transform stream`, async
   equal(isReadable(streams[1]), true)
   equal(isWritable(streams[1]), true)
   equal(transform.callCount, 3)
-  deepEqual(output, input)
+  deepEqual(output, [undefined, undefined, undefined])
 })
 
 // *** createWritableStream *** //

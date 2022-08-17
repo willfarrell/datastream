@@ -2,6 +2,7 @@ import { Transform } from 'node:stream'
 import {
   makeOptions,
   createReadableStream,
+  createPassThroughStream,
   createTransformStream
 } from '@datastream/core'
 
@@ -14,38 +15,31 @@ export const objectCountStream = (options) => {
   const transform = () => {
     value += 1
   }
-  const stream = createTransformStream(transform, options)
+  const stream = createPassThroughStream(transform, options)
   stream.result = () => ({ key: options?.key ?? 'count', value })
   return stream
 }
 
-export const objectRateStream = (keys, options) => {
+/* export const objectRateStream = (options) => {
   let value = 0
   let time
-  const stream = new Transform({
-    ...makeOptions(options),
-    readableObjectMode: true,
-    writableObjectMode: true,
-    async transform (chunk, encoding, callback) {
-      value += 1
-      time ??= process.hrtime.bigint()
-      this.push(chunk)
-      callback()
-    },
-    async flush (callback) {
-      time =
-        Number.parseInt((process.hrtime.bigint() - time).toString()) /
-        1_000_000_000 // /s
-      callback()
-    }
-  })
+  const transform = (chunk) => {
+    value += 1
+    time ??= process.hrtime.bigint()
+  }
+  const flush = () => {
+    time =
+      Number.parseInt((process.hrtime.bigint() - time).toString()) /
+      1_000_000_000 // /s
+  }
+  const stream = createPassThroughStream(transform, flush, options)
   stream.result = () => ({
     key: options?.key ?? 'rate',
     value: value / time,
-    unit: 'chunk/s'
+    unit: 'chunk/s',
   })
   return stream
-}
+} */
 
 export const objectBatchStream = (keys, options) => {
   let previousId
@@ -55,7 +49,7 @@ export const objectBatchStream = (keys, options) => {
     readableObjectMode: true,
     writableObjectMode: true,
     async transform (chunk, encoding, callback) {
-      const id = keys.map((key) => chunk[key]).join('#')
+      const id = keys.map((key) => chunk[key]).join(' ')
       if (previousId !== id) {
         if (batch) {
           this.push(batch)
@@ -75,12 +69,68 @@ export const objectBatchStream = (keys, options) => {
   })
 }
 
+const objectPivotLongToWideDefaults = {
+  delimiter: ' '
+}
+export const objectPivotLongToWideStream = (config, options) => {
+  const { keys, valueParam, delimiter } = {
+    ...objectPivotLongToWideDefaults,
+    ...config
+  }
+  // if (!Array.isArray(keys)) keys = [keys]
+  const transform = (chunks) => {
+    if (!Array.isArray(chunks)) {
+      throw new Error('Expected chunk to be array, use with objectBatchStream')
+    }
+    const row = chunks[0]
+
+    for (const chunk of chunks) {
+      const keyParam = keys.map((key) => chunk[key]).join(delimiter)
+      row[keyParam] = chunk[valueParam]
+    }
+
+    for (const key of keys) {
+      delete row[key]
+    }
+    delete row[valueParam]
+
+    return row
+  }
+  return createTransformStream(transform, { ...options, objectMode: true })
+}
+
+const objectPivotWideToLongDefaults = {
+  keyParam: 'keyParam',
+  valueParam: 'valueParam'
+}
+export const objectPivotWideToLongStream = (config, options) => {
+  const { keys, keyParam, valueParam } = {
+    ...objectPivotWideToLongDefaults,
+    ...config
+  }
+  return new Transform({
+    ...makeOptions({ ...options, objectMode: true }),
+    async transform (chunk, encoding, callback) {
+      const row = { ...chunk }
+      for (const key of keys) {
+        delete row[key]
+      }
+      for (const key of keys) {
+        if (chunk[key]) {
+          this.push({ ...row, [keyParam]: key, [valueParam]: chunk[key] })
+        }
+      }
+      callback()
+    }
+  })
+}
+
 export const objectOutputStream = (options) => {
   const value = []
   const transform = (chunk) => {
     value.push(chunk)
   }
-  const stream = createTransformStream(transform, {
+  const stream = createPassThroughStream(transform, {
     ...options,
     objectMode: true
   })
@@ -91,6 +141,9 @@ export const objectOutputStream = (options) => {
 export default {
   readableStream: objectReadableStream,
   countStream: objectCountStream,
+  // rateStream: objectRateStream,
   batchStream: objectBatchStream,
+  pivotLongToWideStream: objectPivotLongToWideStream,
+  pivotWideToLongStream: objectPivotWideToLongStream,
   outputStream: objectOutputStream
 }

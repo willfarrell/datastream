@@ -1,5 +1,5 @@
 {
-  "name": "@datastream/fetch",
+  "name": "@datastream/validate",
   "version": "0.0.3",
   "description": "",
   "type": "module",
@@ -43,7 +43,7 @@
   ],
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "node --test",
+    "test:unit": "ava",
     "test:benchmark": "node __benchmarks__/index.js"
   },
   "license": "MIT",
@@ -58,14 +58,19 @@
   "repository": {
     "type": "git",
     "url": "github:willfarrell/datastream",
-    "directory": "packages/file-read"
+    "directory": "packages/digest"
   },
   "bugs": {
     "url": "https://github.com/willfarrell/datastream/issues"
   },
   "homepage": "https://datastream.js.org",
-  "devDependencies": {
-    "@datastream/core": "0.0.3"
+  "dependencies": {
+    "@datastream/core": "0.0.3",
+    "@datastream/validate": "0.0.2",
+    "ajv": "8.11.0",
+    "ajv-formats": "2.1.1",
+    "ajv-formats-draft2019": "1.6.1",
+    "fast-uri": "2.1.0"
   },
   "gitHead": "70834bdf6ea9d690ca90a079371b73a0c7ea4a14"
 }

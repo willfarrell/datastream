@@ -1,6 +1,6 @@
 {
   "name": "@datastream/object",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "",
   "type": "module",
   "engines": {
@@ -37,8 +37,8 @@
   "types": "index.d.ts",
   "files": [
     "*.mjs",
-    "*.map",
     "*.cjs",
+    "*.map",
     "*.d.ts"
   ],
   "scripts": {
@@ -65,10 +65,10 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/core": "0.0.2"
+    "@datastream/core": "0.0.3"
   },
   "devDependencies": {
-    "@datastream/object": "0.0.2"
+    "@datastream/object": "0.0.3"
   },
-  "gitHead": "10c6f98783058dc01a9a29d60b67f592f6683324"
+  "gitHead": "70834bdf6ea9d690ca90a079371b73a0c7ea4a14"
 }

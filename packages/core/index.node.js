@@ -99,12 +99,49 @@ export const createReadableStream = (input, options) => {
   return Readable.from(input, { objectMode: true, ...options })
 }
 
-export const createTransformStream = (fn = (chunk) => chunk, options) => {
+export const createPassThroughStream = (
+  transform = (chunk) => chunk,
+  flush,
+  options
+) => {
+  // flush is optional
+  if (typeof flush !== 'function') {
+    options = flush
+    flush = () => {}
+  }
   return new Transform({
     ...makeOptions({ objectMode: true, ...options }),
     transform (chunk, encoding, callback) {
-      chunk = fn(chunk)
       this.push(chunk)
+      transform(chunk)
+      callback()
+    },
+    flush (callback) {
+      flush()
+      callback()
+    }
+  })
+}
+
+export const createTransformStream = (
+  transform = (chunk) => chunk,
+  flush,
+  options
+) => {
+  // flush is optional
+  if (typeof flush !== 'function') {
+    options = flush
+    flush = () => {}
+  }
+  return new Transform({
+    ...makeOptions({ objectMode: true, ...options }),
+    transform (chunk, encoding, callback) {
+      chunk = transform(chunk)
+      this.push(chunk)
+      callback()
+    },
+    flush (callback) {
+      flush()
       callback()
     }
   })

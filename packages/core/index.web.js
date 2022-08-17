@@ -112,13 +112,53 @@ export const createReadableStream = (input, options) => {
     makeOptions(options)
   )
 }
-export const createTransformStream = (fn = (chunk) => chunk, options) => {
+
+export const createPassThroughStream = (
+  transform = (chunk) => chunk,
+  flush,
+  options
+) => {
+  // flush is optional
+  if (typeof flush !== 'function') {
+    options = flush
+    flush = () => {}
+  }
   return new TransformStream(
     {
       start () {},
       transform (chunk, controller) {
-        chunk = fn(chunk)
         controller.enqueue(chunk)
+        transform(chunk)
+      },
+      flush (controller) {
+        flush()
+        controller.terminate()
+      }
+    },
+    makeOptions(options)
+  )
+}
+
+export const createTransformStream = (
+  transform = (chunk) => chunk,
+  flush,
+  options
+) => {
+  // flush is optional
+  if (typeof flush !== 'function') {
+    options = flush
+    flush = () => {}
+  }
+  return new TransformStream(
+    {
+      start () {},
+      transform (chunk, controller) {
+        chunk = transform(chunk)
+        controller.enqueue(chunk)
+      },
+      flush (controller) {
+        flush()
+        controller.terminate()
       }
     },
     makeOptions(options)

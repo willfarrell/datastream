@@ -12,6 +12,8 @@ import {
   objectReadableStream,
   objectCountStream,
   objectBatchStream,
+  objectPivotLongToWideStream,
+  objectPivotWideToLongStream,
   objectOutputStream
 } from '@datastream/object'
 
@@ -111,6 +113,83 @@ test(`${variant}: objectBatchStream should batch chunks by index`, async (t) => 
       ['3', '4'],
       ['3', '5']
     ]
+  ])
+})
+
+// *** objectPivotLongToWideStream *** //
+test(`${variant}: objectPivotLongToWideStream should pivot chunks to wide`, async (t) => {
+  const input = [
+    { a: '1', b: 'l', v: 1, u: 'm' },
+    { a: '1', b: 'w', v: 2, u: 'm' },
+    { a: '2', b: 'w', v: 3, u: 'm' },
+    { a: '3', b: 'l', v: 4, u: 'm' },
+    { a: '3', b: 'w', v: 5, u: 'm' }
+  ]
+  const streams = [
+    createReadableStream(input),
+    objectBatchStream(['a']),
+    objectPivotLongToWideStream({ keys: ['b', 'u'], valueParam: 'v' })
+  ]
+
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [
+    { a: '1', 'l m': 1, 'w m': 2 },
+    { a: '2', 'w m': 3 },
+    { a: '3', 'l m': 4, 'w m': 5 }
+  ])
+})
+
+/* test(`${variant}: objectPivotLongToWideStream should catch invalid chunk type`, async (t) => {
+  const input = [
+    { a: '1', b: 'l', v: 1, u: 'm' },
+    { a: '1', b: 'w', v: 2, u: 'm' },
+    { a: '2', b: 'w', v: 3, u: 'm' },
+    { a: '3', b: 'l', v: 4, u: 'm' },
+    { a: '3', b: 'w', v: 5, u: 'm' },
+  ]
+
+  const streams = [
+    createReadableStream(input),
+    objectPivotLongToWideStream({ keys: ['b', 'u'], valueParam: 'v' }),
+  ]
+  try {
+    const stream = pipejoin(streams)
+    const output = await streamToArray(stream)
+  } catch (e) {
+    deepEqual(
+      e.message,
+      'Expected chunk to be array, use with objectBatchStream'
+    )
+  }
+}) */
+
+// *** objectPivotWideToLongStream *** //
+test(`${variant}: objectPivotWideToLongStream should pivot chunks to wide`, async (t) => {
+  const input = [
+    { a: '1', 'l m': 1, 'w m': 2 },
+    { a: '2', 'w m': 3 },
+    { a: '3', 'l m': 4, 'w m': 5 }
+  ]
+  const streams = [
+    createReadableStream(input),
+    objectPivotWideToLongStream({
+      keys: ['l m', 'w m'],
+      keyParam: 'b u',
+      valueParam: 'v'
+    })
+  ]
+
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [
+    { a: '1', 'b u': 'l m', v: 1 },
+    { a: '1', 'b u': 'w m', v: 2 },
+    { a: '2', 'b u': 'w m', v: 3 },
+    { a: '3', 'b u': 'l m', v: 4 },
+    { a: '3', 'b u': 'w m', v: 5 }
   ])
 })
 
