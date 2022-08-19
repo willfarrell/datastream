@@ -2,7 +2,12 @@
 import test from 'node:test'
 import { deepEqual } from 'node:assert'
 // import sinon from 'sinon'
-import { streamToArray } from '@datastream/core'
+import {
+  pipejoin,
+  pipeline,
+  streamToArray,
+  createPassThroughStream
+} from '@datastream/core'
 
 import { fetchStream, setDefaults } from '@datastream/fetch'
 
@@ -97,9 +102,8 @@ const mockResponses = {
     new Response('', { status: 404, statusText: 'Not Found' })
 }
 // global override
-global.fetch = (request) => {
-  console.log(request.url)
-  const mockResponse = mockResponses[request.url]()
+global.fetch = (url, request) => {
+  const mockResponse = mockResponses[url]()
   if (mockResponse) {
     return Promise.resolve(mockResponse)
   }
@@ -164,4 +168,41 @@ test(`${variant}: fetchStream should fetch paginated json in series`, async (t) 
     { key: 'item', value: 5 },
     { key: 'item', value: 6 }
   ])
+})
+
+test(`${variant}: fetchStream should work with pipejoin`, async (t) => {
+  setDefaults({ headers: { Accept: 'application/json' } })
+  const config = {
+    url: 'https://example.org/json-arr/1',
+    dataPath: 'data',
+    nextPath: 'next'
+  }
+
+  const stream = pipejoin([fetchStream(config), createPassThroughStream()])
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [
+    { key: 'item', value: 1 },
+    { key: 'item', value: 2 },
+    { key: 'item', value: 3 },
+    { key: 'item', value: 4 },
+    { key: 'item', value: 5 },
+    { key: 'item', value: 6 }
+  ])
+})
+
+test(`${variant}: fetchStream should work with pipeline`, async (t) => {
+  setDefaults({ headers: { Accept: 'application/json' } })
+  const config = {
+    url: 'https://example.org/json-arr/1',
+    dataPath: 'data',
+    nextPath: 'next'
+  }
+
+  const result = await pipeline([
+    fetchStream(config),
+    createPassThroughStream()
+  ])
+
+  deepEqual(result, {})
 })

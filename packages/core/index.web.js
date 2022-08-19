@@ -88,8 +88,7 @@ export const createReadableStream = (input, options) => {
       async start (controller) {
         // Can this all be moved to pull()?
         if (typeof input === 'string') {
-          const chunkSize =
-            options?.chunkSize ?? options?.highWaterMark ?? 16 * 1024
+          const chunkSize = options?.chunkSize ?? 16 * 1024
           let position = 0
           const length = input.length
           while (position < length) {
@@ -98,6 +97,7 @@ export const createReadableStream = (input, options) => {
             position += chunkSize
           }
         } else if (Array.isArray(input)) {
+          // TODO update to for(;;) loop, faster
           for (const chunk of input) {
             controller.enqueue(chunk)
           }

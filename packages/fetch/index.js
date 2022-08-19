@@ -1,4 +1,5 @@
 /* global fetch */
+import { createReadableStream } from '@datastream/core'
 
 const defaults = {
   // custom
@@ -21,14 +22,27 @@ export const setDefaults = (options) => {
   Object.assign(defaults, options, { headers })
 }
 
-export async function * fetchStream (optionsArr, { signal } = {}) {
+export const fetchStream = (optionsArr, { signal } = {}) => {
+  return createReadableStream(fetchGenerator(optionsArr, { signal }), {
+    signal
+  })
+}
+async function * fetchGenerator (optionsArr, { signal } = {}) {
   if (!Array.isArray(optionsArr)) optionsArr = [optionsArr]
   const requests = []
   for (let options of optionsArr) {
     options.headers = { ...defaults.headers, ...options.headers }
     options = { ...defaults, ...options }
-    if (options.qs) options.url += '?' + new URLSearchParams(options.qs)
-    if (options.headers.Accept.includes('application/json')) {
+    if (options.qs) {
+      options.url += ('?' + new URLSearchParams(options.qs)).replaceAll(
+        '+',
+        '%20'
+      )
+    }
+    if (
+      typeof options.dataPath !== 'undefined' &&
+      /application\/([a-z.]+\+|)json/.test(options.headers.Accept)
+    ) {
       requests.push(fetchJson(options, { signal }))
     } else {
       requests.push(fetchBody(options, { signal }))
@@ -53,7 +67,7 @@ async function * fetchJson (options, { signal }) {
 
   while (options.url) {
     const response = await fetchRateLimit(options, { signal })
-    const body = await response.json()
+    const body = await response.json() // Blocking - stream parse?
     options.url = nextPath && pickPath(body, nextPath)
     options.url ??= parseLink(response.headers)
     const data = pickPath(body, dataPath)
@@ -81,7 +95,7 @@ const fetchRateLimit = async (options, { signal }) => {
     await timeout(options.rateLimitTimestamp - now, { signal })
   }
   options.rateLimitTimestamp = now + 1000 * options.rateLimit
-  return fetch(options, { signal })
+  return fetch(options.url, { ...options, signal })
 }
 
 const pickPath = (obj, path) => {
