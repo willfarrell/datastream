@@ -2,39 +2,31 @@ import { createTransformStream } from '@datastream/core'
 import _ajv from 'ajv/dist/2020.js'
 import formats from 'ajv-formats'
 import formatsDraft2019 from 'ajv-formats-draft2019'
+// import ajvErrors from 'ajv-errors'
 import uriResolver from 'fast-uri'
 
 const Ajv = _ajv.default // esm workaround for linting
 
 const ajvDefaults = {
   strict: true,
-  coerceTypes: 'array',
+  coerceTypes: true,
   allErrors: true,
   useDefaults: 'empty',
   uriResolver
 }
 
-const jsonSchemaValidateDefaults = {
-  idxStart: 0,
-  key: 'ajvErrors',
-  language: 'en',
-  availableLanguages: undefined
-}
+export const validateStream = (
+  { schema, idxStart, resultKey, ...ajvOptions },
+  streamOptions
+) => {
+  idxStart ??= 0
+  // language ??= 'en'
 
-export const validateStream = (validateOptions, streamOptions) => {
-  let {
-    schema,
-    idxStart,
-    resultKey /* language, availableLanguages */,
-    ...ajvOptions
-  } = {
-    ...jsonSchemaValidateDefaults,
-    ...validateOptions
-  }
   if (typeof schema !== 'function') {
     const ajv = new Ajv({ ...ajvDefaults, ...ajvOptions })
     formats(ajv)
     formatsDraft2019(ajv)
+    // ajvErrors(ajv)
     schema = ajv.compile(schema)
   }
 

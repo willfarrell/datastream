@@ -68,6 +68,7 @@
     "@datastream/core": "0.0.5",
     "@datastream/validate": "0.0.5",
     "ajv": "8.11.0",
+    "ajv-errors": "3.0.0",
     "ajv-formats": "2.1.1",
     "ajv-formats-draft2019": "1.6.1",
     "fast-uri": "2.1.0"
