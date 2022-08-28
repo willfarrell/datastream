@@ -14,6 +14,8 @@ import {
   objectBatchStream,
   objectPivotLongToWideStream,
   objectPivotWideToLongStream,
+  objectKeyValueStream,
+  objectKeyValuesStream,
   objectOutputStream
 } from '@datastream/object'
 
@@ -52,7 +54,7 @@ test(`${variant}: objectCountStream should count length of chunks with custom ke
   const input = ['1', '2', '3']
   const streams = [
     createReadableStream(input),
-    objectCountStream({ key: 'object' })
+    objectCountStream({ resultKey: 'object' })
   ]
 
   const result = await pipeline(streams)
@@ -72,7 +74,10 @@ test(`${variant}: objectBatchStream should batch chunks by key`, async (t) => {
     { a: '3', b: '4' },
     { a: '3', b: '5' }
   ]
-  const streams = [createReadableStream(input), objectBatchStream(['a'])]
+  const streams = [
+    createReadableStream(input),
+    objectBatchStream({ keys: ['a'] })
+  ]
 
   const stream = pipejoin(streams)
   const output = await streamToArray(stream)
@@ -98,7 +103,10 @@ test(`${variant}: objectBatchStream should batch chunks by index`, async (t) => 
     ['3', '4'],
     ['3', '5']
   ]
-  const streams = [createReadableStream(input), objectBatchStream([0])]
+  const streams = [
+    createReadableStream(input),
+    objectBatchStream({ keys: [0] })
+  ]
 
   const stream = pipejoin(streams)
   const output = await streamToArray(stream)
@@ -127,7 +135,7 @@ test(`${variant}: objectPivotLongToWideStream should pivot chunks to wide`, asyn
   ]
   const streams = [
     createReadableStream(input),
-    objectBatchStream(['a']),
+    objectBatchStream({ keys: ['a'] }),
     objectPivotLongToWideStream({ keys: ['b', 'u'], valueParam: 'v' })
   ]
 
@@ -193,6 +201,47 @@ test(`${variant}: objectPivotWideToLongStream should pivot chunks to wide`, asyn
   ])
 })
 
+// *** objectKeyValueStream *** //
+test(`${variant}: objectKeyValueStream should transform to {chunk[key]:chunk[value]}`, async (t) => {
+  const input = [{ a: '1', b: '2', c: '3' }]
+  const streams = [
+    createReadableStream(input),
+    objectKeyValueStream({ key: 'a', value: 'b' })
+  ]
+
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [{ 1: '2' }])
+})
+
+// *** objectKeyValuesStream *** //
+test(`${variant}: objectKeyValuesStream should transform to {chunk[key]:chunk}`, async (t) => {
+  const input = [{ a: '1', b: '2', c: '3' }]
+  const streams = [
+    createReadableStream(input),
+    objectKeyValuesStream({ key: 'a' })
+  ]
+
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [{ 1: { a: '1', b: '2', c: '3' } }])
+})
+
+test(`${variant}: objectKeyValuesStream should transform to {chunk[key]:chunk[values]}`, async (t) => {
+  const input = [{ a: '1', b: '2', c: '3' }]
+  const streams = [
+    createReadableStream(input),
+    objectKeyValuesStream({ key: 'a', values: ['b'] })
+  ]
+
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [{ 1: { b: '2' } }])
+})
+
 // *** objectOutputStream *** //
 test(`${variant}: objectOutputStream should output chunks`, async (t) => {
   const input = [{ a: '1' }, { b: '2' }, { c: '3' }]
@@ -210,7 +259,7 @@ test(`${variant}: objectOutputStream should output chunks with custom key`, asyn
   const input = [{ a: '1' }, { b: '2' }, { c: '3' }]
   const streams = [
     createReadableStream(input),
-    objectOutputStream({ key: 'object' })
+    objectOutputStream({ resultKey: 'object' })
   ]
 
   const result = await pipeline(streams)

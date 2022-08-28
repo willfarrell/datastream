@@ -1,4 +1,4 @@
-import { createTransformStream } from '@datastream/core'
+import { createPassThroughStream } from '@datastream/core'
 import detect from 'charset-detector'
 
 const charsets = {
@@ -31,8 +31,7 @@ const charsets = {
   'ISO-8859-9': 0
 }
 
-export const charsetDetectStream = (result, options = { key: 'charset' }) => {
-  const { key } = options
+export const charsetDetectStream = ({ resultKey }, streamOptions) => {
   const transform = (chunk) => {
     const matches = detect(chunk)
     if (matches.length) {
@@ -41,12 +40,12 @@ export const charsetDetectStream = (result, options = { key: 'charset' }) => {
       }
     }
   }
-  const stream = createTransformStream(transform, options)
+  const stream = createPassThroughStream(transform, streamOptions)
   stream.result = () => {
     const values = Object.entries(charsets)
       .map(([charset, confidence]) => ({ charset, confidence }))
       .sort((a, b) => b.confidence - a.confidence)
-    return { key, value: values[0] }
+    return { key: resultKey ?? 'charset', value: values[0] }
   }
   return stream
 }

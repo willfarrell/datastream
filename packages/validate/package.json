@@ -1,6 +1,6 @@
 {
   "name": "@datastream/validate",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "",
   "type": "module",
   "engines": {
@@ -65,12 +65,12 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/core": "0.0.3",
-    "@datastream/validate": "0.0.3",
+    "@datastream/core": "0.0.4",
+    "@datastream/validate": "0.0.4",
     "ajv": "8.11.0",
     "ajv-formats": "2.1.1",
     "ajv-formats-draft2019": "1.6.1",
     "fast-uri": "2.1.0"
   },
-  "gitHead": "70834bdf6ea9d690ca90a079371b73a0c7ea4a14"
+  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1"
 }

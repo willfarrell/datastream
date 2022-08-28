@@ -49,7 +49,7 @@ test(`${variant}: stringSizeStream should count length of chunks with custom key
   const input = ['1', '2', '3']
   const streams = [
     createReadableStream(input),
-    stringLengthStream({ key: 'string' })
+    stringLengthStream({ resultKey: 'string' })
   ]
 
   const result = await pipeline(streams)
@@ -77,7 +77,7 @@ test(`${variant}: stringOutputStream should output chunks with custom key`, asyn
   const input = ['1', '2', '3']
   const streams = [
     createReadableStream(input),
-    stringOutputStream({ key: 'string' })
+    stringOutputStream({ resultKey: 'string' })
   ]
 
   const result = await pipeline(streams)

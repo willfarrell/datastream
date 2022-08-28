@@ -5,6 +5,7 @@ import {
   pipeline,
   pipejoin,
   streamToArray,
+  streamToObject,
   streamToString,
   isReadable,
   isWritable,
@@ -12,8 +13,10 @@ import {
   createReadableStream,
   createPassThroughStream,
   createTransformStream,
-  createWritableStream
+  createWritableStream,
+  timeout
 } from '@datastream/core'
+import { objectCountStream } from '@datastream/object'
 
 let variant = 'unknown'
 for (const execArgv of process.execArgv) {
@@ -21,17 +24,6 @@ for (const execArgv of process.execArgv) {
   if (execArgv.includes('--conditions=')) {
     variant = execArgv.replace(flag, '')
   }
-}
-
-const countStream = (options = { key: 'size' }) => {
-  const { key } = options
-  let value = 0
-  const transform = () => {
-    value += 1
-  }
-  const stream = createTransformStream(transform, options)
-  stream.result = () => ({ key, value })
-  return stream
 }
 
 // *** streamTo{Array,String,Buffer} *** //
@@ -65,6 +57,20 @@ for (const type of Object.keys(types)) {
     const output = await streamToArray(stream)
 
     deepEqual(output, input)
+  })
+
+  test(`${variant}: streamToObject should work with transform ${type} stream`, async (t) => {
+    const input = types[type]
+    const streams = [
+      createReadableStream(input),
+      createTransformStream((chunk) => {
+        return { [type]: chunk }
+      })
+    ]
+    const stream = pipejoin(streams)
+    const output = await streamToObject(stream)
+
+    deepEqual(output, { [type]: input[input.length - 1] })
   })
 
   test(`${variant}: streamToString should work with readable ${type} stream`, async (t) => {
@@ -133,6 +139,39 @@ test(`${variant}: createReadableStream should chunk long strings`, async (t) => 
   equal(output.length, 2)
 })
 
+if (variant === 'node') {
+  // Web Streams needs polyfill - -needed for fetchRequestStream?
+  test(`${variant}: createReadableStream should allow pushing values onto it`, async (t) => {
+    const streams = [createReadableStream()]
+    const stream = pipejoin(streams)
+    streams[0].push('a')
+    streams[0].push(null)
+    const output = await streamToArray(stream)
+
+    deepEqual(output, ['a'])
+  })
+
+  const { backpressureGuage } = await import('@datastream/core')
+  test(`${variant}: backpressureGuage should chunk really long strings`, async (t) => {
+    console.time('test')
+    const input = 'x'.repeat(1024 * 1024) // where 16*1024 is the default chunkSize/highWaterMark
+    const streams = [
+      createReadableStream(input),
+      createPassThroughStream(async () => {
+        await timeout(5)
+      }),
+      createWritableStream()
+    ]
+    const metrics = backpressureGuage(streams)
+
+    await pipeline(streams)
+    // console.log(JSON.stringify(metrics))
+
+    deepEqual(metrics['0'].timeline.length, 3)
+    deepEqual(metrics['1'].timeline.length, 0)
+  })
+}
+
 // *** createPassThroughStream *** //
 test(`${variant}: createPassThroughStream should create a passs through stream`, async (t) => {
   const input = ['a', 'b', 'c']
@@ -191,7 +230,7 @@ test(`${variant}: pipeline should should add writable to end of streams array`, 
   const transform = sinon.spy()
   const streams = [
     createReadableStream(input),
-    countStream(),
+    objectCountStream(),
     createTransformStream(transform)
   ]
   const result = await pipeline(streams)
@@ -199,7 +238,7 @@ test(`${variant}: pipeline should should add writable to end of streams array`, 
   equal(isReadable(streams[1]), true)
   equal(isWritable(streams[1]), true)
   equal(transform.callCount, 3)
-  deepEqual(result, { size: 3 })
+  deepEqual(result, { count: 3 })
 })
 
 // *** makeOptions *** //
@@ -217,7 +256,8 @@ if (variant === 'node') {
       writableObjectMode: true,
       objectMode: true,
       readableObjectMode: true,
-      readableHighWaterMark: 1
+      readableHighWaterMark: 1,
+      signal: undefined
     })
   })
 }
@@ -234,7 +274,8 @@ if (variant === 'webstream') {
       readableStrategy: {
         highWaterMark: 1,
         size: { chunk: 2 }
-      }
+      },
+      signal: undefined
     })
   })
 }

@@ -2,7 +2,7 @@
 import { makeOptions } from '@datastream/core'
 import { defaultOptions, formatArray, formatObject } from 'csv-rex/format'
 
-export const csvFormatStream = (options = {}) => {
+export const csvFormatStream = (options = {}, streamOptions) => {
   const csvOptions = { ...defaultOptions, ...options }
   csvOptions.escapeChar ??= csvOptions.quoteChar
   let format
@@ -20,7 +20,7 @@ export const csvFormatStream = (options = {}) => {
         controller.enqueue(format(chunk, csvOptions))
       }
     },
-    makeOptions(options)
+    makeOptions(streamOptions)
   )
 }
 export default csvFormatStream

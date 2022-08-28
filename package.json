@@ -1,6 +1,6 @@
 {
   "name": "@datastream/monorepo",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Streams made easy.",
   "type": "module",
   "engines": {
@@ -12,7 +12,7 @@
     "commit-msg": "commitlint --config commitlint.config.cjs --edit",
     "pre-commit": "lint-staged",
     "install": "lerna bootstrap",
-    "lint": "lint-staged",
+    "lint": "prettier --write packages/*/*.js && standard --fix packages/*/*.js",
     "test": "npm run build && c8 node --test --conditions=node packages && c8 node --test --conditions=webstream packages",
     "build": "bin/esbuild",
     "release:tag": "git tag $npm_package_version && git push --tags",
@@ -23,8 +23,8 @@
     "lerna:outdated": "lerna exec --concurrency 5 npm outdated",
     "lerna:audit": "lerna exec --concurrency 2 npm audit fix",
     "lerna:sync": "lerna publish --exact --yes --skip-npm --skip-git --repo-version $npm_package_version",
-    "lerna:publish": "lerna publish --exact --yes --skip-git --repo-version $npm_package_version",
-    "lerna:publish:next": "lerna publish --exact --yes --skip-git --repo-version $npm_package_version --dist-tag next"
+    "lerna:publish": "npm run build && lerna publish --exact --yes --skip-git --repo-version $npm_package_version",
+    "lerna:publish:next": "npm run build && lerna publish --exact --yes --skip-git --repo-version $npm_package_version --dist-tag next"
   },
   "repository": {
     "type": "git",
@@ -48,14 +48,13 @@
   },
   "homepage": "https://middy.js.org",
   "devDependencies": {
-    "@commitlint/cli": "^17.0.0",
-    "@commitlint/config-conventional": "^17.0.0",
-    "ava": "4.3.1",
+    "@commitlint/cli": "^17.1.1",
+    "@commitlint/config-conventional": "^17.1.0",
     "benchmark": "^2.1.4",
-    "c8": "7.12.0",
-    "esbuild": "0.14.49",
+    "c8": "^7.12.0",
+    "esbuild": "^0.15.5",
     "husky": "^8.0.0",
-    "lerna": "^5.1.8",
+    "lerna": "^5.4.3",
     "lint-staged": "^13.0.0",
     "prettier": "^2.0.0",
     "sinon": "^14.0.0",

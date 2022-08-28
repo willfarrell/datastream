@@ -1,19 +1,16 @@
 import { Readable, Transform, Writable } from 'node:stream'
 import { pipeline as pipelinePromise } from 'node:stream/promises'
+import { setTimeout } from 'node:timers/promises'
 
-export const pipeline = async (streams, { signal } = {}) => {
+export const pipeline = async (streams, streamOptions = {}) => {
   // Ensure stream ends with only writable
   const lastStream = streams[streams.length - 1]
   if (isReadable(lastStream)) {
-    streams.push(
-      createWritableStream(() => {}, {
-        signal,
-        objectMode: lastStream._readableState.objectMode
-      })
-    )
+    streamOptions.objectMode = lastStream._readableState.objectMode
+    streams.push(createWritableStream(() => {}, streamOptions))
   }
 
-  await pipelinePromise(streams, { signal })
+  await pipelinePromise(streams, streamOptions)
 
   const output = {}
   for (const stream of streams) {
@@ -27,15 +24,53 @@ export const pipeline = async (streams, { signal } = {}) => {
 }
 
 export const pipejoin = (streams) => {
-  return streams.reduce((pipeline, stream, idx) => {
+  return streams.reduce((pipeline, stream) => {
     return pipeline.pipe(stream)
   })
+}
+
+// Not possible in WebStream
+export const backpressureGuage = (streams) => {
+  const keys = Object.keys(streams)
+  const values = Object.values(streams)
+  const metrics = {}
+  for (let i = 0, l = values.length; i < l; i++) {
+    const value = values[i]
+    metrics[keys[i]] = { timeline: [], total: {} }
+    let timestamp
+    let startTimestamp
+    value.on('pause', () => {
+      timestamp = Date.now() // process.hrtime.bigint()
+    })
+    value.on('resume', () => {
+      if (timestamp) {
+        // Number.parseInt(  (process.hrtime.bigint() - pauseTimestamp).toString()  ) / 1_000_000 // ms
+        const duration = Date.now() - timestamp
+        metrics[keys[i]].timeline.push({ timestamp, duration })
+      } else {
+        startTimestamp = Date.now()
+      }
+    })
+    value.on('end', () => {
+      const duration = Date.now() - startTimestamp
+      metrics[keys[i]].total = { timestamp: startTimestamp, duration }
+    })
+  }
+  return metrics
 }
 
 export const streamToArray = async (stream) => {
   const value = []
   for await (const chunk of stream) {
     value.push(chunk)
+  }
+  return value
+}
+
+export const streamToObject = async (stream) => {
+  const value = {}
+  for await (const chunk of stream) {
+    Object.assign(value, chunk)
   }
   return value
 }
@@ -47,7 +82,6 @@ export const streamToString = async (stream) => {
   }
   return value
 }
-
 /* export const streamToBuffer = async (stream) => {
   let value = []
   for await (const chunk of stream) {
@@ -68,8 +102,10 @@ export const makeOptions = ({
   highWaterMark,
   chunkSize,
   objectMode,
-  ...options
+  signal,
+  ...streamOptions
 } = {}) => {
+  objectMode ??= true
   return {
     writableHighWaterMark: highWaterMark,
     writableObjectMode: objectMode,
@@ -78,15 +114,16 @@ export const makeOptions = ({
     highWaterMark,
     chunkSize,
     objectMode,
-    ...options
+    signal,
+    ...streamOptions
   }
 }
 
-export const createReadableStream = (input, options) => {
+export const createReadableStream = (input = '', streamOptions) => {
   // string doesn't chunk, and is slow
   if (typeof input === 'string') {
     function * iterator () {
-      const size = options?.chunkSize ?? 16 * 1024
+      const size = streamOptions?.chunkSize ?? 16 * 1024
       let position = 0
       const length = input.length
       while (position < length) {
@@ -94,30 +131,26 @@ export const createReadableStream = (input, options) => {
         position += size
       }
     }
-    return Readable.from(iterator(), { objectMode: true, ...options })
+    return Readable.from(iterator(), streamOptions)
   }
-  return Readable.from(input, { objectMode: true, ...options })
+  return Readable.from(input, streamOptions)
 }
 
 export const createPassThroughStream = (
   transform = (chunk) => chunk,
-  flush,
-  options
+  streamOptions
 ) => {
-  // flush is optional
-  if (typeof flush !== 'function') {
-    options = flush
-    flush = () => {}
-  }
   return new Transform({
-    ...makeOptions({ objectMode: true, ...options }),
-    transform (chunk, encoding, callback) {
+    ...makeOptions(streamOptions),
+    async transform (chunk, encoding, callback) {
+      await transform(chunk)
       this.push(chunk)
-      transform(chunk)
       callback()
     },
-    flush (callback) {
-      flush()
+    async flush (callback) {
+      if (typeof streamOptions?.flush === 'function') {
+        await streamOptions.flush()
+      }
       callback()
     }
   })
@@ -125,35 +158,40 @@ export const createPassThroughStream = (
 
 export const createTransformStream = (
   transform = (chunk) => chunk,
-  flush,
-  options
+  streamOptions
 ) => {
-  // flush is optional
-  if (typeof flush !== 'function') {
-    options = flush
-    flush = () => {}
-  }
   return new Transform({
-    ...makeOptions({ objectMode: true, ...options }),
-    transform (chunk, encoding, callback) {
-      chunk = transform(chunk)
+    ...makeOptions(streamOptions),
+    async transform (chunk, encoding, callback) {
+      chunk = await transform(chunk)
       this.push(chunk)
       callback()
     },
-    flush (callback) {
-      flush()
+    async flush (callback) {
+      if (typeof streamOptions?.flush === 'function') {
+        await streamOptions.flush()
+      }
       callback()
     }
   })
 }
 
-export const createWritableStream = (fn = () => {}, options) => {
+export const createWritableStream = (write = () => {}, streamOptions) => {
   return new Writable({
-    objectMode: true,
-    ...options,
-    write (chunk, encoding, callback) {
-      fn(chunk)
+    ...makeOptions(streamOptions),
+    async write (chunk, encoding, callback) {
+      await write(chunk)
+      callback()
+    },
+    async final (callback) {
+      if (typeof streamOptions?.final === 'function') {
+        await streamOptions.final()
+      }
       callback()
     }
   })
+}
+
+export const timeout = (ms, { signal } = {}) => {
+  return setTimeout(ms, { signal })
 }

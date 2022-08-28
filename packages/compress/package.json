@@ -1,0 +1,173 @@
+{
+  "name": "@datastream/compress",
+  "version": "0.0.4",
+  "description": "",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "engineStrict": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./index.web.mjs",
+  "module": "./index.web.mjs",
+  "exports": {
+    ".": {
+      "node": {
+        "webstream": {
+          "types": "./index.d.ts",
+          "default": "./index.web.mjs"
+        },
+        "import": {
+          "types": "./index.d.ts",
+          "default": "./index.node.mjs"
+        },
+        "require": {
+          "types": "./index.d.ts",
+          "default": "./zstd.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./index.d.ts",
+        "default": "./index.web.mjs"
+      }
+    },
+    "./zstd": {
+      "node": {
+        "webstream": {
+          "types": "./zstd.d.ts",
+          "default": "./zstd.web.mjs"
+        },
+        "import": {
+          "types": "./zstd.d.ts",
+          "default": "./zstd.node.mjs"
+        },
+        "require": {
+          "types": "./zstd.d.ts",
+          "default": "./zstd.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./zstd.d.ts",
+        "default": "./zstd.web.mjs"
+      }
+    },
+    "./brotli": {
+      "node": {
+        "webstream": {
+          "types": "./brotli.d.ts",
+          "default": "./brotli.web.mjs"
+        },
+        "import": {
+          "types": "./brotli.d.ts",
+          "default": "./brotli.node.mjs"
+        },
+        "require": {
+          "types": "./brotli.d.ts",
+          "default": "./brotli.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./brotli.d.ts",
+        "default": "./brotli.web.mjs"
+      }
+    },
+    "./gzip": {
+      "node": {
+        "webstream": {
+          "types": "./gzip.d.ts",
+          "default": "./gzip.web.mjs"
+        },
+        "import": {
+          "types": "./gzip.d.ts",
+          "default": "./gzip.node.mjs"
+        },
+        "require": {
+          "types": "./gzip.d.ts",
+          "default": "./gzip.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./gzip.d.ts",
+        "default": "./gzip.web.mjs"
+      }
+    },
+    "./deflate": {
+      "node": {
+        "webstream": {
+          "types": "./deflate.d.ts",
+          "default": "./deflate.web.mjs"
+        },
+        "import": {
+          "types": "./deflate.d.ts",
+          "default": "./deflate.node.mjs"
+        },
+        "require": {
+          "types": "./deflate.d.ts",
+          "default": "./deflate.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./deflate.d.ts",
+        "default": "./deflate.web.mjs"
+      }
+    },
+    "./protobuf": {
+      "node": {
+        "webstream": {
+          "types": "./protobuf.d.ts",
+          "default": "./protobuf.web.mjs"
+        },
+        "import": {
+          "types": "./protobuf.d.ts",
+          "default": "./protobuf.node.mjs"
+        },
+        "require": {
+          "types": "./protobuf.d.ts",
+          "default": "./protobuf.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./protobuf.d.ts",
+        "default": "./protobuf.web.mjs"
+      }
+    }
+  },
+  "types": "index.d.ts",
+  "files": [
+    "*.mjs",
+    "*.cjs",
+    "*.map",
+    "*.d.ts"
+  ],
+  "scripts": {
+    "test": "npm run test:unit",
+    "test:unit": "ava",
+    "test:benchmark": "node __benchmarks__/index.js"
+  },
+  "license": "MIT",
+  "keywords": [
+    "Web Stream API",
+    "Node Stream API"
+  ],
+  "author": {
+    "name": "datastream contributors",
+    "url": "https://github.com/willfarrell/datastream/graphs/contributors"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github:willfarrell/datastream",
+    "directory": "packages/file-read"
+  },
+  "bugs": {
+    "url": "https://github.com/willfarrell/datastream/issues"
+  },
+  "homepage": "https://datastream.js.org",
+  "dependencies": {
+    "@datastream/compression": "file:./",
+    "@datastream/core": "0.0.4",
+    "brotli-wasm": "1.3.0"
+  },
+  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1"
+}

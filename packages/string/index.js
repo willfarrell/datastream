@@ -1,24 +1,20 @@
 import { createReadableStream, createTransformStream } from '@datastream/core'
 
-export const stringReadableStream = (string, options) => {
-  return createReadableStream(string, options)
+export const stringReadableStream = (input, streamOptions) => {
+  return createReadableStream(input, streamOptions)
 }
 
-export const stringLengthStream = (options) => {
+export const stringLengthStream = ({ resultKey } = {}, streamOptions) => {
   let value = 0
   const transform = (chunk) => {
     value += chunk.length
   }
-  const stream = createTransformStream(transform, {
-    ...options,
-    objectMode: false
-  })
-  stream.result = () => ({ key: options?.key ?? 'length', value })
+  const stream = createTransformStream(transform, streamOptions)
+  stream.result = () => ({ key: resultKey ?? 'length', value })
   return stream
 }
 
-export const stringOutputStream = (options = { key: 'output' }) => {
-  const { key } = options
+export const stringOutputStream = ({ resultKey } = {}, streamOptions) => {
   let value = ''
   const transform = (chunk) => {
     // if (Buffer.isBuffer(chunk)) {
@@ -27,11 +23,8 @@ export const stringOutputStream = (options = { key: 'output' }) => {
     value += chunk
     // }
   }
-  const stream = createTransformStream(transform, {
-    ...options,
-    objectMode: false
-  })
-  stream.result = () => ({ key, value })
+  const stream = createTransformStream(transform, streamOptions)
+  stream.result = () => ({ key: resultKey ?? 'output', value })
   return stream
 }
 

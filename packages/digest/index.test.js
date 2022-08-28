@@ -16,7 +16,7 @@ for (const execArgv of process.execArgv) {
 test(`${variant}: digestStream should calculate digest`, async (t) => {
   const streams = [
     createReadableStream('1,2,3,4'),
-    await digestStream('SHA2-256')
+    await digestStream({ algorithm: 'SHA2-256' })
   ]
   const result = await pipeline(streams)
 

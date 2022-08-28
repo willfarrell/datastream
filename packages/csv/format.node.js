@@ -2,14 +2,12 @@ import { Transform } from 'node:stream'
 import { makeOptions } from '@datastream/core'
 import { defaultOptions, formatArray, formatObject } from 'csv-rex/format'
 
-export const csvFormatStream = (options) => {
+export const csvFormatStream = (options, streamOptions) => {
   const csvOptions = { ...defaultOptions, ...options }
   csvOptions.escapeChar ??= csvOptions.quoteChar
   let format
   return new Transform({
-    ...makeOptions(options),
-    writableObjectMode: true,
-    readableObjectMode: false,
+    ...makeOptions(streamOptions),
     transform (chunk, encoding, callback) {
       if (csvOptions.header === true) {
         csvOptions.header = Object.keys(chunk)

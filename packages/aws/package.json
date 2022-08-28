@@ -1,5 +1,5 @@
 {
-  "name": "@datastream/csv",
+  "name": "@datastream/aws",
   "version": "0.0.4",
   "description": "",
   "type": "module",
@@ -15,62 +15,50 @@
   "exports": {
     ".": {
       "node": {
-        "webstream": {
-          "types": "./index.d.ts",
-          "default": "./index.web.mjs"
-        },
         "import": {
-          "types": "./index.d.ts",
-          "default": "./index.node.mjs"
+          "types": "./s3.d.ts",
+          "default": "./s3.node.mjs"
         },
         "require": {
-          "types": "./index.d.ts",
-          "default": "./index.node.cjs"
+          "types": "./s3.d.ts",
+          "default": "./s3.node.cjs"
         }
       },
       "import": {
-        "types": "./index.d.ts",
-        "default": "./index.web.mjs"
+        "types": "./s3.d.ts",
+        "default": "./s3.web.mjs"
       }
     },
-    "./parse": {
+    "./s3": {
       "node": {
-        "webstream": {
-          "types": "./parse.d.ts",
-          "default": "./parse.web.mjs"
-        },
         "import": {
-          "types": "./parse.d.ts",
-          "default": "./parse.node.mjs"
+          "types": "./s3.d.ts",
+          "default": "./s3.node.mjs"
         },
         "require": {
-          "types": "./parse.d.ts",
-          "default": "./parse.node.cjs"
+          "types": "./s3.d.ts",
+          "default": "./s3.node.cjs"
         }
       },
       "import": {
-        "types": "./parse.d.ts",
-        "default": "./parse.web.mjs"
+        "types": "./s3.d.ts",
+        "default": "./s3.web.mjs"
       }
     },
-    "./format": {
+    "./dynamodb": {
       "node": {
-        "webstream": {
-          "types": "./format.d.ts",
-          "default": "./format.web.mjs"
-        },
         "import": {
-          "types": "./format.d.ts",
-          "default": "./format.node.mjs"
+          "types": "./dynamodb.d.ts",
+          "default": "./dynamodb.node.mjs"
         },
         "require": {
-          "types": "./format.d.ts",
-          "default": "./format.node.cjs"
+          "types": "./dynamodb.d.ts",
+          "default": "./dynamodb.node.cjs"
         }
       },
       "import": {
-        "types": "./format.d.ts",
-        "default": "./format.web.mjs"
+        "types": "./dynamodb.d.ts",
+        "default": "./dynamodb.web.mjs"
       }
     }
   },
@@ -88,9 +76,6 @@
   },
   "license": "MIT",
   "keywords": [
-    "csv",
-    "json",
-    "transform",
     "Web Stream API",
     "Node Stream API"
   ],
@@ -101,16 +86,23 @@
   "repository": {
     "type": "git",
     "url": "github:willfarrell/datastream",
-    "directory": "packages/csv"
+    "directory": "packages/aws"
   },
   "bugs": {
     "url": "https://github.com/willfarrell/datastream/issues"
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.159.0",
+    "@aws-sdk/client-s3": "3.159.0",
+    "@aws-sdk/client-ssm": "3.159.0",
+    "@aws-sdk/lib-dynamodb": "3.159.0",
+    "@aws-sdk/lib-storage": "3.159.0",
     "@datastream/core": "0.0.4",
-    "@datastream/csv": "0.0.4",
-    "csv-rex": "0.4.1"
+    "aws-xray-sdk-core": "3.3.7"
   },
-  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1"
+  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1",
+  "devDependencies": {
+    "aws-sdk-client-mock": "1.0.0"
+  }
 }

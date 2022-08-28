@@ -1,9 +1,9 @@
 /* global ReadableStream, TransformStream, WritableStream */
-export const pipeline = async (streams, options) => {
+export const pipeline = async (streams, streamOptions) => {
   // Ensure stream ends with only writable
   const lastStream = streams[streams.length - 1]
   if (isReadable(lastStream)) {
-    streams.push(createWritableStream(() => {}, options))
+    streams.push(createWritableStream(() => {}, streamOptions))
   }
 
   await pipejoin(streams)
@@ -38,6 +38,14 @@ export const streamToArray = async (stream) => {
   return value
 }
 
+export const streamToObject = async (stream) => {
+  const value = {}
+  for await (const chunk of stream) {
+    Object.assign(value, chunk)
+  }
+  return value
+}
+
 export const streamToString = async (stream) => {
   let value = ''
   for await (const chunk of stream) {
@@ -68,7 +76,12 @@ export const isWritable = (stream) => {
   return typeof stream.pipeTo === 'undefined' || !!stream.writable || false // TODO find better solution
 }
 
-export const makeOptions = ({ highWaterMark, chunkSize, ...options } = {}) => {
+export const makeOptions = ({
+  highWaterMark,
+  chunkSize,
+  signal,
+  ...streamOptions
+} = {}) => {
   return {
     writableStrategy: {
       highWaterMark,
@@ -78,17 +91,18 @@ export const makeOptions = ({ highWaterMark, chunkSize, ...options } = {}) => {
       highWaterMark,
       size: { chunk: chunkSize }
     },
-    ...options
+    signal,
+    ...streamOptions
   }
 }
 
-export const createReadableStream = (input, options) => {
-  return new ReadableStream(
+export const createReadableStream = (input = '', streamOptions) => {
+  const stream = new ReadableStream(
     {
       async start (controller) {
         // Can this all be moved to pull()?
         if (typeof input === 'string') {
-          const chunkSize = options?.chunkSize ?? 16 * 1024
+          const chunkSize = streamOptions?.chunkSize ?? 16 * 1024
           let position = 0
           const length = input.length
           while (position < length) {
@@ -106,72 +120,89 @@ export const createReadableStream = (input, options) => {
             controller.enqueue(chunk)
           }
         }
+
         controller.close()
       }
     },
-    makeOptions(options)
+    makeOptions(streamOptions)
   )
+  return stream
 }
 
 export const createPassThroughStream = (
-  transform = (chunk) => chunk,
-  flush,
-  options
+  transform = (chunk) => {},
+  streamOptions
 ) => {
-  // flush is optional
-  if (typeof flush !== 'function') {
-    options = flush
-    flush = () => {}
-  }
   return new TransformStream(
     {
       start () {},
-      transform (chunk, controller) {
+      async transform (chunk, controller) {
+        await transform(chunk)
         controller.enqueue(chunk)
-        transform(chunk)
       },
-      flush (controller) {
-        flush()
+      async flush (controller) {
+        if (typeof streamOptions?.flush === 'function') {
+          await streamOptions.flush()
+        }
         controller.terminate()
       }
     },
-    makeOptions(options)
+    makeOptions(streamOptions)
   )
 }
 
 export const createTransformStream = (
   transform = (chunk) => chunk,
-  flush,
-  options
+  streamOptions
 ) => {
-  // flush is optional
-  if (typeof flush !== 'function') {
-    options = flush
-    flush = () => {}
-  }
   return new TransformStream(
     {
       start () {},
-      transform (chunk, controller) {
-        chunk = transform(chunk)
+      async transform (chunk, controller) {
+        chunk = await transform(chunk)
         controller.enqueue(chunk)
       },
-      flush (controller) {
-        flush()
+      async flush (controller) {
+        if (typeof streamOptions?.flush === 'function') {
+          await streamOptions.flush()
+        }
         controller.terminate()
       }
     },
-    makeOptions(options)
+    makeOptions(streamOptions)
   )
 }
 
-export const createWritableStream = (fn = () => {}, options) => {
+export const createWritableStream = (write = () => {}, streamOptions) => {
   return new WritableStream(
     {
-      write (chunk) {
-        fn(chunk)
+      async write (chunk) {
+        await write(chunk)
+      },
+      async final () {
+        if (typeof streamOptions?.final === 'function') {
+          await streamOptions.final()
+        }
       }
     },
-    makeOptions(options)
+    makeOptions(streamOptions)
   )
+}
+
+// Polyfill for `import { setTimeout } from 'node:timers/promises'`
+export const timeout = (ms, { signal } = {}) => {
+  if (signal?.aborted) {
+    return Promise.reject(new Error('Aborted', 'AbortError'))
+  }
+  return new Promise((resolve, reject) => {
+    const abortHandler = () => {
+      clearTimeout(timeout)
+      reject(new Error('Aborted', 'AbortError'))
+    }
+    if (signal) signal.addEventListener('abort', abortHandler)
+    const timeout = setTimeout(() => {
+      resolve()
+      if (signal) signal.removeEventListener('abort', abortHandler)
+    }, ms)
+  })
 }

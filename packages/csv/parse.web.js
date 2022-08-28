@@ -2,7 +2,7 @@
 import { makeOptions } from '@datastream/core'
 import { parse } from 'csv-rex/parse'
 
-export const csvParseStream = (options) => {
+export const csvParseStream = (options, streamOptions) => {
   const { chunkParse, previousChunk } = parse(options)
 
   const value = {}
@@ -40,9 +40,9 @@ export const csvParseStream = (options) => {
         controller.terminate()
       }
     },
-    makeOptions(options)
+    makeOptions(streamOptions)
   )
-  stream.result = () => ({ key: options?.key ?? 'csvErrors', value })
+  stream.result = () => ({ key: options?.resultKey ?? 'csvErrors', value })
   return stream
 }
 export default csvParseStream

@@ -1,4 +1,4 @@
-import { createTransformStream } from '@datastream/core'
+import { createPassThroughStream } from '@datastream/core'
 import {
   createSHA256,
   createSHA384,
@@ -15,16 +15,19 @@ const algorithms = {
   'SHA3-512': createSHA3(512)
 }
 
-export const digestStream = async (algorithm, options) => {
+export const digestStream = async ({ algorithm, resultKey }, streamOptions) => {
   const hash = await algorithms[algorithm]
   const transform = (chunk) => {
     hash.update(chunk)
   }
-  const stream = createTransformStream(transform, options)
+  const stream = createPassThroughStream(transform, streamOptions)
   let checksum
   stream.result = () => {
     checksum ??= hash.digest()
-    return { key: options?.key ?? 'digest', value: `${algorithm}:${checksum}` }
+    return {
+      key: resultKey ?? 'digest',
+      value: `${algorithm}:${checksum}`
+    }
   }
   return stream
 }

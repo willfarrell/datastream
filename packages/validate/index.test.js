@@ -24,7 +24,7 @@ for (const execArgv of process.execArgv) {
 // *** validateStream *** //
 test(`${variant}: validateStream should validate using json schema`, async (t) => {
   const input = [{ a: '1' }, { a: '2' }, { a: '3' }]
-  const chunkSchema = {
+  const schema = {
     type: 'object',
     properties: {
       a: {
@@ -34,7 +34,7 @@ test(`${variant}: validateStream should validate using json schema`, async (t) =
     required: ['a']
   }
 
-  const streams = [createReadableStream(input), validateStream(chunkSchema)]
+  const streams = [createReadableStream(input), validateStream({ schema })]
   const stream = pipejoin(streams)
   const output = await streamToArray(stream)
 
@@ -43,7 +43,7 @@ test(`${variant}: validateStream should validate using json schema`, async (t) =
 
 test(`${variant}: validateStream should validate using compiled json schema`, async (t) => {
   const input = [{ a: '1' }, { a: '2' }, { a: '3' }]
-  const chunkSchema = ajv.compile({
+  const schema = ajv.compile({
     type: 'object',
     properties: {
       a: {
@@ -53,7 +53,7 @@ test(`${variant}: validateStream should validate using compiled json schema`, as
     required: ['a']
   })
 
-  const streams = [createReadableStream(input), validateStream(chunkSchema)]
+  const streams = [createReadableStream(input), validateStream({ schema })]
   const stream = pipejoin(streams)
   const output = await streamToArray(stream)
 
@@ -62,7 +62,7 @@ test(`${variant}: validateStream should validate using compiled json schema`, as
 
 test(`${variant}: validateStream should have errors in result`, async (t) => {
   const input = [{ a: '1' }, { a: 'a' }, { a: '3' }]
-  const chunkSchema = {
+  const schema = {
     type: 'object',
     properties: {
       a: {
@@ -72,12 +72,11 @@ test(`${variant}: validateStream should have errors in result`, async (t) => {
     required: ['a']
   }
 
-  const streams = [createReadableStream(input), validateStream(chunkSchema)]
+  const streams = [createReadableStream(input), validateStream({ schema })]
   const result = await pipeline(streams)
-  console.log({ result })
 
   deepEqual(result, {
-    ajvErrors: {
+    validate: {
       '#/properties/a/type': {
         id: '#/properties/a/type',
         idx: [1],

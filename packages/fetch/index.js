@@ -1,5 +1,9 @@
 /* global fetch */
-import { createReadableStream } from '@datastream/core'
+import {
+  createReadableStream,
+  createWritableStream,
+  timeout
+} from '@datastream/core'
 
 const defaults = {
   // custom
@@ -17,20 +21,39 @@ const defaults = {
   }
 }
 
-export const setDefaults = (options) => {
+export const fetchSetDefaults = (options) => {
   const headers = { ...defaults.headers, ...options.headers }
   Object.assign(defaults, options, { headers })
 }
 
-export const fetchStream = (optionsArr, { signal } = {}) => {
-  return createReadableStream(fetchGenerator(optionsArr, { signal }), {
-    signal
+// Note: requires EncodeStream to ensure it's Uint8Array
+// Poor browser support - https://github.com/Fyrd/caniuse/issues/6375
+export const fetchRequestStream = async (options, streamOptions = {}) => {
+  const body = createReadableStream()
+  // Duplex: half - For browser compatibility - https://developer.chrome.com/articles/fetch-streaming-requests/#half-duplex
+  const value = await fetch(options.url, {
+    ...options,
+    body,
+    duplex: 'half',
+    signal: streamOptions.signal
   })
+  const write = (chunk) => {
+    body.push(chunk)
+  }
+  const stream = createWritableStream(write, streamOptions)
+  stream.result = () => ({ key: 'output', value })
 }
-async function * fetchGenerator (optionsArr, { signal } = {}) {
-  if (!Array.isArray(optionsArr)) optionsArr = [optionsArr]
+
+export const fetchResponseStream = (fetchOptions, streamOptions = {}) => {
+  if (!Array.isArray(fetchOptions)) fetchOptions = [fetchOptions]
+  return createReadableStream(
+    fetchGenerator(fetchOptions, streamOptions),
+    streamOptions
+  )
+}
+async function * fetchGenerator (fetchOptionsArray, streamOptions) {
   const requests = []
-  for (let options of optionsArr) {
+  for (let options of fetchOptionsArray) {
     options.headers = { ...defaults.headers, ...options.headers }
     options = { ...defaults, ...options }
     if (options.qs) {
@@ -43,9 +66,9 @@ async function * fetchGenerator (optionsArr, { signal } = {}) {
       typeof options.dataPath !== 'undefined' &&
       /application\/([a-z.]+\+|)json/.test(options.headers.Accept)
     ) {
-      requests.push(fetchJson(options, { signal }))
+      requests.push(fetchJson(options, streamOptions))
     } else {
-      requests.push(fetchBody(options, { signal }))
+      requests.push(fetchBody(options, streamOptions))
     }
   }
   for (const request of requests) {
@@ -56,17 +79,17 @@ async function * fetchGenerator (optionsArr, { signal } = {}) {
   }
 }
 
-const fetchBody = async (options, { signal }) => {
-  const response = await fetchRateLimit(options, { signal })
+const fetchBody = async (options, streamOptions) => {
+  const response = await fetchRateLimit(options, streamOptions)
   return response.body
 }
 
 const nextLinkRegExp = /<(.*?)>; rel="next"/
-async function * fetchJson (options, { signal }) {
+async function * fetchJson (options, streamOptions) {
   const { dataPath, nextPath } = options
 
   while (options.url) {
-    const response = await fetchRateLimit(options, { signal })
+    const response = await fetchRateLimit(options, streamOptions)
     const body = await response.json() // Blocking - stream parse?
     options.url = nextPath && pickPath(body, nextPath)
     options.url ??= parseLink(response.headers)
@@ -95,7 +118,17 @@ const fetchRateLimit = async (options, { signal }) => {
     await timeout(options.rateLimitTimestamp - now, { signal })
   }
   options.rateLimitTimestamp = now + 1000 * options.rateLimit
-  return fetch(options.url, { ...options, signal })
+  const response = await fetch(options.url, { ...options, signal })
+  if (!response.ok) {
+    // 429 Too Many Requests
+    if (response.statusCode === 429) {
+      return fetchRateLimit(options, { signal })
+    }
+    throw new Error('fetch', {
+      cause: { request: options, response }
+    })
+  }
+  return response
 }
 
 const pickPath = (obj, path) => {
@@ -108,22 +141,8 @@ const pickPath = (obj, path) => {
     }, obj)
 }
 
-// Polyfill for `import { setTimeout } from 'node:timers/promises'` that works in all env
-const timeout = (ms, { signal }) => {
-  if (signal?.aborted) {
-    return Promise.reject(new Error('Aborted', 'AbortError'))
-  }
-  return new Promise((resolve, reject) => {
-    const abortHandler = () => {
-      clearTimeout(timeout)
-      reject(new Error('Aborted', 'AbortError'))
-    }
-    if (signal) signal.addEventListener('abort', abortHandler)
-    const timeout = setTimeout(() => {
-      resolve()
-      if (signal) signal.removeEventListener('abort', abortHandler)
-    }, ms)
-  })
+export default {
+  setDefaults: fetchSetDefaults,
+  responseStream: fetchResponseStream
+  // writableStream: fetchWritableStream,
 }
-
-export default fetchStream

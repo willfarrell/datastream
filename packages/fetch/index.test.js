@@ -9,7 +9,7 @@ import {
   createPassThroughStream
 } from '@datastream/core'
 
-import { fetchStream, setDefaults } from '@datastream/fetch'
+import { fetchResponseStream, fetchSetDefaults } from '@datastream/fetch'
 
 let variant = 'unknown'
 for (const execArgv of process.execArgv) {
@@ -99,7 +99,9 @@ const mockResponses = {
     ),
 
   'https://example.org/404': () =>
-    new Response('', { status: 404, statusText: 'Not Found' })
+    new Response('', { status: 404, statusText: 'Not Found' }),
+  'https://example.org/429': () =>
+    new Response('', { status: 429, statusText: 'Too Many Requests' })
 }
 // global override
 global.fetch = (url, request) => {
@@ -110,11 +112,11 @@ global.fetch = (url, request) => {
   throw new Error('mock missing')
 }
 
-// *** fetchParallel *** //
-test(`${variant}: fetchStream should fetch csv`, async (t) => {
-  setDefaults({ headers: { Accept: 'text/csv' } })
+// *** fetchResponseStream *** //
+test(`${variant}: fetchResponseStream should fetch csv`, async (t) => {
+  fetchSetDefaults({ headers: { Accept: 'text/csv' } })
   const config = [{ url: 'https://example.org/csv' }]
-  const stream = fetchStream(config)
+  const stream = fetchResponseStream(config)
   const output = await streamToArray(stream)
 
   deepEqual(output, [
@@ -122,10 +124,10 @@ test(`${variant}: fetchStream should fetch csv`, async (t) => {
   ])
 })
 
-test(`${variant}: fetchStream should fetch with qs`, async (t) => {
-  setDefaults({ headers: { Accept: 'text/csv' } })
+test(`${variant}: fetchResponseStream should fetch with qs`, async (t) => {
+  fetchSetDefaults({ headers: { Accept: 'text/csv' } })
   const config = [{ url: 'https://example.org/csv', qs: { delimiter: '_' } }]
-  const stream = fetchStream(config)
+  const stream = fetchResponseStream(config)
   const output = await streamToArray(stream)
 
   deepEqual(output, [
@@ -133,13 +135,13 @@ test(`${variant}: fetchStream should fetch with qs`, async (t) => {
   ])
 })
 
-test(`${variant}: fetchStream should fetch json objects in parallel`, async (t) => {
-  setDefaults({ dataPath: '', headers: { Accept: 'application/json' } })
+test(`${variant}: fetchResponseStream should fetch json objects in parallel`, async (t) => {
+  fetchSetDefaults({ dataPath: '', headers: { Accept: 'application/json' } })
   const config = [
     { url: 'https://example.org/json-obj/1' },
     { url: 'https://example.org/json-obj/2' }
   ]
-  const stream = fetchStream(config)
+  const stream = fetchResponseStream(config)
   const output = await streamToArray(stream)
 
   deepEqual(output, [
@@ -149,15 +151,15 @@ test(`${variant}: fetchStream should fetch json objects in parallel`, async (t) 
   ])
 })
 
-test(`${variant}: fetchStream should fetch paginated json in series`, async (t) => {
-  setDefaults({ headers: { Accept: 'application/json' } })
+test(`${variant}: fetchResponseStream should fetch paginated json in series`, async (t) => {
+  fetchSetDefaults({ headers: { Accept: 'application/json' } })
   const config = {
     url: 'https://example.org/json-arr/1',
     dataPath: 'data',
     nextPath: 'next'
   }
 
-  const stream = fetchStream(config)
+  const stream = fetchResponseStream(config)
   const output = await streamToArray(stream)
 
   deepEqual(output, [
@@ -170,15 +172,18 @@ test(`${variant}: fetchStream should fetch paginated json in series`, async (t) 
   ])
 })
 
-test(`${variant}: fetchStream should work with pipejoin`, async (t) => {
-  setDefaults({ headers: { Accept: 'application/json' } })
+test(`${variant}: fetchResponseStream should work with pipejoin`, async (t) => {
+  fetchSetDefaults({ headers: { Accept: 'application/json' } })
   const config = {
     url: 'https://example.org/json-arr/1',
     dataPath: 'data',
     nextPath: 'next'
   }
 
-  const stream = pipejoin([fetchStream(config), createPassThroughStream()])
+  const stream = pipejoin([
+    fetchResponseStream(config),
+    createPassThroughStream()
+  ])
   const output = await streamToArray(stream)
 
   deepEqual(output, [
@@ -191,8 +196,8 @@ test(`${variant}: fetchStream should work with pipejoin`, async (t) => {
   ])
 })
 
-test(`${variant}: fetchStream should work with pipeline`, async (t) => {
-  setDefaults({ headers: { Accept: 'application/json' } })
+test(`${variant}: fetchResponseStream should work with pipeline`, async (t) => {
+  fetchSetDefaults({ headers: { Accept: 'application/json' } })
   const config = {
     url: 'https://example.org/json-arr/1',
     dataPath: 'data',
@@ -200,7 +205,7 @@ test(`${variant}: fetchStream should work with pipeline`, async (t) => {
   }
 
   const result = await pipeline([
-    fetchStream(config),
+    fetchResponseStream(config),
     createPassThroughStream()
   ])
 

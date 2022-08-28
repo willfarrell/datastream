@@ -21,16 +21,21 @@ const jsonSchemaValidateDefaults = {
   availableLanguages: undefined
 }
 
-export const validateStream = (chunkSchema, config, options) => {
-  const { idxStart, key /*, language, availableLanguages */ } = {
+export const validateStream = (validateOptions, streamOptions) => {
+  let {
+    schema,
+    idxStart,
+    resultKey /* language, availableLanguages */,
+    ...ajvOptions
+  } = {
     ...jsonSchemaValidateDefaults,
-    ...config
+    ...validateOptions
   }
-  if (typeof chunkSchema !== 'function') {
-    const ajv = new Ajv(ajvDefaults)
+  if (typeof schema !== 'function') {
+    const ajv = new Ajv({ ...ajvDefaults, ...ajvOptions })
     formats(ajv)
     formatsDraft2019(ajv)
-    chunkSchema = ajv.compile(chunkSchema)
+    schema = ajv.compile(schema)
   }
 
   const value = {} // aka errors
@@ -38,14 +43,14 @@ export const validateStream = (chunkSchema, config, options) => {
   const transform = (chunk) => {
     idx += 1
 
-    const chunkValid = chunkSchema(chunk)
-    console.log({ chunkValid })
+    const chunkValid = schema(chunk)
+    // console.log({ chunkValid })
     if (!chunkValid) {
       // if (availableLanguages) {
       //   availableLanguages[language](chunkSchema.errors)
       // }
 
-      for (const error of chunkSchema.errors) {
+      for (const error of schema.errors) {
         const { id, keys, message } = processError(error)
 
         if (!value[id]) {
@@ -56,8 +61,8 @@ export const validateStream = (chunkSchema, config, options) => {
     }
     return chunk // TODO option to not pass chunk on?
   }
-  const stream = createTransformStream(transform, options)
-  stream.result = () => ({ key, value })
+  const stream = createTransformStream(transform, streamOptions)
+  stream.result = () => ({ key: resultKey ?? 'validate', value })
   return stream
 }
 
