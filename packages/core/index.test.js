@@ -63,8 +63,8 @@ for (const type of Object.keys(types)) {
     const input = types[type]
     const streams = [
       createReadableStream(input),
-      createTransformStream((chunk) => {
-        return { [type]: chunk }
+      createTransformStream((chunk, enqueue) => {
+        enqueue({ [type]: chunk })
       })
     ]
     const stream = pipejoin(streams)
@@ -203,7 +203,7 @@ test(`${variant}: createTransformStream should create a transform stream`, async
   equal(isReadable(streams[1]), true)
   equal(isWritable(streams[1]), true)
   equal(transform.callCount, 3)
-  deepEqual(output, [undefined, undefined, undefined])
+  deepEqual(output, [])
 })
 
 // *** createWritableStream *** //

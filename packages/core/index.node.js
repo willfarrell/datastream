@@ -1,6 +1,7 @@
 import { Readable, Transform, Writable } from 'node:stream'
 import { pipeline as pipelinePromise } from 'node:stream/promises'
 import { setTimeout } from 'node:timers/promises'
+import cloneable from 'cloneable-readable'
 
 export const pipeline = async (streams, streamOptions = {}) => {
   // Ensure stream ends with only writable
@@ -11,7 +12,16 @@ export const pipeline = async (streams, streamOptions = {}) => {
   }
 
   await pipelinePromise(streams, streamOptions)
+  return result(streams)
+}
 
+export const pipejoin = (streams) => {
+  return streams.reduce((pipeline, stream) => {
+    return pipeline.pipe(stream)
+  })
+}
+
+export const result = async (streams) => {
   const output = {}
   for (const stream of streams) {
     if (typeof stream.result === 'function') {
@@ -19,14 +29,7 @@ export const pipeline = async (streams, streamOptions = {}) => {
       output[key] = value
     }
   }
-
   return output
-}
-
-export const pipejoin = (streams) => {
-  return streams.reduce((pipeline, stream) => {
-    return pipeline.pipe(stream)
-  })
 }
 
 // Not possible in WebStream
@@ -137,13 +140,13 @@ export const createReadableStream = (input = '', streamOptions) => {
 }
 
 export const createPassThroughStream = (
-  transform = (chunk) => chunk,
+  passThrough = (chunk) => chunk,
   streamOptions
 ) => {
   return new Transform({
     ...makeOptions(streamOptions),
     async transform (chunk, encoding, callback) {
-      await transform(chunk)
+      await passThrough(Object.freeze(chunk))
       this.push(chunk)
       callback()
     },
@@ -157,19 +160,24 @@ export const createPassThroughStream = (
 }
 
 export const createTransformStream = (
-  transform = (chunk) => chunk,
+  transform = (chunk, enqueue) => enqueue(chunk),
   streamOptions
 ) => {
   return new Transform({
     ...makeOptions(streamOptions),
     async transform (chunk, encoding, callback) {
-      chunk = await transform(chunk)
-      this.push(chunk)
+      const enqueue = (chunk, encoding) => {
+        this.push(chunk, encoding)
+      }
+      await transform(chunk, enqueue)
       callback()
     },
     async flush (callback) {
       if (typeof streamOptions?.flush === 'function') {
-        await streamOptions.flush()
+        const enqueue = (chunk, encoding) => {
+          this.push(chunk, encoding)
+        }
+        await streamOptions.flush(enqueue)
       }
       callback()
     }
@@ -190,6 +198,11 @@ export const createWritableStream = (write = () => {}, streamOptions) => {
       callback()
     }
   })
+}
+
+export const tee = (sourceStream) => {
+  const stream = cloneable(sourceStream)
+  return [stream, stream.clone()]
 }
 
 export const timeout = (ms, { signal } = {}) => {

@@ -1,7 +1,6 @@
-/* global TransformStream */
 import {
-  makeOptions,
   createReadableStream,
+  createPassThroughStream,
   createTransformStream
 } from '@datastream/core'
 
@@ -14,34 +13,31 @@ export const objectCountStream = ({ resultKey } = {}, streamOptions) => {
   const transform = () => {
     value += 1
   }
-  const stream = createTransformStream(transform, streamOptions)
+  const stream = createPassThroughStream(transform, streamOptions)
   stream.result = () => ({ key: resultKey ?? 'count', value })
   return stream
 }
 
-export const objectBatchStream = ({ keys }, streamOptions) => {
+export const objectBatchStream = ({ keys }, streamOptions = {}) => {
   let previousId
   let batch
-  return new TransformStream(
-    {
-      transform (chunk, controller) {
-        const id = keys.map((key) => chunk[key]).join('#')
-        if (previousId !== id) {
-          if (batch) {
-            controller.enqueue(batch)
-          }
-          previousId = id
-          batch = []
-        }
-        batch.push(chunk)
-      },
-      flush (controller) {
-        controller.enqueue(batch)
-        controller.terminate()
+  const transform = (chunk, enqueue) => {
+    const id = keys.map((key) => chunk[key]).join(' ')
+    if (previousId !== id) {
+      if (batch) {
+        enqueue(batch)
       }
-    },
-    makeOptions(streamOptions)
-  )
+      previousId = id
+      batch = []
+    }
+    batch.push(chunk)
+  }
+  streamOptions.flush = (enqueue) => {
+    if (batch) {
+      enqueue(batch)
+    }
+  }
+  return createTransformStream(transform, streamOptions)
 }
 
 export const objectPivotLongToWideStream = (
@@ -49,8 +45,9 @@ export const objectPivotLongToWideStream = (
   streamOptions
 ) => {
   delimiter ??= ' '
+
   // if (!Array.isArray(keys)) keys = [keys]
-  const transform = (chunks) => {
+  const transform = (chunks, enqueue) => {
     if (!Array.isArray(chunks)) {
       throw new Error('Expected chunk to be array, use with objectBatchStream')
     }
@@ -66,7 +63,7 @@ export const objectPivotLongToWideStream = (
     }
     delete row[valueParam]
 
-    return row
+    enqueue(row)
   }
   return createTransformStream(transform, streamOptions)
 }
@@ -78,38 +75,30 @@ export const objectPivotWideToLongStream = (
   keyParam ??= 'keyParam'
   valueParam ??= 'valueParam'
 
-  return new TransformStream(
-    {
-      transform (chunk, controller) {
-        const row = { ...chunk }
-        for (const key of keys) {
-          delete row[key]
-        }
-        for (const key of keys) {
-          if (chunk[key]) {
-            controller.enqueue({
-              ...row,
-              [keyParam]: key,
-              [valueParam]: chunk[key]
-            })
-          }
-        }
+  const transform = (chunk, enqueue) => {
+    const row = { ...chunk }
+    for (const key of keys) {
+      delete row[key]
+    }
+    for (const key of keys) {
+      if (chunk[key]) {
+        enqueue({ ...row, [keyParam]: key, [valueParam]: chunk[key] })
       }
-    },
-    makeOptions(streamOptions)
-  )
+    }
+  }
+  return createTransformStream(transform, streamOptions)
 }
 
 export const objectKeyValueStream = ({ key, value }, streamOptions) => {
-  const transform = (chunk) => {
+  const transform = (chunk, enqueue) => {
     chunk = { [chunk[key]]: chunk[value] }
-    return chunk
+    enqueue(chunk)
   }
   return createTransformStream(transform, streamOptions)
 }
 
 export const objectKeyValuesStream = ({ key, values }, streamOptions) => {
-  const transform = (chunk) => {
+  const transform = (chunk, enqueue) => {
     const value =
       typeof values === 'undefined'
         ? chunk
@@ -120,7 +109,7 @@ export const objectKeyValuesStream = ({ key, values }, streamOptions) => {
     chunk = {
       [chunk[key]]: value
     }
-    return chunk
+    enqueue(chunk)
   }
   return createTransformStream(transform, streamOptions)
 }
@@ -130,7 +119,7 @@ export const objectOutputStream = ({ resultKey } = {}, streamOptions) => {
   const transform = (chunk) => {
     value.push(chunk)
   }
-  const stream = createTransformStream(transform, streamOptions)
+  const stream = createPassThroughStream(transform, streamOptions)
   stream.result = () => ({ key: resultKey ?? 'output', value })
   return stream
 }

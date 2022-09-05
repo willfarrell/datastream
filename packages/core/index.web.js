@@ -7,16 +7,7 @@ export const pipeline = async (streams, streamOptions) => {
   }
 
   await pipejoin(streams)
-
-  const output = {}
-  for (const stream of streams) {
-    if (typeof stream.result === 'function') {
-      const { key, value } = await stream.result() // tap, sensor, readOut, dial, signal, output, result
-      output[key] = value
-    }
-  }
-
-  return output
+  return result(streams)
 }
 
 export const pipejoin = (streams) => {
@@ -27,6 +18,17 @@ export const pipejoin = (streams) => {
     }
     return pipeline.pipeThrough(stream)
   })
+}
+
+export const result = async (streams) => {
+  const output = {}
+  for (const stream of streams) {
+    if (typeof stream.result === 'function') {
+      const { key, value } = await stream.result() // tap, sensor, readOut, dial, signal, output, result
+      output[key] = value
+    }
+  }
+  return output
 }
 
 // const arr = await streamToArray(read.pipeThrough(transform))
@@ -130,14 +132,14 @@ export const createReadableStream = (input = '', streamOptions) => {
 }
 
 export const createPassThroughStream = (
-  transform = (chunk) => {},
+  passThrough = (chunk) => {},
   streamOptions
 ) => {
   return new TransformStream(
     {
       start () {},
       async transform (chunk, controller) {
-        await transform(chunk)
+        await passThrough(Object.freeze(chunk))
         controller.enqueue(chunk)
       },
       async flush (controller) {
@@ -152,19 +154,24 @@ export const createPassThroughStream = (
 }
 
 export const createTransformStream = (
-  transform = (chunk) => chunk,
+  transform = (chunk, enqueue) => enqueue(chunk),
   streamOptions
 ) => {
   return new TransformStream(
     {
       start () {},
       async transform (chunk, controller) {
-        chunk = await transform(chunk)
-        controller.enqueue(chunk)
+        const enqueue = (chunk, encoding) => {
+          controller.enqueue(chunk, encoding)
+        }
+        await transform(chunk, enqueue)
       },
       async flush (controller) {
         if (typeof streamOptions?.flush === 'function') {
-          await streamOptions.flush()
+          const enqueue = (chunk, encoding) => {
+            controller.enqueue(chunk, encoding)
+          }
+          await streamOptions.flush(enqueue)
         }
         controller.terminate()
       }
@@ -187,6 +194,10 @@ export const createWritableStream = (write = () => {}, streamOptions) => {
     },
     makeOptions(streamOptions)
   )
+}
+
+export const tee = (sourceStream) => {
+  return sourceStream.tee()
 }
 
 // Polyfill for `import { setTimeout } from 'node:timers/promises'`

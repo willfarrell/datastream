@@ -68,5 +68,8 @@
     "@datastream/core": "0.0.5",
     "@datastream/object": "0.0.5"
   },
-  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1"
+  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1",
+  "dependencies": {
+    "cloneable-readable": "3.0.0"
+  }
 }

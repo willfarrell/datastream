@@ -27,11 +27,11 @@ export const awsS3SetClient = (client) => {
   s3 = client
 }
 
-export const awsS3GetObjectStream = (options, streamOptions) => {
+export const awsS3GetStream = (options, streamOptions) => {
   return s3.send(new GetObjectCommand(options)).then((data) => data.Body)
 }
 
-export const awsS3PutObjectStream = (options, streamOptions) => {
+export const awsS3PutStream = (options, streamOptions) => {
   const stream = createPassThroughStream(() => {}, streamOptions)
   const upload = new Upload({
     client: s3,
@@ -48,6 +48,6 @@ export const awsS3PutObjectStream = (options, streamOptions) => {
 
 export default {
   setClient: awsS3SetClient,
-  getObjectStream: awsS3GetObjectStream,
-  putObjectStream: awsS3PutObjectStream
+  getStream: awsS3GetStream,
+  putStream: awsS3PutStream
 }

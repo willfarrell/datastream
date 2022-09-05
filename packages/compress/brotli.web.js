@@ -10,15 +10,15 @@ const { CompressStream, DecompressStream } = await brotliPromise // Import is as
 // https://github.com/httptoolkit/brotli-wasm/issues/14
 export const brotliCompressStream = ({ quality } = {}, streamOptions) => {
   const engine = new CompressStream(quality ?? 11)
-  const transform = (chunk) => {
-    return engine.compress(chunk)
+  const transform = (chunk, enqueue) => {
+    enqueue(engine.compress(chunk))
   }
   return createTransformStream(transform, streamOptions)
 }
 export const brotliDecompressStream = (options, streamOptions) => {
   const engine = new DecompressStream()
-  const transform = (chunk) => {
-    return engine.decompress(chunk)
+  const transform = (chunk, enqueue) => {
+    enqueue(engine.decompress(chunk))
   }
   return createTransformStream(transform, streamOptions)
 }

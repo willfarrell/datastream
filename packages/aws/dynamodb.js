@@ -110,7 +110,7 @@ export const awsDynamoDBGetStream = async (options, streamOptions) => {
   return command(options)
 }
 
-export const awsDynamoDBPutItemStream = (options, streamOptions) => {
+export const awsDynamoDBPutStream = (options, streamOptions) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10
   let batch = []
@@ -129,7 +129,7 @@ export const awsDynamoDBPutItemStream = (options, streamOptions) => {
   return createWritableStream(write, streamOptions)
 }
 
-export const awsDynamoDBDeleteItemStream = (options, streamOptions) => {
+export const awsDynamoDBDeleteStream = (options, streamOptions) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10
   let batch = []
