@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>
+      datastream - Commonly used stream patterns for Web Streams API and NodeJS
+      Stream.
+    </title>
+    <meta
+      name="description"
+      content="Commonly used stream patterns for Web Streams API and NodeJS Stream."
+    />
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+    />
+    <link
+      href="//unpkg.com/docsify-themeable/dist/css/theme-simple.css"
+      rel="stylesheet"
+    />
+    <link href="//unpkg.com/prismjs@v1.x/themes/prism.css" rel="stylesheet" />
+    <style>
+      :root {
+        --base-font-size: 16px;
+        --theme-color: rgb(104, 118, 52);
+        --link-color: rgb(104, 118, 52);
+        --link-color--hover: rgb(137, 152, 100);
+        --sidebar-name-margin: 0;
+        --sidebar-name-padding: 0;
+        --code-font-size: 0.9em;
+      }
+      .sidebar > h1 {
+        margin-bottom: -0.75em;
+        margin-top: 0.75em;
+      }
+      .markdown-section a code {
+        color: var(--link-color) !important;
+      }
+      .markdown-section code:not([class*='lang-']):not([class*='language-']) {
+        white-space: unset;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+  <script>
+    window.$docsify = {
+      name: 'datastream',
+      logo: 'sidebar.png',
+      loadSidebar: 'sidebar.md',
+      repo: 'https://github.com/willfarrell/datastream',
+      auto2top: true
+    }
+    mermaid.initialize({ startOnLoad: true })
+  </script>
+  <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
+  <script src="//unpkg.com/docsify/lib/plugins/search.min.js"></script>
+  <script src="//unpkg.com/mermaid/dist/mermaid.js"></script>
+  <script src="//unpkg.com/docsify-mermaid@latest/dist/docsify-mermaid.js"></script>
+  <script src="//unpkg.com/prismjs@v1.x/components/prism-core.min.js"></script>
+  <script src="//unpkg.com/prismjs@v1.x/plugins/autoloader/prism-autoloader.min.js"></script>
+</html>
