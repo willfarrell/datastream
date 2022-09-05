@@ -4,13 +4,13 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { Agent } from 'node:https'
 import { NodeHttpHandler } from '@aws-sdk/node-http-handler'
 import AWSXRay from 'aws-xray-sdk-core'
-const {
+import {
   BatchGetCommand,
   BatchWriteCommand,
   QueryCommand,
   ScanCommand,
   DynamoDBDocumentClient
-} = require('@aws-sdk/lib-dynamodb')
+} from '@aws-sdk/lib-dynamodb'
 
 const awsClientDefaults = {
   requestHandler: new NodeHttpHandler({

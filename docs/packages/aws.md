@@ -22,6 +22,8 @@
 </ul>
 <li>SQS</li>
 <ul>
+<li><a href="/packages/aws#awsSQSReceiveMessageStream">awsSQSReceiveMessageStream</a></li>
+<li><a href="/packages/aws#awsSQSDeleteMessageStream">awsSQSDeleteMessageStream</a></li>
 <li><a href="/packages/aws#awsSQSSendMessageStream">awsSQSSendMessageStream</a></li>
 </ul>
 </ul>
@@ -76,6 +78,13 @@
 <a id="awsSNSPublishMessageStream"></a>
 ## awsSNSPublishMessageStream (Writable)
 
+
+
+<a id="awsSQSReceiveMessageStream"></a>
+## awsSQSReceiveMessageStream (Readable)
+
+<a id="awsSQSDeleteMessageStream"></a>
+## awsSQSDeleteMessageStream (Writable)
 
 <a id="awsSQSSendMessageStream"></a>
 ## awsSQSSendMessageStream (Writable)

@@ -103,8 +103,8 @@ export const createReadableStream = (input = '', streamOptions) => {
   const stream = new ReadableStream(
     {
       async start (controller) {
-        // Can this all be moved to pull()?
-        for (const chunk of queued) {
+        while (queued.length) {
+          const chunk = queued.shift()
           controller.enqueue(chunk)
         }
         if (typeof input === 'string') {
@@ -128,6 +128,12 @@ export const createReadableStream = (input = '', streamOptions) => {
         }
 
         controller.close()
+      },
+      async pull (controller) {
+        while (queued.length) {
+          const chunk = queued.shift()
+          controller.enqueue(chunk)
+        }
       }
     },
     makeOptions(streamOptions)
