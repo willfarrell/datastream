@@ -99,10 +99,14 @@ export const makeOptions = ({
 }
 
 export const createReadableStream = (input = '', streamOptions) => {
+  const queued = []
   const stream = new ReadableStream(
     {
       async start (controller) {
         // Can this all be moved to pull()?
+        for (const chunk of queued) {
+          controller.enqueue(chunk)
+        }
         if (typeof input === 'string') {
           const chunkSize = streamOptions?.chunkSize ?? 16 * 1024
           let position = 0
@@ -128,6 +132,7 @@ export const createReadableStream = (input = '', streamOptions) => {
     },
     makeOptions(streamOptions)
   )
+  stream.push = queued.push
   return stream
 }
 

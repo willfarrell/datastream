@@ -114,16 +114,6 @@ export const objectKeyValuesStream = ({ key, values }, streamOptions) => {
   return createTransformStream(transform, streamOptions)
 }
 
-export const objectOutputStream = ({ resultKey } = {}, streamOptions) => {
-  const value = []
-  const transform = (chunk) => {
-    value.push(chunk)
-  }
-  const stream = createPassThroughStream(transform, streamOptions)
-  stream.result = () => ({ key: resultKey ?? 'output', value })
-  return stream
-}
-
 export default {
   readableStream: objectReadableStream,
   countStream: objectCountStream,
@@ -131,6 +121,5 @@ export default {
   pivotLongToWideStream: objectPivotLongToWideStream,
   pivotWideToLongStream: objectPivotWideToLongStream,
   keyValueStream: objectKeyValueStream,
-  keyValuesStream: objectKeyValuesStream,
-  outputStream: objectOutputStream
+  keyValuesStream: objectKeyValuesStream
 }

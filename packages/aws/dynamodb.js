@@ -19,6 +19,7 @@ const awsClientDefaults = {
       secureProtocol: 'TLSv1_2_method'
     })
   }),
+  // https://aws.amazon.com/compliance/fips/
   useFipsEndpoint: [
     'us-east-1',
     'us-east-2',
@@ -28,13 +29,11 @@ const awsClientDefaults = {
   ].includes(process.env.AWS_REGION)
 }
 
-let dynamodb = AWSXRay.captureAWSv3Client(
-  new DynamoDBClient(awsClientDefaults)
-)
-let dynamodbDocument = DynamoDBDocumentClient.from(dynamodb)
-export const awsDynamoDBSetClient = (client) => {
-  dynamodb = client
-  dynamodbDocument = DynamoDBDocumentClient.from(dynamodb)
+let client = AWSXRay.captureAWSv3Client(new DynamoDBClient(awsClientDefaults))
+let dynamodbDocument = DynamoDBDocumentClient.from(client)
+export const awsDynamoDBSetClient = (ddbClient) => {
+  client = ddbClient
+  dynamodbDocument = DynamoDBDocumentClient.from(client)
 }
 
 // Docs: https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/DynamoDB/DocumentClient.html
@@ -72,7 +71,7 @@ export const awsDynamoDBScanStream = async (options, streamOptions) => {
 }
 
 // max Keys.length = 100
-export const awsDynamoDBGetStream = async (options, streamOptions) => {
+export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10
   async function * command (options) {
@@ -110,7 +109,7 @@ export const awsDynamoDBGetStream = async (options, streamOptions) => {
   return command(options)
 }
 
-export const awsDynamoDBPutStream = (options, streamOptions) => {
+export const awsDynamoDBPutItemStream = (options, streamOptions) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10
   let batch = []
@@ -129,7 +128,7 @@ export const awsDynamoDBPutStream = (options, streamOptions) => {
   return createWritableStream(write, streamOptions)
 }
 
-export const awsDynamoDBDeleteStream = (options, streamOptions) => {
+export const awsDynamoDBDeleteItemStream = (options, streamOptions) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10
   let batch = []
@@ -174,4 +173,13 @@ const dynamodbBatchWrite = async (options, batch, streamOptions) => {
     )
   }
   options.retryCount = 0 // reset for next batch
+}
+
+export default {
+  setClient: awsDynamoDBSetClient,
+  queryStream: awsDynamoDBQueryStream,
+  scanStream: awsDynamoDBScanStream,
+  getItemStream: awsDynamoDBGetItemStream,
+  putItemStream: awsDynamoDBPutItemStream,
+  deleteItemStream: awsDynamoDBDeleteItemStream
 }

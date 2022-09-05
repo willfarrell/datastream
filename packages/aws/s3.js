@@ -13,6 +13,7 @@ const awsClientDefaults = {
       secureProtocol: 'TLSv1_2_method'
     })
   }),
+  // https://aws.amazon.com/compliance/fips/
   useFipsEndpoint: [
     'us-east-1',
     'us-east-2',
@@ -22,19 +23,19 @@ const awsClientDefaults = {
   ].includes(process.env.AWS_REGION)
 }
 
-let s3 = AWSXRay.captureAWSv3Client(new S3Client(awsClientDefaults))
-export const awsS3SetClient = (client) => {
-  s3 = client
+let client = AWSXRay.captureAWSv3Client(new S3Client(awsClientDefaults))
+export const awsS3SetClient = (s3Client) => {
+  client = s3Client
 }
 
-export const awsS3GetStream = (options, streamOptions) => {
-  return s3.send(new GetObjectCommand(options)).then((data) => data.Body)
+export const awsS3GetObjectStream = (options, streamOptions) => {
+  return client.send(new GetObjectCommand(options)).then((data) => data.Body)
 }
 
-export const awsS3PutStream = (options, streamOptions) => {
+export const awsS3PutObjectStream = (options, streamOptions) => {
   const stream = createPassThroughStream(() => {}, streamOptions)
   const upload = new Upload({
-    client: s3,
+    client,
     params: {
       ServerSideEncryption: 'AES256',
       ...options,
@@ -48,6 +49,6 @@ export const awsS3PutStream = (options, streamOptions) => {
 
 export default {
   setClient: awsS3SetClient,
-  getStream: awsS3GetStream,
-  putStream: awsS3PutStream
+  getObjectStream: awsS3GetObjectStream,
+  putObjectStream: awsS3PutObjectStream
 }

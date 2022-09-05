@@ -15,8 +15,7 @@ import {
   objectPivotLongToWideStream,
   objectPivotWideToLongStream,
   objectKeyValueStream,
-  objectKeyValuesStream,
-  objectOutputStream
+  objectKeyValuesStream
 } from '@datastream/object'
 
 let variant = 'unknown'
@@ -240,32 +239,4 @@ test(`${variant}: objectKeyValuesStream should transform to {chunk[key]:chunk[va
   const output = await streamToArray(stream)
 
   deepEqual(output, [{ 1: { b: '2' } }])
-})
-
-// *** objectOutputStream *** //
-test(`${variant}: objectOutputStream should output chunks`, async (t) => {
-  const input = [{ a: '1' }, { b: '2' }, { c: '3' }]
-  const streams = [createReadableStream(input), objectOutputStream()]
-
-  const result = await pipeline(streams)
-  const { key, value } = streams[1].result()
-
-  equal(key, 'output')
-  deepEqual(result.output, [{ a: '1' }, { b: '2' }, { c: '3' }])
-  deepEqual(value, [{ a: '1' }, { b: '2' }, { c: '3' }])
-})
-
-test(`${variant}: objectOutputStream should output chunks with custom key`, async (t) => {
-  const input = [{ a: '1' }, { b: '2' }, { c: '3' }]
-  const streams = [
-    createReadableStream(input),
-    objectOutputStream({ resultKey: 'object' })
-  ]
-
-  const result = await pipeline(streams)
-  const { key, value } = streams[1].result()
-
-  equal(key, 'object')
-  deepEqual(result.object, [{ a: '1' }, { b: '2' }, { c: '3' }])
-  deepEqual(value, [{ a: '1' }, { b: '2' }, { c: '3' }])
 })

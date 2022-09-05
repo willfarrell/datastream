@@ -17,22 +17,7 @@ export const stringLengthStream = ({ resultKey } = {}, streamOptions) => {
   return stream
 }
 
-export const stringOutputStream = ({ resultKey } = {}, streamOptions) => {
-  let value = ''
-  const transform = (chunk) => {
-    // if (Buffer.isBuffer(chunk)) {
-    //   value += Buffer.from(chunk).toString("utf8") // use decodeStrings?
-    // } else {
-    value += chunk
-    // }
-  }
-  const stream = createPassThroughStream(transform, streamOptions)
-  stream.result = () => ({ key: resultKey ?? 'output', value })
-  return stream
-}
-
 export default {
   readableStream: stringReadableStream,
-  lengthStream: stringLengthStream,
-  outputStream: stringOutputStream
+  lengthStream: stringLengthStream
 }

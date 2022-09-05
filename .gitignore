@@ -2,6 +2,7 @@
 *.cjs.map
 *.mjs
 *.mjs.map
+coverage
 
 # Logs
 logs

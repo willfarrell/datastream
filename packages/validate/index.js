@@ -32,7 +32,7 @@ export const validateStream = (
 
   const value = {} // aka errors
   let idx = idxStart - 1
-  const transform = (chunk) => {
+  const transform = (chunk, enqueue) => {
     idx += 1
 
     const chunkValid = schema(chunk)
@@ -51,7 +51,7 @@ export const validateStream = (
         value[id].idx.push(idx)
       }
     }
-    return chunk // TODO option to not pass chunk on?
+    enqueue(chunk) // TODO option to not pass chunk on?
   }
   const stream = createTransformStream(transform, streamOptions)
   stream.result = () => ({ key: resultKey ?? 'validate', value })

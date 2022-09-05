@@ -1,9 +1,9 @@
 # core
 
-
+## Functions
 - `pipeline(stream[], steamOptions)`: Connects streams and awaits until completion. Returns results from stream taps. Will add in a terminating Writable if missing.
 - `pipejoin(stream[])`: Connects streams and returns resulting stream for use with async iterators
-- `result()`: 
+- `result(stream)`: Run and combine streams result responses
 
 - `streamToArray(stream)`: Returns array from stream chunks. stream must not end with Writable.
 - `streamToString(stream)`: Returns string from stream chunks. stream must not end with Writable.
@@ -23,9 +23,7 @@
   - `chunkSize`
   - `signal`
 
-### Examples
-
-####
+## Examples
 
 ```javascript
 import {
