@@ -139,18 +139,17 @@ test(`${variant}: createReadableStream should chunk long strings`, async (t) => 
   equal(output.length, 2)
 })
 
+test(`${variant}: createReadableStream should allow pushing values onto it`, async (t) => {
+  const streams = [createReadableStream()]
+  const stream = pipejoin(streams)
+  streams[0].push('a')
+  streams[0].push(null)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, ['a'])
+})
+
 if (variant === 'node') {
-  // Web Streams needs polyfill - -needed for fetchRequestStream?
-  test(`${variant}: createReadableStream should allow pushing values onto it`, async (t) => {
-    const streams = [createReadableStream()]
-    const stream = pipejoin(streams)
-    streams[0].push('a')
-    streams[0].push(null)
-    const output = await streamToArray(stream)
-
-    deepEqual(output, ['a'])
-  })
-
   const { backpressureGuage } = await import('@datastream/core')
   test(`${variant}: backpressureGuage should chunk really long strings`, async (t) => {
     console.time('test')
@@ -245,7 +244,6 @@ test(`${variant}: pipeline should should add writable to end of streams array`, 
 if (variant === 'node') {
   test(`${variant}: makeOptions should return interoperable structure`, async (t) => {
     const options = makeOptions({
-      objectMode: true,
       highWaterMark: 1,
       chunkSize: 2
     })
@@ -260,9 +258,7 @@ if (variant === 'node') {
       signal: undefined
     })
   })
-}
-
-if (variant === 'webstream') {
+} else if (variant === 'webstream') {
   test(`${variant}: makeOptions should return interoperable structure`, async (t) => {
     // Web Stream always is in object mode
     const options = makeOptions({ highWaterMark: 1, chunkSize: 2 })

@@ -8,7 +8,7 @@ import {
   PutObjectCommand,
   CreateMultipartUploadCommand,
   UploadPartCommand
-} from '@aws-sdk/client-dynamodb'
+} from '@aws-sdk/client-s3'
 
 import {
   pipeline,

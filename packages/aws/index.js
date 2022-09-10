@@ -1,24 +1,44 @@
-import s3 from '@datastream/aws/s3'
 import dynamodb from '@datastream/aws/dynamodb'
+import s3 from '@datastream/aws/s3'
+import sns from '@datastream/aws/sns'
+import sqs from '@datastream/aws/sqs'
 
-export const awsS3SetClient = s3.setClient
-export const awsS3GetStream = s3.getStream
-export const awsS3PutStream = s3.putStream
 export const awsDynamoDBSetClient = dynamodb.setClient
-export const awsDynamoDBGetStream = dynamodb.getStream
 export const awsDynamoDBQueryStream = dynamodb.queryStream
 export const awsDynamoDBScanStream = dynamodb.scanStream
-export const awsDynamoDBPutStream = dynamodb.putStream
-export const awsDynamoDBDeleteStream = dynamodb.Stream
+export const awsDynamoDBGetItemStream = dynamodb.getItemStream
+export const awsDynamoDBPutItemStream = dynamodb.putItemStream
+export const awsDynamoDBDeleteItemStream = dynamodb.deleteItemStream
+
+export const awsS3SetClient = s3.setClient
+export const awsS3GetObjectStream = s3.getObjectStream
+export const awsS3PutObjectStream = s3.putObjectStream
+
+export const awsSNSSetClient = sns.setClient
+export const awsSNSPublishMessageStream = sns.publishMessageStream
+
+export const awsSQSSetClient = sqs.setClient
+export const awsSQSReceiveMessageStream = sqs.receiveMessageStream
+export const awsSQSDeleteMessageStream = sqs.deleteMessageStream
+export const awsSQSSendMessageStream = sqs.sendMessageStream
 
 export default {
-  s3SetClient: awsS3SetClient,
-  s3GetStream: awsS3GetStream,
-  s3PutStream: awsS3PutStream,
   dynamodbSetClient: awsDynamoDBSetClient,
-  dynamodbGetStream: awsDynamoDBGetStream,
   dynamodbQueryStream: awsDynamoDBQueryStream,
   dynamodbScanStream: awsDynamoDBScanStream,
-  dynamodbPutStream: awsDynamoDBPutStream,
-  dynamodbDeleteStream: awsDynamoDBDeleteStream
+  dynamodbGetItemStream: awsDynamoDBGetItemStream,
+  dynamodbPutItemStream: awsDynamoDBPutItemStream,
+  dynamodbDeleteItemStream: awsDynamoDBDeleteItemStream,
+
+  s3SetClient: awsS3SetClient,
+  s3GetObjectStream: awsS3GetObjectStream,
+  s3PutObjectStream: awsS3PutObjectStream,
+
+  snsSetClient: awsSNSSetClient,
+  snsPublishMessageStream: awsSNSPublishMessageStream,
+
+  sqsSetClient: awsSQSSetClient,
+  sqsReceiveMessageStream: awsSQSReceiveMessageStream,
+  sqsDeleteMessageStream: awsSQSDeleteMessageStream,
+  sqsSendMessageStream: awsSQSSendMessageStream
 }
