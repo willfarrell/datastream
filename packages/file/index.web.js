@@ -8,13 +8,7 @@ export const fileReadStream = async ({types}, streamOptions) => {
 
 export const fileWriteStream = async ({ path, types }, streamOptions) => {
   const fileHandle = await window.showSaveFilePicker({suggestedName:path, types})
-  return fileHandle.createWritable() // async
-  
-  // write our file
-  //await stream.write(imgBlob);
-  
-  // close the file and write the contents to disk.
-  //await stream.close();
+  return fileHandle.createWritable()
 }
 
 export default {
