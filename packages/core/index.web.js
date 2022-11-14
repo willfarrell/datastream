@@ -24,14 +24,13 @@ export const result = async (streams) => {
   const output = {}
   for (const stream of streams) {
     if (typeof stream.result === 'function') {
-      const { key, value } = await stream.result() // tap, sensor, readOut, dial, signal, output, result
+      const { key, value } = await stream.result()
       output[key] = value
     }
   }
   return output
 }
 
-// const arr = await streamToArray(read.pipeThrough(transform))
 export const streamToArray = async (stream) => {
   const value = []
   for await (const chunk of stream) {
@@ -71,11 +70,11 @@ export const streamToString = async (stream) => {
 } */
 
 export const isReadable = (stream) => {
-  return typeof stream.pipeTo === 'function' || !!stream.readable || false // TODO find better solution
+  return typeof stream.pipeTo === 'function' || !!stream.readable // TODO find better solution
 }
 
 export const isWritable = (stream) => {
-  return typeof stream.pipeTo === 'undefined' || !!stream.writable || false // TODO find better solution
+  return typeof stream.pipeTo === 'undefined' || !!stream.writable // TODO find better solution
 }
 
 export const makeOptions = ({
@@ -207,8 +206,21 @@ export const createWritableStream = (write = () => {}, streamOptions) => {
   )
 }
 
+export const createBranchStream = ({streams, resultKey} = {}, streamOptions) => {
+  const stream = createPassThroughStream(undefined, streamOptions)
+  streams.unshift(stream.tee())
+  const value = pipeline(streams, streamOptions)
+  stream.result = async () => {
+    return {
+      key: resultKey ?? 'branch',
+      value: await value
+    }
+  }
+  return stream
+}
+
 export const tee = (sourceStream) => {
-  return sourceStream.tee()
+  return [sourceStream, sourceStream.tee()]
 }
 
 // Polyfill for `import { setTimeout } from 'node:timers/promises'`

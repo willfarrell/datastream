@@ -85,6 +85,7 @@ export const streamToString = async (stream) => {
   }
   return value
 }
+
 /* export const streamToBuffer = async (stream) => {
   let value = []
   for await (const chunk of stream) {
@@ -198,6 +199,19 @@ export const createWritableStream = (write = () => {}, streamOptions) => {
       callback()
     }
   })
+}
+
+export const createBranchStream = ({streams, resultKey} = {}, streamOptions) => {
+  const stream = cloneable(createPassThroughStream(undefined, streamOptions))
+  streams.unshift(stream.clone())
+  const value = pipeline(streams, streamOptions)
+  stream.results = async () => {
+    return {
+      key: resultKey ?? 'branch',
+      value: await value
+    }
+  }
+  return stream
 }
 
 export const tee = (sourceStream) => {
