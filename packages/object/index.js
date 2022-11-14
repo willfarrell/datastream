@@ -114,6 +114,18 @@ export const objectKeyValuesStream = ({ key, values }, streamOptions) => {
   return createTransformStream(transform, streamOptions)
 }
 
+export const objectSkipConsecutiveDuplicates = (options, streamOptions) => {
+  let previousChunk
+  const transform = (chunk, enqueue) => {
+    const chunkStringified = JSON.stringify(chunk)
+    if (chunkStringified !== previousChunk) {
+      enqueue(chunk)
+      previousChunk = chunkStringified
+    }
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
 export default {
   readableStream: objectReadableStream,
   countStream: objectCountStream,
@@ -121,5 +133,6 @@ export default {
   pivotLongToWideStream: objectPivotLongToWideStream,
   pivotWideToLongStream: objectPivotWideToLongStream,
   keyValueStream: objectKeyValueStream,
-  keyValuesStream: objectKeyValuesStream
+  keyValuesStream: objectKeyValuesStream,
+  skipConsecutiveDuplicates: objectSkipConsecutiveDuplicates
 }

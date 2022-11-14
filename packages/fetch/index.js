@@ -21,18 +21,25 @@ const defaults = {
   }
 }
 
+const mergeOptions = (options) => {
+  return {
+    ...defaults,
+    ...options,
+    headers: { ...defaults.headers, ...options.headers }
+  }
+}
+
 export const fetchSetDefaults = (options) => {
-  const headers = { ...defaults.headers, ...options.headers }
-  Object.assign(defaults, options, { headers })
+  Object.assign(defaults, mergeOptions(options))
 }
 
 // Note: requires EncodeStream to ensure it's Uint8Array
 // Poor browser support - https://github.com/Fyrd/caniuse/issues/6375
 // TODO needs testing
-export const fetchRequestStream = async (options, streamOptions = {}) => {
+export const fetchWritableStream = async (options, streamOptions = {}) => {
   const body = createReadableStream()
   // Duplex: half - For browser compatibility - https://developer.chrome.com/articles/fetch-streaming-requests/#half-duplex
-  const value = await fetch(options.url, {
+  const value = await fetchRateLimit({
     ...options,
     body,
     duplex: 'half',
@@ -43,20 +50,22 @@ export const fetchRequestStream = async (options, streamOptions = {}) => {
   }
   const stream = createWritableStream(write, streamOptions)
   stream.result = () => ({ key: 'output', value })
+  return stream
 }
+export const fetchRequestStream = fetchWritableStream
 
-export const fetchResponseStream = (fetchOptions, streamOptions = {}) => {
+export const fetchReadableStream = (fetchOptions, streamOptions = {}) => {
   if (!Array.isArray(fetchOptions)) fetchOptions = [fetchOptions]
   return createReadableStream(
     fetchGenerator(fetchOptions, streamOptions),
     streamOptions
   )
 }
+export const fetchResponseStream = fetchReadableStream
+
 async function * fetchGenerator (fetchOptionsArray, streamOptions) {
   const requests = []
-  for (let options of fetchOptionsArray) {
-    options.headers = { ...defaults.headers, ...options.headers }
-    options = { ...defaults, ...options }
+  for (const options of fetchOptionsArray) {
     if (options.qs) {
       options.url += ('?' + new URLSearchParams(options.qs)).replaceAll(
         '+',
@@ -112,13 +121,16 @@ const parseLink = (headers) => {
   }
 }
 
-const fetchRateLimit = async (options, { signal }) => {
+export const fetchRateLimit = async (options, { signal }) => {
   options.rateLimitTimestamp ??= 0
   const now = Date.now()
   if (now < options.rateLimitTimestamp) {
     await timeout(options.rateLimitTimestamp - now, { signal })
   }
   options.rateLimitTimestamp = now + 1000 * options.rateLimit
+
+  options = mergeOptions(options)
+
   const response = await fetch(options.url, { ...options, signal })
   if (!response.ok) {
     // 429 Too Many Requests
@@ -144,6 +156,7 @@ const pickPath = (obj, path) => {
 
 export default {
   setDefaults: fetchSetDefaults,
-  responseStream: fetchResponseStream
-  // writableStream: fetchWritableStream,
+  readableStream: fetchReadableStream,
+  responseStream: fetchReadableStream
+  // writableStream: fetchRequestStream,
 }

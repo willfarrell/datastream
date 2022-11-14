@@ -1,6 +1,6 @@
 {
   "name": "@datastream/aws",
-  "version": "0.0.5",
+  "version": "0.0.8",
   "description": "",
   "type": "module",
   "engines": {
@@ -95,12 +95,12 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.159.0",
     "@aws-sdk/client-s3": "3.159.0",
-    "@aws-sdk/client-ssm": "3.159.0",
     "@aws-sdk/client-sns": "3.159.0",
     "@aws-sdk/client-sqs": "3.159.0",
+    "@aws-sdk/client-ssm": "3.159.0",
     "@aws-sdk/lib-dynamodb": "3.159.0",
     "@aws-sdk/lib-storage": "3.159.0",
-    "@datastream/core": "0.0.5",
+    "@datastream/core": "0.0.8",
     "aws-xray-sdk-core": "3.3.7"
   },
   "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1",

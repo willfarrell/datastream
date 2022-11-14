@@ -1,6 +1,6 @@
 {
   "name": "@datastream/charset",
-  "version": "0.0.5",
+  "version": "0.0.8",
   "description": "",
   "type": "module",
   "engines": {
@@ -125,8 +125,8 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/charset": "0.0.5",
-    "@datastream/core": "0.0.5",
+    "@datastream/charset": "0.0.8",
+    "@datastream/core": "0.0.8",
     "charset-detector": "0.0.2",
     "iconv-lite": "0.6.3"
   },

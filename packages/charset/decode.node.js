@@ -1,7 +1,7 @@
 import { createTransformStream } from '@datastream/core'
 import iconv from 'iconv-lite'
 
-export const charsetDecodeStream = (charset = 'UTF-8', streamOptions) => {
+export const charsetDecodeStream = (charset = 'UTF-8', streamOptions = {}) => {
   charset = getSupportedEncoding(charset)
 
   const conv = iconv.getDecoder(charset)

@@ -1,5 +1,5 @@
 {
-  "name": "@datastream/string",
+  "name": "@datastream/ipfs",
   "version": "0.0.8",
   "description": "",
   "type": "module",
@@ -36,12 +36,9 @@
   },
   "types": "index.d.ts",
   "files": [
-    "*.web.mjs",
-    "*.web.mjs.map",
-    "*.node.mjs",
-    "*.node.mjs.map",
-    "*.node.cjs",
-    "*.node.cjs.map",
+    "*.mjs",
+    "*.cjs",
+    "*.map",
     "*.d.ts"
   ],
   "scripts": {
@@ -51,6 +48,9 @@
   },
   "license": "MIT",
   "keywords": [
+    "csv",
+    "json",
+    "transform",
     "Web Stream API",
     "Node Stream API"
   ],
@@ -61,14 +61,15 @@
   "repository": {
     "type": "git",
     "url": "github:willfarrell/datastream",
-    "directory": "packages/file-read"
+    "directory": "packages/ipfs"
   },
   "bugs": {
     "url": "https://github.com/willfarrell/datastream/issues"
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/core": "0.0.8"
+    "@datastream/core": "0.0.8",
+    "@datastream/ipfs": "0.0.8"
   },
   "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1"
 }

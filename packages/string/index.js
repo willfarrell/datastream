@@ -1,6 +1,7 @@
 import {
   createReadableStream,
-  createPassThroughStream
+  createPassThroughStream,
+  createTransformStream
 } from '@datastream/core'
 
 export const stringReadableStream = (input, streamOptions) => {
@@ -17,7 +18,19 @@ export const stringLengthStream = ({ resultKey } = {}, streamOptions) => {
   return stream
 }
 
+export const stringSkipConsecutiveDuplicates = (options, streamOptions) => {
+  let previousChunk
+  const transform = (chunk, enqueue) => {
+    if (chunk !== previousChunk) {
+      enqueue(chunk)
+      previousChunk = chunk
+    }
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
 export default {
   readableStream: stringReadableStream,
-  lengthStream: stringLengthStream
+  lengthStream: stringLengthStream,
+  skipConsecutiveDuplicates: stringSkipConsecutiveDuplicates
 }
