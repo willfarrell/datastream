@@ -1,19 +1,17 @@
-import { createReadableStream, createTransformStream, createWriteStream } from '@datastream/core'
+import { createReadableStream, createWriteStream } from '@datastream/core'
 import { openDB } from 'idb/with-async-ittr'
 
 export const indexedDBConnect = openDB
 
-export const indexedDBReadStream = async ({db, store, index, key}, streamOptions) => {
-  let input =  db.transaction(store).store
+export const indexedDBReadStream = async (
+  { db, store, index, key },
+  streamOptions
+) => {
+  const input = db.transaction(store).store
   if (index && key) {
     input.index(index).iterate(key)
   }
   return createReadableStream(input, streamOptions)
-}
-
-export const indexedDBValueStream = ({}, streamOptions) => {
-  const transform = (chunk) => chunk.value
-  return createTransformStream(transform, streamOptions)
 }
 
 export const indexedDBWriteStream = async ({ db, store }, streamOptions) => {
@@ -27,10 +25,8 @@ export const indexedDBWriteStream = async ({ db, store }, streamOptions) => {
   return createWriteStream(write, streamOptions)
 }
 
-
 export default {
   connect: indexedDBConnect,
   readStream: indexedDBReadStream,
-  valueStream: indexedDBValueStream,
   writeStream: indexedDBWriteStream
 }

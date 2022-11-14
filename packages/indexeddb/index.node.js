@@ -1,4 +1,3 @@
-
 export const indexedDBReadStream = async (option, streamOptions) => {
   throw new Error('indexedDBReadStream: Not supported')
 }

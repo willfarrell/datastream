@@ -201,7 +201,10 @@ export const createWritableStream = (write = () => {}, streamOptions) => {
   })
 }
 
-export const createBranchStream = ({streams, resultKey} = {}, streamOptions) => {
+export const createBranchStream = (
+  { streams, resultKey } = {},
+  streamOptions
+) => {
   const stream = cloneable(createPassThroughStream(undefined, streamOptions))
   streams.unshift(stream.clone())
   const value = pipeline(streams, streamOptions)

@@ -206,7 +206,10 @@ export const createWritableStream = (write = () => {}, streamOptions) => {
   )
 }
 
-export const createBranchStream = ({streams, resultKey} = {}, streamOptions) => {
+export const createBranchStream = (
+  { streams, resultKey } = {},
+  streamOptions
+) => {
   const stream = createPassThroughStream(undefined, streamOptions)
   streams.unshift(stream.tee())
   const value = pipeline(streams, streamOptions)
