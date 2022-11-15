@@ -147,7 +147,7 @@ export const createPassThroughStream = (
   return new Transform({
     ...makeOptions(streamOptions),
     async transform (chunk, encoding, callback) {
-      await passThrough(Object.freeze(chunk))
+      await passThrough(chunk)
       this.push(chunk)
       callback()
     },
