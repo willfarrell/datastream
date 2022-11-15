@@ -1,6 +1,6 @@
 {
   "name": "@datastream/ipfs",
-  "version": "0.0.8",
+  "version": "0.0.11",
   "description": "",
   "type": "module",
   "engines": {
@@ -68,8 +68,8 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/core": "0.0.8",
-    "@datastream/ipfs": "0.0.8"
+    "@datastream/core": "0.0.11",
+    "@datastream/ipfs": "0.0.11"
   },
   "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1"
 }
