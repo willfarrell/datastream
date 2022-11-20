@@ -26,7 +26,9 @@ export const result = async (streams) => {
   for (const stream of streams) {
     if (typeof stream.result === 'function') {
       const { key, value } = await stream.result()
-      output[key] = value
+      if (key) {
+        output[key] = value
+      }
     }
   }
   return output

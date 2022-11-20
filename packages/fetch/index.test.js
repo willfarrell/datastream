@@ -180,10 +180,7 @@ test(`${variant}: fetchResponseStream should work with pipejoin`, async (t) => {
     nextPath: 'next'
   }
 
-  const stream = pipejoin([
-    fetchResponseStream(config),
-    createPassThroughStream()
-  ])
+  const stream = pipejoin([fetchResponseStream(config)])
   const output = await streamToArray(stream)
 
   deepEqual(output, [

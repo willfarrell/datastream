@@ -23,7 +23,7 @@
           "types": "./index.d.ts",
           "default": "./index.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./index.d.ts",
           "default": "./zstd.node.cjs"
         }
@@ -43,7 +43,7 @@
           "types": "./zstd.d.ts",
           "default": "./zstd.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./zstd.d.ts",
           "default": "./zstd.node.cjs"
         }
@@ -63,7 +63,7 @@
           "types": "./brotli.d.ts",
           "default": "./brotli.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./brotli.d.ts",
           "default": "./brotli.node.cjs"
         }
@@ -83,7 +83,7 @@
           "types": "./gzip.d.ts",
           "default": "./gzip.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./gzip.d.ts",
           "default": "./gzip.node.cjs"
         }
@@ -103,7 +103,7 @@
           "types": "./deflate.d.ts",
           "default": "./deflate.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./deflate.d.ts",
           "default": "./deflate.node.cjs"
         }
@@ -123,7 +123,7 @@
           "types": "./protobuf.d.ts",
           "default": "./protobuf.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./protobuf.d.ts",
           "default": "./protobuf.node.cjs"
         }

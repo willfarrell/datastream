@@ -2,12 +2,12 @@ import test from 'node:test'
 import { deepEqual } from 'node:assert'
 // import sinon from 'sinon'
 import { mockClient } from 'aws-sdk-client-mock'
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import {
   BatchGetCommand,
   QueryCommand,
   ScanCommand,
-  BatchWriteCommand
+  BatchWriteCommand,
+  DynamoDBDocumentClient
 } from '@aws-sdk/lib-dynamodb'
 
 import {
@@ -17,12 +17,12 @@ import {
 } from '@datastream/core'
 
 import {
-  awsDynamoDBSetClient,
-  awsDynamoDBGetStream,
+  awsDynamoDBDocumentSetClient,
   awsDynamoDBQueryStream,
   awsDynamoDBScanStream,
-  awsDynamoDBPutStream,
-  awsDynamoDBDeleteStream
+  awsDynamoDBGetItemStream,
+  awsDynamoDBPutItemStream,
+  awsDynamoDBDeleteItemStream
 } from '@datastream/aws'
 
 let variant = 'unknown'
@@ -34,43 +34,43 @@ for (const execArgv of process.execArgv) {
 }
 
 test(`${variant}: awsDynamoDBGetStream should return items`, async (t) => {
-  const client = mockClient(DynamoDBClient)
-  awsDynamoDBSetClient(client)
+  const client = mockClient(DynamoDBDocumentClient)
+  awsDynamoDBDocumentSetClient(client)
   client
     .on(BatchGetCommand, {
       RequestItems: {
         TableName: {
-          Keys: [{ key: { S: 'a' } }, { key: { S: 'b' } }, { key: { S: 'c' } }]
+          Keys: [{ key: 'a' }, { key: 'b' }, { key: 'c' }]
         }
       }
     })
     .resolves({
       Responses: {
         TableName: [
-          { key: { S: 'a' }, value: { N: 1 } },
-          { key: { S: 'b' }, value: { S: 2 } }
-        ],
-        UnprocessedKeys: {
-          TableName: {
-            Keys: [{ key: { S: 'c' } }]
-          }
+          { key: 'a', value: 1 },
+          { key: 'b', value: 2 }
+        ]
+      },
+      UnprocessedKeys: {
+        TableName: {
+          Keys: [{ key: 'c' }]
         }
       }
     })
     .on(BatchGetCommand, {
       RequestItems: {
         TableName: {
-          Keys: [{ key: { S: 'c' } }]
+          Keys: [{ key: 'c' }]
         }
       }
     })
     .resolves({
       Responses: {
-        TableName: [{ key: { S: 'c' }, value: { N: 3 } }],
-        UnprocessedKeys: {
-          TableName: {
-            Keys: []
-          }
+        TableName: [{ key: 'c', value: 3 }]
+      },
+      UnprocessedKeys: {
+        TableName: {
+          Keys: []
         }
       }
     })
@@ -79,7 +79,7 @@ test(`${variant}: awsDynamoDBGetStream should return items`, async (t) => {
     TableName: 'TableName',
     Keys: [{ key: 'a' }, { key: 'b' }, { key: 'c' }]
   }
-  const stream = awsDynamoDBGetStream(options)
+  const stream = await awsDynamoDBGetItemStream(options)
   const output = await streamToArray(stream)
 
   deepEqual(output, [
@@ -90,33 +90,34 @@ test(`${variant}: awsDynamoDBGetStream should return items`, async (t) => {
 })
 
 test(`${variant}: awsDynamoDBQueryStream should return items`, async (t) => {
-  const client = mockClient(DynamoDBClient)
-  awsDynamoDBSetClient(client)
+  const client = mockClient(DynamoDBDocumentClient)
+  awsDynamoDBDocumentSetClient(client)
   client
     .on(QueryCommand, {
       TableName: 'TableName'
     })
     .resolves({
       Items: [
-        { key: { S: 'a' }, value: { N: 1 } },
-        { key: { S: 'b' }, value: { N: 2 } }
+        { key: 'a', value: 1 },
+        { key: 'b', value: 2 }
       ],
       LastEvaluatedKey: {
-        key: { S: 'b' }
+        key: 'b'
       }
     })
     .on(QueryCommand, {
       TableName: 'TableName',
-      ExclusiveStartKey: { key: { S: 'b' } }
+      ExclusiveStartKey: { key: 'b' }
     })
     .resolves({
-      Items: [{ key: { S: 'c' }, value: { N: 3 } }]
+      Items: [{ key: 'c', value: 3 }],
+      LastEvaluatedKey: {}
     })
 
   const options = {
     TableName: 'TableName'
   }
-  const stream = awsDynamoDBQueryStream(options)
+  const stream = await awsDynamoDBQueryStream(options)
   const output = await streamToArray(stream)
 
   deepEqual(output, [
@@ -127,19 +128,19 @@ test(`${variant}: awsDynamoDBQueryStream should return items`, async (t) => {
 })
 
 test(`${variant}: awsDynamoDBScanStream should return items`, async (t) => {
-  const client = mockClient(DynamoDBClient)
-  awsDynamoDBSetClient(client)
+  const client = mockClient(DynamoDBDocumentClient)
+  awsDynamoDBDocumentSetClient(client)
   client
     .on(ScanCommand, {
       TableName: 'TableName'
     })
     .resolves({
       Items: [
-        { key: { S: 'a' }, value: { N: 1 } },
-        { key: { S: 'b' }, value: { N: 2 } }
+        { key: 'a', value: 1 },
+        { key: 'b', value: 2 }
       ],
       LastEvaluatedKey: {
-        key: { S: 'b' }
+        key: 'b'
       }
     })
     .on(ScanCommand, {
@@ -147,13 +148,14 @@ test(`${variant}: awsDynamoDBScanStream should return items`, async (t) => {
       ExclusiveStartKey: { key: 'b' }
     })
     .resolves({
-      Items: [{ key: { S: 'c' }, value: { N: 3 } }]
+      Items: [{ key: 'c', value: 3 }],
+      LastEvaluatedKey: {}
     })
 
   const options = {
     TableName: 'TableName'
   }
-  const stream = awsDynamoDBScanStream(options)
+  const stream = await awsDynamoDBScanStream(options)
   const output = await streamToArray(stream)
 
   deepEqual(output, [
@@ -164,8 +166,8 @@ test(`${variant}: awsDynamoDBScanStream should return items`, async (t) => {
 })
 
 test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
-  const client = mockClient(DynamoDBClient)
-  awsDynamoDBSetClient(client)
+  const client = mockClient(DynamoDBDocumentClient)
+  awsDynamoDBDocumentSetClient(client)
   client
     .on(BatchWriteCommand, {
       RequestItems: {
@@ -173,24 +175,24 @@ test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
           {
             PutRequest: {
               Item: {
-                key: { S: 'a' },
-                value: { N: '1' }
+                key: 'a',
+                value: 1
               }
             }
           },
           {
             PutRequest: {
               Item: {
-                key: { S: 'b' },
-                value: { N: '2' }
+                key: 'b',
+                value: 2
               }
             }
           },
           {
             PutRequest: {
               Item: {
-                key: { S: 'c' },
-                value: { N: '3' }
+                key: 'c',
+                value: 3
               }
             }
           }
@@ -203,8 +205,8 @@ test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
           {
             PutRequest: {
               Item: {
-                key: { S: 'c' },
-                value: { N: '3' }
+                key: 'c',
+                value: 3
               }
             }
           }
@@ -217,88 +219,15 @@ test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
           {
             PutRequest: {
               Item: {
-                key: { S: 'c' },
-                value: { N: '3' }
+                key: 'c',
+                value: 3
               }
             }
           }
         ]
       }
     })
-    .resolves({})
-
-  const input = [
-    { key: 'a', value: 1 },
-    { key: 'b', value: 2 },
-    { key: 'c', value: 3 }
-  ]
-  const options = {
-    TableName: 'TableName'
-  }
-  const stream = [createReadableStream(input), awsDynamoDBPutStream(options)]
-  const output = await pipeline(stream)
-
-  deepEqual(output, {})
-})
-
-test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (t) => {
-  const client = mockClient(DynamoDBClient)
-  awsDynamoDBSetClient(client)
-  client
-    .on(BatchWriteCommand, {
-      RequestItems: {
-        TableName: [
-          {
-            DeleteRequest: {
-              Key: {
-                key: { S: 'a' }
-              }
-            }
-          },
-          {
-            DeleteRequest: {
-              Key: {
-                key: { S: 'b' }
-              }
-            }
-          },
-          {
-            DeleteRequest: {
-              Key: {
-                key: { S: 'c' }
-              }
-            }
-          }
-        ]
-      }
-    })
-    .resolves({
-      UnprocessedItems: {
-        TableName: [
-          {
-            DeleteRequest: {
-              Key: {
-                key: { S: 'c' }
-              }
-            }
-          }
-        ]
-      }
-    })
-    .on(BatchWriteCommand, {
-      RequestItems: {
-        TableName: [
-          {
-            DeleteRequest: {
-              Key: {
-                key: { S: 'c' }
-              }
-            }
-          }
-        ]
-      }
-    })
-    .resolves({})
+    .resolves({ UnprocessedItems: {} })
 
   const input = [
     { key: 'a', value: 1 },
@@ -310,7 +239,79 @@ test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (t) => 
   }
   const stream = [
     createReadableStream(input),
-    awsDynamoDBDeleteStream(options)
+    awsDynamoDBPutItemStream(options)
+  ]
+  const output = await pipeline(stream)
+
+  deepEqual(output, {})
+})
+
+test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (t) => {
+  const client = mockClient(DynamoDBDocumentClient)
+  awsDynamoDBDocumentSetClient(client)
+  client
+    .on(BatchWriteCommand, {
+      RequestItems: {
+        TableName: [
+          {
+            DeleteRequest: {
+              Key: {
+                key: 'a'
+              }
+            }
+          },
+          {
+            DeleteRequest: {
+              Key: {
+                key: 'b'
+              }
+            }
+          },
+          {
+            DeleteRequest: {
+              Key: {
+                key: 'c'
+              }
+            }
+          }
+        ]
+      }
+    })
+    .resolves({
+      UnprocessedItems: {
+        TableName: [
+          {
+            DeleteRequest: {
+              Key: {
+                key: 'c'
+              }
+            }
+          }
+        ]
+      }
+    })
+    .on(BatchWriteCommand, {
+      RequestItems: {
+        TableName: [
+          {
+            DeleteRequest: {
+              Key: {
+                key: 'c'
+              }
+            }
+          }
+        ]
+      }
+    })
+    .resolves({ UnprocessedItems: {} })
+
+  const input = [{ key: 'a' }, { key: 'b' }, { key: 'c' }]
+  const options = {
+    TableName: 'TableName'
+  }
+  const stream = [
+    createReadableStream(input),
+    awsDynamoDBDeleteItemStream(options)
   ]
   const output = await pipeline(stream)
 

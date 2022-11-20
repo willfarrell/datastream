@@ -46,13 +46,14 @@ test(`${variant}: awsS3GetObjectStream should return chunks`, async (t) => {
     Bucket: 'bucket',
     Key: 'file.ext'
   }
-  const stream = awsS3GetObjectStream(options)
+  const stream = await awsS3GetObjectStream(options)
   const output = await streamToString(stream)
 
   deepEqual(output, 'contents')
 })
 
 test(`${variant}: awsS3PutObjectStream should put chunk`, async (t) => {
+  process.env.AWS_REGION = 'ca-central-1' // not mocked when using PutObjectCommand for some reason
   const client = mockClient(S3Client)
   awsS3SetClient(client)
 

@@ -1,17 +1,9 @@
 import { SNSClient, PublishBatchCommand } from '@aws-sdk/client-sns'
 import { createWritableStream } from '@datastream/core'
 
-import { Agent } from 'node:https'
-import { NodeHttpHandler } from '@aws-sdk/node-http-handler'
 import AWSXRay from 'aws-xray-sdk-core'
 
 const awsClientDefaults = {
-  requestHandler: new NodeHttpHandler({
-    httpsAgent: new Agent({
-      keepAlive: true,
-      secureProtocol: 'TLSv1_2_method'
-    })
-  }),
   // https://aws.amazon.com/compliance/fips/
   useFipsEndpoint: [
     'us-east-1',
@@ -26,7 +18,7 @@ export const awsSNSSetClient = (snsClient) => {
   client = snsClient
 }
 
-export const awsSNSPublishMessageStream = (options, streamOptions) => {
+export const awsSNSPublishMessageStream = (options, streamOptions = {}) => {
   let batch = []
   const send = () => {
     options.PublishBatchRequestEntries = batch

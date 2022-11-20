@@ -104,6 +104,15 @@ test(`${variant}: createReadableStream should create a readable stream from stri
   deepEqual(output, input)
 })
 
+test(`${variant}: createReadableStream should chunk long strings`, async (t) => {
+  const input = 'x'.repeat(17 * 1024) // where 16*1024 is the default chunkSize/highWaterMark
+  const streams = [createReadableStream(input)]
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  equal(output.length, 2)
+})
+
 test(`${variant}: createReadableStream should create a readable stream from array`, async (t) => {
   const input = ['a', 'b', 'c']
   const streams = [createReadableStream(input)]
@@ -130,15 +139,6 @@ test(`${variant}: createReadableStream should create a readable stream from iter
   deepEqual(output, ['a', 'b', 'c'])
 })
 
-test(`${variant}: createReadableStream should chunk long strings`, async (t) => {
-  const input = 'x'.repeat(17 * 1024) // where 16*1024 is the default chunkSize/highWaterMark
-  const streams = [createReadableStream(input)]
-  const stream = pipejoin(streams)
-  const output = await streamToArray(stream)
-
-  equal(output.length, 2)
-})
-
 test(`${variant}: createReadableStream should allow pushing values onto it`, async (t) => {
   const streams = [createReadableStream()]
   const stream = pipejoin(streams)
@@ -152,7 +152,6 @@ test(`${variant}: createReadableStream should allow pushing values onto it`, asy
 if (variant === 'node') {
   const { backpressureGuage } = await import('@datastream/core')
   test(`${variant}: backpressureGuage should chunk really long strings`, async (t) => {
-    console.time('test')
     const input = 'x'.repeat(1024 * 1024) // where 16*1024 is the default chunkSize/highWaterMark
     const streams = [
       createReadableStream(input),

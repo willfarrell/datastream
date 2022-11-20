@@ -1,21 +1,14 @@
 import {
   SQSClient,
+  // ReceiveMessageCommand,
   DeleteMessageBatchCommand,
   SendMessageBatchCommand
 } from '@aws-sdk/client-sqs'
 import { createWritableStream } from '@datastream/core'
 
-import { Agent } from 'node:https'
-import { NodeHttpHandler } from '@aws-sdk/node-http-handler'
 import AWSXRay from 'aws-xray-sdk-core'
 
 const awsClientDefaults = {
-  requestHandler: new NodeHttpHandler({
-    httpsAgent: new Agent({
-      keepAlive: true,
-      secureProtocol: 'TLSv1_2_method'
-    })
-  }),
   // https://aws.amazon.com/compliance/fips/
   useFipsEndpoint: [
     'us-east-1',
@@ -30,13 +23,13 @@ export const awsSQSSetClient = (sqsClient) => {
   client = sqsClient
 }
 
-export const awsSQSReceiveMessageStream = (options, streamOptions) => {
+export const awsSQSReceiveMessageStream = (options, streamOptions = {}) => {
   // TODO receiveMessage(params = {}, callback) ⇒ AWS.Request
   // TODO use `pull`
   // await client.send(new ReceiveMessageCommand)
 }
 
-export const awsSQSDeleteMessageStream = (options, streamOptions) => {
+export const awsSQSDeleteMessageStream = (options, streamOptions = {}) => {
   let batch = []
   const send = () => {
     options.Entries = batch
@@ -53,7 +46,7 @@ export const awsSQSDeleteMessageStream = (options, streamOptions) => {
   return createWritableStream(write, streamOptions)
 }
 
-export const awsSQSSendMessageStream = (options, streamOptions) => {
+export const awsSQSSendMessageStream = (options, streamOptions = {}) => {
   let batch = []
   const send = () => {
     options.Entries = batch

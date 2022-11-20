@@ -21,7 +21,7 @@ const defaults = {
   }
 }
 
-const mergeOptions = (options) => {
+const mergeOptions = (options = {}) => {
   return {
     ...defaults,
     ...options,
@@ -72,14 +72,7 @@ async function * fetchGenerator (fetchOptionsArray, streamOptions) {
         '%20'
       )
     }
-    if (
-      typeof options.dataPath !== 'undefined' &&
-      /application\/([a-z.]+\+|)json/.test(options.headers.Accept)
-    ) {
-      requests.push(fetchJson(options, streamOptions))
-    } else {
-      requests.push(fetchBody(options, streamOptions))
-    }
+    requests.push(fetchUnknown(options, streamOptions))
   }
   for (const request of requests) {
     const response = await request
@@ -89,8 +82,13 @@ async function * fetchGenerator (fetchOptionsArray, streamOptions) {
   }
 }
 
-const fetchBody = async (options, streamOptions) => {
+const jsonContentTypeRegExp = /^application\/(.+\+)?json($|;.+)/
+const fetchUnknown = async (options, streamOptions) => {
   const response = await fetchRateLimit(options, streamOptions)
+  if (jsonContentTypeRegExp.test(response.headers.get('Content-Type'))) {
+    options.prefetchResponse = response // hack
+    return fetchJson(options, streamOptions)
+  }
   return response.body
 }
 
@@ -99,7 +97,10 @@ async function * fetchJson (options, streamOptions) {
   const { dataPath, nextPath } = options
 
   while (options.url) {
-    const response = await fetchRateLimit(options, streamOptions)
+    const response =
+      options.prefetchResponse ??
+      (await fetchRateLimit(options, streamOptions))
+    delete options.prefetchResponse
     const body = await response.json() // Blocking - stream parse?
     options.url = nextPath && pickPath(body, nextPath)
     options.url ??= parseLink(response.headers)
@@ -144,7 +145,7 @@ export const fetchRateLimit = async (options, { signal }) => {
   return response
 }
 
-const pickPath = (obj, path) => {
+const pickPath = (obj, path = '') => {
   if (path === '') return obj
   if (!Array.isArray(path)) path = path.split('.')
   return path

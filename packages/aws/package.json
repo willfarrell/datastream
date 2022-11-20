@@ -16,33 +16,17 @@
     ".": {
       "node": {
         "import": {
-          "types": "./s3.d.ts",
-          "default": "./s3.node.mjs"
+          "types": "./index.d.ts",
+          "default": "./index.node.mjs"
         },
-        "require": {
-          "types": "./s3.d.ts",
-          "default": "./s3.node.cjs"
+        "__require": {
+          "types": "./index.d.ts",
+          "default": "./index.node.cjs"
         }
       },
       "import": {
-        "types": "./s3.d.ts",
-        "default": "./s3.web.mjs"
-      }
-    },
-    "./s3": {
-      "node": {
-        "import": {
-          "types": "./s3.d.ts",
-          "default": "./s3.node.mjs"
-        },
-        "require": {
-          "types": "./s3.d.ts",
-          "default": "./s3.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./s3.d.ts",
-        "default": "./s3.web.mjs"
+        "types": "./index.d.ts",
+        "default": "./index.web.mjs"
       }
     },
     "./dynamodb": {
@@ -51,7 +35,7 @@
           "types": "./dynamodb.d.ts",
           "default": "./dynamodb.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./dynamodb.d.ts",
           "default": "./dynamodb.node.cjs"
         }
@@ -59,6 +43,54 @@
       "import": {
         "types": "./dynamodb.d.ts",
         "default": "./dynamodb.web.mjs"
+      }
+    },
+    "./s3": {
+      "node": {
+        "import": {
+          "types": "./s3.d.ts",
+          "default": "./s3.node.mjs"
+        },
+        "__require": {
+          "types": "./s3.d.ts",
+          "default": "./s3.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./s3.d.ts",
+        "default": "./s3.web.mjs"
+      }
+    },
+    "./sns": {
+      "node": {
+        "import": {
+          "types": "./sns.d.ts",
+          "default": "./sns.node.mjs"
+        },
+        "__require": {
+          "types": "./sns.d.ts",
+          "default": "./sns.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./sns.d.ts",
+        "default": "./sns.web.mjs"
+      }
+    },
+    "./sqs": {
+      "node": {
+        "import": {
+          "types": "./sqs.d.ts",
+          "default": "./sqs.node.mjs"
+        },
+        "__require": {
+          "types": "./sqs.d.ts",
+          "default": "./sqs.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./sqs.d.ts",
+        "default": "./sqs.web.mjs"
       }
     }
   },
@@ -93,18 +125,20 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "3.210.0",
-    "@aws-sdk/client-s3": "3.210.0",
-    "@aws-sdk/client-sns": "3.210.0",
-    "@aws-sdk/client-sqs": "3.210.0",
-    "@aws-sdk/client-ssm": "3.210.0",
-    "@aws-sdk/lib-dynamodb": "3.210.0",
-    "@aws-sdk/lib-storage": "3.210.0",
+    "@aws-sdk/client-dynamodb": "3.214.0",
+    "@aws-sdk/client-s3": "3.213.0",
+    "@aws-sdk/client-sns": "3.213.0",
+    "@aws-sdk/client-sqs": "3.213.0",
+    "@aws-sdk/client-ssm": "3.213.0",
+    "@aws-sdk/lib-dynamodb": "3.214.0",
+    "@aws-sdk/lib-storage": "3.213.0",
     "@datastream/core": "0.0.11",
+    "@datastream/aws": "0.0.11",
     "aws-xray-sdk-core": "3.4.0"
   },
   "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1",
   "devDependencies": {
+    "@datastream/charset": "0.0.11",
     "aws-sdk-client-mock": "2.0.0"
   }
 }

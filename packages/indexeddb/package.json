@@ -23,7 +23,7 @@
           "types": "./index.d.ts",
           "default": "./index.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./index.d.ts",
           "default": "./index.node.cjs"
         }

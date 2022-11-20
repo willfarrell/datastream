@@ -1,8 +1,6 @@
 import { createWritableStream, timeout } from '@datastream/core'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 
-import { Agent } from 'node:https'
-import { NodeHttpHandler } from '@aws-sdk/node-http-handler'
 import AWSXRay from 'aws-xray-sdk-core'
 import {
   BatchGetCommand,
@@ -13,12 +11,6 @@ import {
 } from '@aws-sdk/lib-dynamodb'
 
 const awsClientDefaults = {
-  requestHandler: new NodeHttpHandler({
-    httpsAgent: new Agent({
-      keepAlive: true,
-      secureProtocol: 'TLSv1_2_method'
-    })
-  }),
   // https://aws.amazon.com/compliance/fips/
   useFipsEndpoint: [
     'us-east-1',
@@ -30,26 +22,32 @@ const awsClientDefaults = {
 }
 
 let client = AWSXRay.captureAWSv3Client(new DynamoDBClient(awsClientDefaults))
-let dynamodbDocument = DynamoDBDocumentClient.from(client)
-export const awsDynamoDBSetClient = (ddbClient) => {
+let dynamodbDocument
+export const awsDynamoDBSetClient = (ddbClient, translateConfig) => {
   client = ddbClient
-  dynamodbDocument = DynamoDBDocumentClient.from(client)
+  awsDynamoDBDocumentSetClient(
+    DynamoDBDocumentClient.from(client, translateConfig)
+  )
 }
+export const awsDynamoDBDocumentSetClient = (ddbdocClient) => {
+  dynamodbDocument = ddbdocClient
+}
+awsDynamoDBSetClient(client)
 
 // Docs: https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/DynamoDB/DocumentClient.html
 
 // options = {TableName, ...}
 
-export const awsDynamoDBQueryStream = (options, streamOptions) => {
+export const awsDynamoDBQueryStream = async (options, streamOptions) => {
   async function * command (options) {
-    let count = 1
-    while (count) {
+    let expectMore = true
+    while (expectMore) {
       const response = await dynamodbDocument.send(new QueryCommand(options))
-      options.ExclusiveStartKey = response.LastEvaluatedKey
-      count = response.Count
       for (const item of response.Items) {
         yield item
       }
+      options.ExclusiveStartKey = response.LastEvaluatedKey
+      expectMore = Object.keys(options.ExclusiveStartKey).length
     }
   }
   return command(options)
@@ -57,14 +55,14 @@ export const awsDynamoDBQueryStream = (options, streamOptions) => {
 
 export const awsDynamoDBScanStream = async (options, streamOptions) => {
   async function * command (options) {
-    let count = 1
-    while (count) {
+    let expectMore = true
+    while (expectMore) {
       const response = await dynamodbDocument.send(new ScanCommand(options))
-      options.ExclusiveStartKey = response.LastEvaluatedKey
-      count = response.Count
       for (const item of response.Items) {
         yield item
       }
+      options.ExclusiveStartKey = response.LastEvaluatedKey
+      expectMore = Object.keys(options.ExclusiveStartKey).length
     }
   }
   return command(options)
@@ -79,7 +77,7 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
       const response = await dynamodbDocument.send(
         new BatchGetCommand({
           RequestItems: {
-            [options.TableName]: options
+            [options.TableName]: { Keys: options.Keys }
           }
         })
       )
@@ -88,12 +86,11 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
       }
       const UnprocessedKeys =
         response?.UnprocessedKeys?.[options.TableName]?.Keys ?? []
-
       if (!UnprocessedKeys.length) {
         break
       }
       if (options.retryCount >= options.retryMaxCount) {
-        throw new Error('awsDynamoDBBatchGet has UnprocessedKeys', {
+        throw new Error('awsDynamoDBBatchGetItem has UnprocessedKeys', {
           cause: {
             ...options,
             UnprocessedKeysCount: UnprocessedKeys.length
@@ -109,12 +106,12 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
   return command(options)
 }
 
-export const awsDynamoDBPutItemStream = (options, streamOptions) => {
+export const awsDynamoDBPutItemStream = (options, streamOptions = {}) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10
   let batch = []
   const write = async (chunk) => {
-    if (batch.length === 10) {
+    if (batch.length === 25) {
       await dynamodbBatchWrite(options, batch, streamOptions)
       batch = []
     }
@@ -128,13 +125,13 @@ export const awsDynamoDBPutItemStream = (options, streamOptions) => {
   return createWritableStream(write, streamOptions)
 }
 
-export const awsDynamoDBDeleteItemStream = (options, streamOptions) => {
+export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10
   let batch = []
   const write = async (chunk) => {
-    if (batch.length === 10) {
-      await dynamodbBatchWrite(options, batch, options)
+    if (batch.length === 25) {
+      await dynamodbBatchWrite(options, batch, streamOptions)
       batch = []
     }
     batch.push({
@@ -143,7 +140,7 @@ export const awsDynamoDBDeleteItemStream = (options, streamOptions) => {
       }
     })
   }
-  streamOptions.final = () => dynamodbBatchWrite(options, batch, options)
+  streamOptions.final = () => dynamodbBatchWrite(options, batch, streamOptions)
   return createWritableStream(write, streamOptions)
 }
 
@@ -155,12 +152,12 @@ const dynamodbBatchWrite = async (options, batch, streamOptions) => {
       }
     })
   )
-  if (UnprocessedItems.length) {
+  if (UnprocessedItems?.[options.TableName]?.length) {
     if (options.retryCount >= options.retryMaxCount) {
-      throw new Error('awsDynamoDBBatchWrite has UnprocessedItems', {
+      throw new Error('awsDynamoDBBatchWriteItem has UnprocessedItems', {
         cause: {
           ...options,
-          UnprocessedItemsCount: UnprocessedItems.length
+          UnprocessedItemsCount: UnprocessedItems[options.TableName].length
         }
       })
     }
@@ -169,7 +166,7 @@ const dynamodbBatchWrite = async (options, batch, streamOptions) => {
     return dynamodbBatchWrite(
       options,
       UnprocessedItems[options.TableName],
-      options
+      streamOptions
     )
   }
   options.retryCount = 0 // reset for next batch

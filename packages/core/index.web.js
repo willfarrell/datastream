@@ -25,7 +25,9 @@ export const result = async (streams) => {
   for (const stream of streams) {
     if (typeof stream.result === 'function') {
       const { key, value } = await stream.result()
-      output[key] = value
+      if (key) {
+        output[key] = value
+      }
     }
   }
   return output
@@ -97,7 +99,7 @@ export const makeOptions = ({
   }
 }
 
-export const createReadableStream = (input = '', streamOptions) => {
+export const createReadableStream = (input, streamOptions) => {
   const queued = []
   const stream = new ReadableStream(
     {
@@ -115,29 +117,34 @@ export const createReadableStream = (input = '', streamOptions) => {
             controller.enqueue(chunk)
             position += chunkSize
           }
+          controller.close()
         } else if (Array.isArray(input)) {
           // TODO update to for(;;) loop, faster
           for (const chunk of input) {
             controller.enqueue(chunk)
           }
-        } else {
+          controller.close()
+        } else if (['function', 'object'].includes(typeof input)) {
           for await (const chunk of input) {
             controller.enqueue(chunk)
           }
+          controller.close()
         }
-
-        controller.close()
       },
-      async pull (controller) {
+      pull (controller) {
         while (queued.length) {
           const chunk = queued.shift()
-          controller.enqueue(chunk)
+          if (chunk === null) {
+            controller.close()
+          } else {
+            controller.enqueue(chunk)
+          }
         }
       }
     },
     makeOptions(streamOptions)
   )
-  stream.push = queued.push
+  stream.push = (chunk) => queued.push(chunk)
   return stream
 }
 
