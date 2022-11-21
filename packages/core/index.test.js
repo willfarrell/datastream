@@ -187,6 +187,19 @@ test(`${variant}: createPassThroughStream should create a passs through stream`,
   deepEqual(output, input)
 })
 
+/* test(`${variant}: createPassThroughStream should catch error`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = () => {
+    throw new Error('error')
+  }
+  const streams = [createReadableStream(input), createPassThroughStream(transform)]
+  try {
+    await pipeline(streams)
+  } catch (e) {
+    equal(e.message, 'error')
+  }
+}) */
+
 // *** createTransformStream *** //
 test(`${variant}: createTransformStream should create a transform stream`, async (t) => {
   const input = ['a', 'b', 'c']
@@ -203,6 +216,19 @@ test(`${variant}: createTransformStream should create a transform stream`, async
   equal(transform.callCount, 3)
   deepEqual(output, [])
 })
+
+/* test(`${variant}: createTransformStream should catch error`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = () => {
+    throw new Error('error')
+  }
+  const streams = [createReadableStream(input), createTransformStream(transform)]
+  try {
+    await pipeline(streams)
+  } catch (e) {
+    equal(e.message, 'error')
+  }
+}) */
 
 // *** createWritableStream *** //
 test(`${variant}: createWritableStream should create a writable stream`, async (t) => {
@@ -221,6 +247,19 @@ test(`${variant}: createWritableStream should create a writable stream`, async (
   equal(transform.callCount, 3)
   deepEqual(result, {})
 })
+
+/* test(`${variant}: createWritableStream should catch error`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = () => {
+    throw new Error('error')
+  }
+  const streams = [createReadableStream(input), createWritableStream(transform)]
+  try {
+    await pipeline(streams)
+  } catch (e) {
+    equal(e.message, 'error')
+  }
+}) */
 
 // *** pipeline *** //
 test(`${variant}: pipeline should should add writable to end of streams array`, async (t) => {

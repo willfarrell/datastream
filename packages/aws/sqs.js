@@ -1,6 +1,6 @@
 import {
   SQSClient,
-  // ReceiveMessageCommand,
+  ReceiveMessageCommand,
   DeleteMessageBatchCommand,
   SendMessageBatchCommand
 } from '@aws-sdk/client-sqs'
@@ -23,10 +23,23 @@ export const awsSQSSetClient = (sqsClient) => {
   client = sqsClient
 }
 
-export const awsSQSReceiveMessageStream = (options, streamOptions = {}) => {
-  // TODO receiveMessage(params = {}, callback) ⇒ AWS.Request
-  // TODO use `pull`
-  // await client.send(new ReceiveMessageCommand)
+export const awsSQSReceiveMessageStream = async (
+  options,
+  streamOptions = {}
+) => {
+  // TODO needs option to keep polling or not
+  async function * command (options) {
+    let expectMore = true
+    while (expectMore) {
+      const response = await client.send(new ReceiveMessageCommand(options))
+      console.log(response)
+      for (const item of response.Messages) {
+        yield item
+      }
+      expectMore = response.Messages.length
+    }
+  }
+  return command(options)
 }
 
 export const awsSQSDeleteMessageStream = (options, streamOptions = {}) => {

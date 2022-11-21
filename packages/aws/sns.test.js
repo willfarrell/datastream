@@ -20,12 +20,20 @@ test(`${variant}: awsSNSPublishMessageStream should put chunk`, async (t) => {
   const client = mockClient(SNSClient)
   awsSNSSetClient(client)
 
-  const input = [{ id: 'x' }]
+  const input = 'abcdefghijk'.split('').map((id) => ({ id }))
   const options = {
     // TODO
   }
 
-  client.on(PublishBatchCommand).resolves({}) // TODO
+  client
+    .on(PublishBatchCommand, {
+      PublishBatchRequestEntries: 'abcdefghij'.split('').map((id) => ({ id }))
+    })
+    .resolves({})
+    .on(PublishBatchCommand, {
+      PublishBatchRequestEntries: 'k'.split('').map((id) => ({ id }))
+    })
+    .resolves({})
 
   const stream = [
     createReadableStream(input),

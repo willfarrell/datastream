@@ -89,6 +89,7 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
       if (!UnprocessedKeys.length) {
         break
       }
+
       if (options.retryCount >= options.retryMaxCount) {
         throw new Error('awsDynamoDBBatchGetItem has UnprocessedKeys', {
           cause: {
@@ -107,8 +108,6 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
 }
 
 export const awsDynamoDBPutItemStream = (options, streamOptions = {}) => {
-  options.retryCount ??= 0
-  options.retryMaxCount ??= 10
   let batch = []
   const write = async (chunk) => {
     if (batch.length === 25) {
@@ -126,8 +125,6 @@ export const awsDynamoDBPutItemStream = (options, streamOptions = {}) => {
 }
 
 export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) => {
-  options.retryCount ??= 0
-  options.retryMaxCount ??= 10
   let batch = []
   const write = async (chunk) => {
     if (batch.length === 25) {
@@ -145,6 +142,8 @@ export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) => {
 }
 
 const dynamodbBatchWrite = async (options, batch, streamOptions) => {
+  options.retryCount ??= 0
+  options.retryMaxCount ??= 10
   const { UnprocessedItems } = await dynamodbDocument.send(
     new BatchWriteCommand({
       RequestItems: {
