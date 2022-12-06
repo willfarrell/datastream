@@ -1,6 +1,6 @@
 {
   "name": "@datastream/aws",
-  "version": "0.0.12",
+  "version": "0.0.14",
   "description": "",
   "type": "module",
   "engines": {
@@ -132,12 +132,12 @@
     "@aws-sdk/client-ssm": "3.213.0",
     "@aws-sdk/lib-dynamodb": "3.214.0",
     "@aws-sdk/lib-storage": "3.213.0",
-    "@datastream/aws": "0.0.12",
-    "@datastream/core": "0.0.12"
+    "@datastream/aws": "0.0.14",
+    "@datastream/core": "0.0.14"
   },
   "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1",
   "devDependencies": {
-    "@datastream/charset": "0.0.12",
+    "@datastream/charset": "0.0.14",
     "aws-sdk-client-mock": "2.0.0"
   }
 }

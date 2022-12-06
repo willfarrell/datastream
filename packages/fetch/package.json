@@ -1,6 +1,6 @@
 {
   "name": "@datastream/fetch",
-  "version": "0.0.12",
+  "version": "0.0.14",
   "description": "",
   "type": "module",
   "engines": {
@@ -64,8 +64,8 @@
     "url": "https://github.com/willfarrell/datastream/issues"
   },
   "homepage": "https://datastream.js.org",
-  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1",
+  "gitHead": "1727c02093df2870d40323f0c476e6bfdc383476",
   "dependencies": {
-    "@datastream/core": "0.0.12"
+    "@datastream/core": "0.0.14"
   }
 }

@@ -65,7 +65,8 @@ export const fetchResponseStream = fetchReadableStream
 
 async function * fetchGenerator (fetchOptionsArray, streamOptions) {
   const requests = []
-  for (const options of fetchOptionsArray) {
+  for (let options of fetchOptionsArray) {
+    options = mergeOptions(options)
     if (options.qs) {
       options.url += ('?' + new URLSearchParams(options.qs)).replaceAll(
         '+',
