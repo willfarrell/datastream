@@ -1,4 +1,5 @@
 /* global ReadableStream, TransformStream, WritableStream */
+
 export const pipeline = async (streams, streamOptions) => {
   // Ensure stream ends with only writable
   const lastStream = streams[streams.length - 1]
@@ -150,18 +151,23 @@ export const createReadableStream = (input, streamOptions) => {
 
 export const createPassThroughStream = (
   passThrough = (chunk) => {},
+  flush,
   streamOptions
 ) => {
+  if (typeof flush !== 'function') {
+    streamOptions = flush
+    flush = undefined
+  }
   return new TransformStream(
     {
       start () {},
       async transform (chunk, controller) {
-        await passThrough(Object.freeze(chunk))
+        await passThrough(chunk)
         controller.enqueue(chunk)
       },
       async flush (controller) {
-        if (typeof streamOptions?.flush === 'function') {
-          await streamOptions.flush()
+        if (flush) {
+          await flush()
         }
         controller.terminate()
       }
@@ -172,8 +178,13 @@ export const createPassThroughStream = (
 
 export const createTransformStream = (
   transform = (chunk, enqueue) => enqueue(chunk),
+  flush,
   streamOptions
 ) => {
+  if (typeof flush !== 'function') {
+    streamOptions = flush
+    flush = undefined
+  }
   return new TransformStream(
     {
       start () {},
@@ -184,11 +195,11 @@ export const createTransformStream = (
         await transform(chunk, enqueue)
       },
       async flush (controller) {
-        if (typeof streamOptions?.flush === 'function') {
+        if (flush) {
           const enqueue = (chunk, encoding) => {
             controller.enqueue(chunk, encoding)
           }
-          await streamOptions.flush(enqueue)
+          await flush(enqueue)
         }
         controller.terminate()
       }
@@ -197,15 +208,23 @@ export const createTransformStream = (
   )
 }
 
-export const createWritableStream = (write = () => {}, streamOptions) => {
+export const createWritableStream = (
+  write = () => {},
+  close,
+  streamOptions
+) => {
+  if (typeof close !== 'function') {
+    streamOptions = close
+    close = undefined
+  }
   return new WritableStream(
     {
       async write (chunk) {
         await write(chunk)
       },
-      async final () {
-        if (typeof streamOptions?.final === 'function') {
-          await streamOptions.final()
+      async close () {
+        if (close) {
+          await close()
         }
       }
     },
@@ -217,21 +236,33 @@ export const createBranchStream = (
   { streams, resultKey } = {},
   streamOptions
 ) => {
-  const stream = createPassThroughStream(undefined, streamOptions)
-  streams.unshift(stream.tee())
+  // TODO refactor, not good enough
+  // https://streams.spec.whatwg.org/#rs-model
+  const branchStream = createReadableStream(undefined, streamOptions)
+  const transform = (chunk) => {
+    console.log('push')
+    branchStream.push(chunk)
+  }
+  const flush = () => {
+    console.log('flush')
+    branchStream.push(null)
+  }
+  const stream = createPassThroughStream(transform, flush, streamOptions)
+
+  streams.unshift(branchStream)
   const value = pipeline(streams, streamOptions)
   stream.result = async () => {
     return {
       key: resultKey ?? 'branch',
-      value: await value
+      value // await causes: Promise resolution is still pending but the event loop has already resolved
     }
   }
   return stream
 }
 
-export const tee = (sourceStream) => {
-  return [sourceStream, sourceStream.tee()]
-}
+/* export const tee = (sourceStream) => {
+  return sourceStream.tee()
+} */
 
 // Polyfill for `import { setTimeout } from 'node:timers/promises'`
 export const timeout = (ms, { signal } = {}) => {

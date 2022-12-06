@@ -5,8 +5,6 @@ import {
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 import { Upload } from '@aws-sdk/lib-storage'
 
-import AWSXRay from 'aws-xray-sdk-core'
-
 const awsClientDefaults = {
   // https://aws.amazon.com/compliance/fips/
   useFipsEndpoint: [
@@ -18,14 +16,17 @@ const awsClientDefaults = {
   ].includes(process.env.AWS_REGION)
 }
 
-let client = AWSXRay.captureAWSv3Client(new S3Client(awsClientDefaults))
+let client = new S3Client(awsClientDefaults)
 export const awsS3SetClient = (s3Client) => {
   client = s3Client
 }
 
 export const awsS3GetObjectStream = async (options, streamOptions) => {
   const { Body } = await client.send(new GetObjectCommand(options))
-  return createReadableStream(Body)
+  if (!Body) {
+    throw new Error('S3.GetObject not Found', { cause: options })
+  }
+  return createReadableStream(Body, streamOptions)
 }
 
 export const awsS3PutObjectStream = (options, streamOptions) => {

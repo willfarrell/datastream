@@ -14,6 +14,7 @@ import {
   createPassThroughStream,
   createTransformStream,
   createWritableStream,
+  createBranchStream,
   timeout
 } from '@datastream/core'
 import { objectCountStream } from '@datastream/object'
@@ -176,7 +177,7 @@ test(`${variant}: createPassThroughStream should create a passs through stream`,
   const transform = sinon.spy()
   const streams = [
     createReadableStream(input),
-    createPassThroughStream(transform)
+    createPassThroughStream(transform, {})
   ]
   const stream = pipejoin(streams)
   const output = await streamToArray(stream)
@@ -187,18 +188,55 @@ test(`${variant}: createPassThroughStream should create a passs through stream`,
   deepEqual(output, input)
 })
 
-/* test(`${variant}: createPassThroughStream should catch error`, async (t) => {
+test(`${variant}: createPassThroughStream should create a passs through stream with flush`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = sinon.spy()
+  const flush = sinon.spy()
+  const streams = [
+    createReadableStream(input),
+    createPassThroughStream(transform, flush, {})
+  ]
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  equal(isReadable(streams[1]), true)
+  equal(isWritable(streams[1]), true)
+  equal(transform.callCount, 3)
+  equal(flush.callCount, 1)
+  deepEqual(output, input)
+})
+
+test(`${variant}: createPassThroughStream should catch transform error`, async (t) => {
   const input = ['a', 'b', 'c']
   const transform = () => {
     throw new Error('error')
   }
-  const streams = [createReadableStream(input), createPassThroughStream(transform)]
+  const streams = [
+    createReadableStream(input),
+    createPassThroughStream(transform)
+  ]
   try {
     await pipeline(streams)
   } catch (e) {
     equal(e.message, 'error')
   }
-}) */
+})
+
+test(`${variant}: createPassThroughStream should catch flush error`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const flush = () => {
+    throw new Error('error')
+  }
+  const streams = [
+    createReadableStream(input),
+    createPassThroughStream(() => {}, flush)
+  ]
+  try {
+    await pipeline(streams)
+  } catch (e) {
+    equal(e.message, 'error')
+  }
+})
 
 // *** createTransformStream *** //
 test(`${variant}: createTransformStream should create a transform stream`, async (t) => {
@@ -206,7 +244,7 @@ test(`${variant}: createTransformStream should create a transform stream`, async
   const transform = sinon.spy()
   const streams = [
     createReadableStream(input),
-    createTransformStream(transform)
+    createTransformStream(transform, {})
   ]
   const stream = pipejoin(streams)
   const output = await streamToArray(stream)
@@ -217,18 +255,55 @@ test(`${variant}: createTransformStream should create a transform stream`, async
   deepEqual(output, [])
 })
 
-/* test(`${variant}: createTransformStream should catch error`, async (t) => {
+test(`${variant}: createTransformStream should create a transform stream with flush`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = sinon.spy()
+  const flush = sinon.spy()
+  const streams = [
+    createReadableStream(input),
+    createTransformStream(transform, flush, {})
+  ]
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  equal(isReadable(streams[1]), true)
+  equal(isWritable(streams[1]), true)
+  equal(transform.callCount, 3)
+  equal(flush.callCount, 1)
+  deepEqual(output, [])
+})
+
+test(`${variant}: createTransformStream should catch transform error`, async (t) => {
   const input = ['a', 'b', 'c']
   const transform = () => {
     throw new Error('error')
   }
-  const streams = [createReadableStream(input), createTransformStream(transform)]
+  const streams = [
+    createReadableStream(input),
+    createTransformStream(transform)
+  ]
   try {
     await pipeline(streams)
   } catch (e) {
     equal(e.message, 'error')
   }
-}) */
+})
+
+test(`${variant}: createTransformStream should catch flush error`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const flush = () => {
+    throw new Error('error')
+  }
+  const streams = [
+    createReadableStream(input),
+    createTransformStream(() => {}, flush)
+  ]
+  try {
+    await pipeline(streams)
+  } catch (e) {
+    equal(e.message, 'error')
+  }
+})
 
 // *** createWritableStream *** //
 test(`${variant}: createWritableStream should create a writable stream`, async (t) => {
@@ -236,7 +311,7 @@ test(`${variant}: createWritableStream should create a writable stream`, async (
   const transform = sinon.spy()
   const streams = [
     createReadableStream(input),
-    createWritableStream(transform)
+    createWritableStream(transform, {})
   ]
 
   equal(isReadable(streams[1]), false)
@@ -248,18 +323,81 @@ test(`${variant}: createWritableStream should create a writable stream`, async (
   deepEqual(result, {})
 })
 
-/* test(`${variant}: createWritableStream should catch error`, async (t) => {
+test(`${variant}: createWritableStream should create a writable stream with final`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = sinon.spy()
+  const final = sinon.spy()
+  const streams = [
+    createReadableStream(input),
+    createWritableStream(transform, final, {})
+  ]
+
+  equal(isReadable(streams[1]), false)
+  equal(isWritable(streams[1]), true)
+
+  const result = await pipeline(streams)
+
+  equal(transform.callCount, 3)
+  equal(final.callCount, 1)
+  deepEqual(result, {})
+})
+
+test(`${variant}: createWritableStream should catch transform error`, async (t) => {
   const input = ['a', 'b', 'c']
   const transform = () => {
     throw new Error('error')
   }
-  const streams = [createReadableStream(input), createWritableStream(transform)]
+  const streams = [
+    createReadableStream(input),
+    createWritableStream(transform)
+  ]
   try {
     await pipeline(streams)
   } catch (e) {
     equal(e.message, 'error')
   }
-}) */
+})
+
+test(`${variant}: createWritableStream should catch final error`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const final = () => {
+    throw new Error('error')
+  }
+  const streams = [
+    createReadableStream(input),
+    createWritableStream(() => {}, final)
+  ]
+  try {
+    await pipeline(streams)
+  } catch (e) {
+    equal(e.message, 'error')
+  }
+})
+
+// *** createBranchStream *** //
+if (variant === 'node') {
+  test(`${variant}: createBranchStream should create a branch stream`, async (t) => {
+    const input = ['a', 'b', 'c']
+    const transform = sinon.spy()
+
+    const stream = createWritableStream(transform)
+    stream.result = () => ({ key: 'a', value: 1 })
+
+    const streams = [
+      createReadableStream(input),
+      createBranchStream({ streams: [stream] }),
+      createWritableStream(transform)
+    ]
+
+    equal(isReadable(streams[1]), true)
+    equal(isWritable(streams[1]), true)
+
+    const result = await pipeline(streams)
+
+    deepEqual(result, { branch: { a: 1 } })
+    equal(transform.callCount, 6)
+  })
+}
 
 // *** pipeline *** //
 test(`${variant}: pipeline should should add writable to end of streams array`, async (t) => {

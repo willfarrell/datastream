@@ -133,8 +133,7 @@
     "@aws-sdk/lib-dynamodb": "3.214.0",
     "@aws-sdk/lib-storage": "3.213.0",
     "@datastream/aws": "0.0.12",
-    "@datastream/core": "0.0.12",
-    "aws-xray-sdk-core": "3.4.0"
+    "@datastream/core": "0.0.12"
   },
   "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1",
   "devDependencies": {

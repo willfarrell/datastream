@@ -10,13 +10,15 @@ export const pipeline = async (streams, streamOptions = {}) => {
     streamOptions.objectMode = lastStream._readableState.objectMode
     streams.push(createWritableStream(() => {}, streamOptions))
   }
-
   await pipelinePromise(streams, streamOptions)
   return result(streams)
 }
 
 export const pipejoin = (streams) => {
   return streams.reduce((pipeline, stream) => {
+    // stream.on('error', (e) => {
+    //   console.log('***', e)
+    // })
     return pipeline.pipe(stream)
   })
 }
@@ -144,61 +146,103 @@ export const createReadableStream = (input = '', streamOptions) => {
 
 export const createPassThroughStream = (
   passThrough = (chunk) => chunk,
+  flush,
   streamOptions
 ) => {
+  if (typeof flush !== 'function') {
+    streamOptions = flush
+    flush = undefined
+  }
   return new Transform({
     ...makeOptions(streamOptions),
     async transform (chunk, encoding, callback) {
-      await passThrough(chunk)
-      this.push(chunk)
-      callback()
+      try {
+        await passThrough(chunk)
+        this.push(chunk)
+        callback()
+      } catch (e) {
+        callback(e)
+      }
     },
     async flush (callback) {
-      if (typeof streamOptions?.flush === 'function') {
-        await streamOptions.flush()
+      try {
+        if (flush) {
+          await flush()
+        }
+        callback()
+      } catch (e) {
+        callback(e)
       }
-      callback()
     }
   })
 }
 
 export const createTransformStream = (
   transform = (chunk, enqueue) => enqueue(chunk),
+  flush,
   streamOptions
 ) => {
+  if (typeof flush !== 'function') {
+    streamOptions = flush
+    flush = undefined
+  }
   return new Transform({
     ...makeOptions(streamOptions),
     async transform (chunk, encoding, callback) {
       const enqueue = (chunk, encoding) => {
         this.push(chunk, encoding)
       }
-      await transform(chunk, enqueue)
-      callback()
+      try {
+        await transform(chunk, enqueue)
+        callback()
+      } catch (e) {
+        callback(e)
+      }
     },
     async flush (callback) {
-      if (typeof streamOptions?.flush === 'function') {
-        const enqueue = (chunk, encoding) => {
-          this.push(chunk, encoding)
+      try {
+        if (flush) {
+          const enqueue = (chunk, encoding) => {
+            this.push(chunk, encoding)
+          }
+          await flush(enqueue)
         }
-        await streamOptions.flush(enqueue)
+        callback()
+      } catch (e) {
+        callback(e)
       }
-      callback()
     }
   })
 }
 
-export const createWritableStream = (write = () => {}, streamOptions) => {
+export const createWritableStream = (
+  write = () => {},
+  final,
+  streamOptions
+) => {
+  if (typeof final !== 'function') {
+    streamOptions = final
+    final = undefined
+  }
   return new Writable({
     ...makeOptions(streamOptions),
     async write (chunk, encoding, callback) {
-      await write(chunk)
-      callback()
+      try {
+        await write(chunk)
+        callback()
+      } catch (e) {
+        callback(e)
+      }
     },
     async final (callback) {
-      if (typeof streamOptions?.final === 'function') {
-        await streamOptions.final()
+      try {
+        if (final) {
+          await final()
+        }
+        callback()
+      } catch (e) {
+        callback(e)
       }
-      callback()
     }
   })
 }
@@ -210,7 +254,7 @@ export const createBranchStream = (
   const stream = cloneable(createPassThroughStream(undefined, streamOptions))
   streams.unshift(stream.clone())
   const value = pipeline(streams, streamOptions)
-  stream.results = async () => {
+  stream.result = async () => {
     return {
       key: resultKey ?? 'branch',
       value: await value
@@ -219,10 +263,10 @@ export const createBranchStream = (
   return stream
 }
 
-export const tee = (sourceStream) => {
+/* export const tee = (sourceStream) => {
   const stream = cloneable(sourceStream)
   return [stream, stream.clone()]
-}
+} */
 
 export const timeout = (ms, { signal } = {}) => {
   return setTimeout(ms, { signal })

@@ -1,8 +1,6 @@
 import { SNSClient, PublishBatchCommand } from '@aws-sdk/client-sns'
 import { createWritableStream } from '@datastream/core'
 
-import AWSXRay from 'aws-xray-sdk-core'
-
 const awsClientDefaults = {
   // https://aws.amazon.com/compliance/fips/
   useFipsEndpoint: [
@@ -13,12 +11,12 @@ const awsClientDefaults = {
   ].includes(process.env.AWS_REGION)
 }
 
-let client = AWSXRay.captureAWSv3Client(new SNSClient(awsClientDefaults))
+let client = new SNSClient(awsClientDefaults)
 export const awsSNSSetClient = (snsClient) => {
   client = snsClient
 }
 
-export const awsSNSPublishMessageStream = (options, streamOptions = {}) => {
+export const awsSNSPublishMessageStream = (options, streamOptions) => {
   let batch = []
   const send = () => {
     options.PublishBatchRequestEntries = batch
@@ -31,8 +29,8 @@ export const awsSNSPublishMessageStream = (options, streamOptions = {}) => {
     }
     batch.push(chunk)
   }
-  streamOptions.final = send
-  return createWritableStream(write, streamOptions)
+  const final = send
+  return createWritableStream(write, final, streamOptions)
 }
 
 export default {

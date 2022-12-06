@@ -294,7 +294,7 @@ test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
   deepEqual(output, {})
 })
 
-/* test(`${variant}: awsDynamoDBPutItemStream should throw error`, async (t) => {
+test(`${variant}: awsDynamoDBPutItemStream should throw error`, async (t) => {
   const client = mockClient(DynamoDBDocumentClient)
   awsDynamoDBDocumentSetClient(client)
   client
@@ -369,7 +369,7 @@ test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
   } catch (e) {
     equal(e.message, 'awsDynamoDBBatchWriteItem has UnprocessedItems')
   }
-}) */
+})
 
 test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (t) => {
   const client = mockClient(DynamoDBDocumentClient)

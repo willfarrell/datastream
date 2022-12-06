@@ -8,7 +8,11 @@ import {
   streamToArray
 } from '@datastream/core'
 
-import { stringReadableStream, stringLengthStream } from '@datastream/string'
+import {
+  stringReadableStream,
+  stringLengthStream,
+  stringSkipConsecutiveDuplicates
+} from '@datastream/string'
 
 let variant = 'unknown'
 for (const execArgv of process.execArgv) {
@@ -28,8 +32,8 @@ test(`${variant}: stringReadableStream should read in initial chunks`, async (t)
   deepEqual(output, [input])
 })
 
-// *** stringSizeStream *** //
-test(`${variant}: stringSizeStream should count length of chunks`, async (t) => {
+// *** stringLengthStream *** //
+test(`${variant}: stringLengthStream should count length of chunks`, async (t) => {
   const input = ['1', '2', '3']
   const streams = [createReadableStream(input), stringLengthStream()]
 
@@ -54,4 +58,18 @@ test(`${variant}: stringSizeStream should count length of chunks with custom key
   equal(key, 'string')
   equal(result.string, 3)
   equal(value, 3)
+})
+
+// *** stringSkipConsecutiveDuplicates *** //
+test(`${variant}: stringSkipConsecutiveDuplicates should skip consecutive duplicates`, async (t) => {
+  const input = ['1', '2', '2', '3']
+  const streams = [
+    createReadableStream(input),
+    stringSkipConsecutiveDuplicates()
+  ]
+
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, ['1', '2', '3'])
 })

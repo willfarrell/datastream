@@ -54,7 +54,7 @@ export const fetchWritableStream = async (options, streamOptions = {}) => {
 }
 export const fetchRequestStream = fetchWritableStream
 
-export const fetchReadableStream = (fetchOptions, streamOptions = {}) => {
+export const fetchReadableStream = (fetchOptions, streamOptions) => {
   if (!Array.isArray(fetchOptions)) fetchOptions = [fetchOptions]
   return createReadableStream(
     fetchGenerator(fetchOptions, streamOptions),
@@ -122,21 +122,24 @@ const parseLink = (headers) => {
   }
 }
 
-export const fetchRateLimit = async (options, { signal }) => {
+export const fetchRateLimit = async (options, streamOptions = {}) => {
   options.rateLimitTimestamp ??= 0
   const now = Date.now()
   if (now < options.rateLimitTimestamp) {
-    await timeout(options.rateLimitTimestamp - now, { signal })
+    await timeout(options.rateLimitTimestamp - now, streamOptions)
   }
   options.rateLimitTimestamp = now + 1000 * options.rateLimit
 
   options = mergeOptions(options)
 
-  const response = await fetch(options.url, { ...options, signal })
+  const response = await fetch(options.url, {
+    ...options,
+    signal: streamOptions.signal
+  })
   if (!response.ok) {
     // 429 Too Many Requests
     if (response.statusCode === 429) {
-      return fetchRateLimit(options, { signal })
+      return fetchRateLimit(options, streamOptions)
     }
     throw new Error('fetch', {
       cause: { request: options, response }

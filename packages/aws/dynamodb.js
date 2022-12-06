@@ -1,7 +1,6 @@
 import { createWritableStream, timeout } from '@datastream/core'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 
-import AWSXRay from 'aws-xray-sdk-core'
 import {
   BatchGetCommand,
   BatchWriteCommand,
@@ -21,7 +20,7 @@ const awsClientDefaults = {
   ].includes(process.env.AWS_REGION)
 }
 
-let client = AWSXRay.captureAWSv3Client(new DynamoDBClient(awsClientDefaults))
+let client = new DynamoDBClient(awsClientDefaults)
 let dynamodbDocument
 export const awsDynamoDBSetClient = (ddbClient, translateConfig) => {
   client = ddbClient
@@ -107,7 +106,7 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
   return command(options)
 }
 
-export const awsDynamoDBPutItemStream = (options, streamOptions = {}) => {
+export const awsDynamoDBPutItemStream = (options, streamOptions) => {
   let batch = []
   const write = async (chunk) => {
     if (batch.length === 25) {
@@ -120,11 +119,11 @@ export const awsDynamoDBPutItemStream = (options, streamOptions = {}) => {
       }
     })
   }
-  streamOptions.final = () => dynamodbBatchWrite(options, batch, streamOptions)
-  return createWritableStream(write, streamOptions)
+  const final = () => dynamodbBatchWrite(options, batch, streamOptions)
+  return createWritableStream(write, final, streamOptions)
 }
 
-export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) => {
+export const awsDynamoDBDeleteItemStream = (options, streamOptions) => {
   let batch = []
   const write = async (chunk) => {
     if (batch.length === 25) {
@@ -137,8 +136,8 @@ export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) => {
       }
     })
   }
-  streamOptions.final = () => dynamodbBatchWrite(options, batch, streamOptions)
-  return createWritableStream(write, streamOptions)
+  const final = () => dynamodbBatchWrite(options, batch, streamOptions)
+  return createWritableStream(write, final, streamOptions)
 }
 
 const dynamodbBatchWrite = async (options, batch, streamOptions) => {

@@ -18,7 +18,7 @@ export const objectCountStream = ({ resultKey } = {}, streamOptions) => {
   return stream
 }
 
-export const objectBatchStream = ({ keys }, streamOptions = {}) => {
+export const objectBatchStream = ({ keys }, streamOptions) => {
   let previousId
   let batch
   const transform = (chunk, enqueue) => {
@@ -32,12 +32,12 @@ export const objectBatchStream = ({ keys }, streamOptions = {}) => {
     }
     batch.push(chunk)
   }
-  streamOptions.flush = (enqueue) => {
+  const flush = (enqueue) => {
     if (batch) {
       enqueue(batch)
     }
   }
-  return createTransformStream(transform, streamOptions)
+  return createTransformStream(transform, flush, streamOptions)
 }
 
 export const objectPivotLongToWideStream = (

@@ -6,8 +6,6 @@ import {
 } from '@aws-sdk/client-sqs'
 import { createWritableStream } from '@datastream/core'
 
-import AWSXRay from 'aws-xray-sdk-core'
-
 const awsClientDefaults = {
   // https://aws.amazon.com/compliance/fips/
   useFipsEndpoint: [
@@ -18,7 +16,7 @@ const awsClientDefaults = {
   ].includes(process.env.AWS_REGION)
 }
 
-let client = AWSXRay.captureAWSv3Client(new SQSClient(awsClientDefaults))
+let client = new SQSClient(awsClientDefaults)
 export const awsSQSSetClient = (sqsClient) => {
   client = sqsClient
 }
@@ -42,7 +40,7 @@ export const awsSQSReceiveMessageStream = async (
   return command(options)
 }
 
-export const awsSQSDeleteMessageStream = (options, streamOptions = {}) => {
+export const awsSQSDeleteMessageStream = (options, streamOptions) => {
   let batch = []
   const send = () => {
     options.Entries = batch
@@ -55,11 +53,11 @@ export const awsSQSDeleteMessageStream = (options, streamOptions = {}) => {
     }
     batch.push(chunk)
   }
-  streamOptions.final = send
-  return createWritableStream(write, streamOptions)
+  const final = send
+  return createWritableStream(write, final, streamOptions)
 }
 
-export const awsSQSSendMessageStream = (options, streamOptions = {}) => {
+export const awsSQSSendMessageStream = (options, streamOptions) => {
   let batch = []
   const send = () => {
     options.Entries = batch
@@ -72,8 +70,8 @@ export const awsSQSSendMessageStream = (options, streamOptions = {}) => {
     }
     batch.push(chunk)
   }
-  streamOptions.final = send
-  return createWritableStream(write, streamOptions)
+  const final = send
+  return createWritableStream(write, final, streamOptions)
 }
 
 export default {

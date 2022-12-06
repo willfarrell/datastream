@@ -19,10 +19,10 @@ export const indexedDBWriteStream = async ({ db, store }, streamOptions) => {
   const write = async (chunk) => {
     await tx.store.add(chunk)
   }
-  streamOptions.flush = async () => {
+  const final = async () => {
     await tx.done
   }
-  return createWriteStream(write, streamOptions)
+  return createWriteStream(write, final, streamOptions)
 }
 
 export default {
