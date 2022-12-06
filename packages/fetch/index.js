@@ -64,7 +64,6 @@ export const fetchReadableStream = (fetchOptions, streamOptions) => {
 export const fetchResponseStream = fetchReadableStream
 
 async function * fetchGenerator (fetchOptionsArray, streamOptions) {
-  const requests = []
   for (let options of fetchOptionsArray) {
     options = mergeOptions(options)
     if (options.qs) {
@@ -73,10 +72,7 @@ async function * fetchGenerator (fetchOptionsArray, streamOptions) {
         '%20'
       )
     }
-    requests.push(fetchUnknown(options, streamOptions))
-  }
-  for (const request of requests) {
-    const response = await request
+    const response = await fetchUnknown(options, streamOptions)
     for await (const chunk of response) {
       yield chunk
     }
