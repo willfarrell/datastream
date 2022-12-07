@@ -8,10 +8,9 @@ import {
 const defaults = {
   // custom
   rateLimit: 0.01, // 100 per sec
-  rateLimitTimestamp: 0,
   dataPath: undefined, // for json response, where the data is to return form body root
   nextPath: undefined, // for json pagination, body root
-  qs: undefined, // object to convert to query string
+  qs: {}, // object to convert to query string
 
   // fetch
   method: 'GET',
@@ -25,7 +24,8 @@ const mergeOptions = (options = {}) => {
   return {
     ...defaults,
     ...options,
-    headers: { ...defaults.headers, ...options.headers }
+    headers: { ...defaults.headers, ...options.headers },
+    qs: { ...defaults.qs, ...options.qs }
   }
 }
 
@@ -39,6 +39,7 @@ export const fetchSetDefaults = (options) => {
 export const fetchWritableStream = async (options, streamOptions = {}) => {
   const body = createReadableStream()
   // Duplex: half - For browser compatibility - https://developer.chrome.com/articles/fetch-streaming-requests/#half-duplex
+  options = mergeOptions(options)
   const value = await fetchRateLimit({
     ...options,
     body,
@@ -64,9 +65,11 @@ export const fetchReadableStream = (fetchOptions, streamOptions) => {
 export const fetchResponseStream = fetchReadableStream
 
 async function * fetchGenerator (fetchOptionsArray, streamOptions) {
+  let rateLimitTimestamp = 0
   for (let options of fetchOptionsArray) {
     options = mergeOptions(options)
-    if (options.qs) {
+    options.rateLimitTimestamp ??= rateLimitTimestamp
+    if (Object.keys(options.qs).length) {
       options.url += ('?' + new URLSearchParams(options.qs)).replaceAll(
         '+',
         '%20'
@@ -76,6 +79,8 @@ async function * fetchGenerator (fetchOptionsArray, streamOptions) {
     for await (const chunk of response) {
       yield chunk
     }
+    // ensure there is rate limiting between req with different options
+    rateLimitTimestamp = options.rateLimitTimestamp
   }
 }
 
@@ -98,7 +103,7 @@ async function * fetchJson (options, streamOptions) {
       options.prefetchResponse ??
       (await fetchRateLimit(options, streamOptions))
     delete options.prefetchResponse
-    const body = await response.json() // Blocking - stream parse?
+    const body = await response.json()
     options.url = nextPath && pickPath(body, nextPath)
     options.url ??= parseLink(response.headers)
     const data = pickPath(body, dataPath)
@@ -120,14 +125,12 @@ const parseLink = (headers) => {
 }
 
 export const fetchRateLimit = async (options, streamOptions = {}) => {
-  options.rateLimitTimestamp ??= 0
   const now = Date.now()
-  if (now < options.rateLimitTimestamp) {
+  if (now < options.rateLimitTimestamp ?? 0) {
     await timeout(options.rateLimitTimestamp - now, streamOptions)
   }
-  options.rateLimitTimestamp = now + 1000 * options.rateLimit
-
-  options = mergeOptions(options)
+  options.rateLimitTimestamp = Date.now() + 1000 * options.rateLimit
+  options = mergeOptions(options) // for when called directly
 
   const response = await fetch(options.url, {
     ...options,
