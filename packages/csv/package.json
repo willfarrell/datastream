@@ -1,6 +1,6 @@
 {
   "name": "@datastream/csv",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "",
   "type": "module",
   "engines": {
@@ -108,9 +108,9 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/core": "0.0.14",
-    "@datastream/csv": "0.0.14",
+    "@datastream/core": "0.0.15",
+    "@datastream/csv": "0.0.15",
     "csv-rex": "0.4.2"
   },
-  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1"
+  "gitHead": "b80902d104561d27ca0ba7aedf27fc7dc70f8a2b"
 }

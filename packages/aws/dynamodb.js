@@ -67,7 +67,9 @@ export const awsDynamoDBScanStream = async (options, streamOptions) => {
   return command(options)
 }
 
-// max Keys.length = 100
+// TODO awsDynamoDBExecuteStatementStream
+
+// TODO max Keys.length = 100
 export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10

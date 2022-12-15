@@ -32,7 +32,7 @@ export const awsS3GetObjectStream = async (options, streamOptions) => {
 export const awsS3PutObjectStream = (options, streamOptions) => {
   const stream = createPassThroughStream(() => {}, streamOptions)
   const upload = new Upload({
-    client: new S3Client(),
+    client,
     params: {
       ServerSideEncryption: 'AES256',
       ...options,
@@ -40,6 +40,9 @@ export const awsS3PutObjectStream = (options, streamOptions) => {
     },
     tags: options.tags
   })
+  if (options.onProgress) {
+    stream.on('httpUploadProgress', options.onProgress)
+  }
   const result = upload.done()
 
   stream.result = async () => {
