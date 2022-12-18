@@ -400,7 +400,7 @@ if (variant === 'node') {
 }
 
 // *** pipeline *** //
-test(`${variant}: pipeline should should add writable to end of streams array`, async (t) => {
+test(`${variant}: pipeline should add writable to end of streams array`, async (t) => {
   const input = ['a', 'b', 'c']
   const transform = sinon.spy()
   const streams = [
@@ -414,6 +414,36 @@ test(`${variant}: pipeline should should add writable to end of streams array`, 
   equal(isWritable(streams[1]), true)
   equal(transform.callCount, 3)
   deepEqual(result, { count: 3 })
+})
+
+test(`${variant}: pipeline should throw error when promise passed in`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = sinon.spy()
+  const streams = [
+    createReadableStream(input),
+    Promise.resolve(objectCountStream()),
+    createTransformStream(transform)
+  ]
+  try {
+    await pipeline(streams)
+  } catch (e) {
+    equal(e.message, 'Promise instead of stream passed in at index 1')
+  }
+})
+
+test(`${variant}: pipejoin should throw error when promise passed in`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = sinon.spy()
+  const streams = [
+    createReadableStream(input),
+    Promise.resolve(objectCountStream()),
+    createTransformStream(transform)
+  ]
+  try {
+    await pipejoin(streams)
+  } catch (e) {
+    equal(e.message, 'Promise instead of stream passed in at index 1')
+  }
 })
 
 // *** makeOptions *** //

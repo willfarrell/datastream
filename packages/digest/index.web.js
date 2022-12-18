@@ -17,10 +17,10 @@ const algorithms = {
 
 export const digestStream = async ({ algorithm, resultKey }, streamOptions) => {
   const hash = await algorithms[algorithm]
-  const transform = (chunk) => {
+  const passThrough = (chunk) => {
     hash.update(chunk)
   }
-  const stream = createPassThroughStream(transform, streamOptions)
+  const stream = createPassThroughStream(passThrough, streamOptions)
   let checksum
   stream.result = () => {
     checksum ??= hash.digest()

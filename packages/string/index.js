@@ -10,10 +10,10 @@ export const stringReadableStream = (input, streamOptions) => {
 
 export const stringLengthStream = ({ resultKey } = {}, streamOptions) => {
   let value = 0
-  const transform = (chunk) => {
+  const passThrough = (chunk) => {
     value += chunk.length
   }
-  const stream = createPassThroughStream(transform, streamOptions)
+  const stream = createPassThroughStream(passThrough, streamOptions)
   stream.result = () => ({ key: resultKey ?? 'length', value })
   return stream
 }

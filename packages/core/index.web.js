@@ -14,6 +14,9 @@ export const pipeline = async (streams, streamOptions) => {
 export const pipejoin = (streams) => {
   const lastIndex = streams.length - 1
   return streams.reduce((pipeline, stream, idx) => {
+    if (typeof stream.then === 'function') {
+      throw new Error(`Promise instead of stream passed in at index ${idx}`)
+    }
     if (idx === lastIndex && stream.getWriter) {
       return pipeline.pipeTo(stream)
     }
@@ -239,7 +242,7 @@ export const createBranchStream = (
   // TODO refactor, not good enough
   // https://streams.spec.whatwg.org/#rs-model
   const branchStream = createReadableStream(undefined, streamOptions)
-  const transform = (chunk) => {
+  const passThrough = (chunk) => {
     console.log('push')
     branchStream.push(chunk)
   }
@@ -247,7 +250,7 @@ export const createBranchStream = (
     console.log('flush')
     branchStream.push(null)
   }
-  const stream = createPassThroughStream(transform, flush, streamOptions)
+  const stream = createPassThroughStream(passThrough, flush, streamOptions)
 
   streams.unshift(branchStream)
   const value = pipeline(streams, streamOptions)

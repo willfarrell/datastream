@@ -4,6 +4,11 @@ import { setTimeout } from 'node:timers/promises'
 import cloneable from 'cloneable-readable'
 
 export const pipeline = async (streams, streamOptions = {}) => {
+  for (let idx = 0, l = streams.legnth; idx < l; idx++) {
+    if (typeof streams[idx].then === 'function') {
+      throw new Error(`Promise instead of stream passed in at index ${idx}`)
+    }
+  }
   // Ensure stream ends with only writable
   const lastStream = streams[streams.length - 1]
   if (isReadable(lastStream)) {
@@ -15,10 +20,13 @@ export const pipeline = async (streams, streamOptions = {}) => {
 }
 
 export const pipejoin = (streams) => {
-  return streams.reduce((pipeline, stream) => {
+  return streams.reduce((pipeline, stream, idx) => {
     // stream.on('error', (e) => {
     //   console.log('***', e)
     // })
+    if (typeof stream.then === 'function') {
+      throw new Error(`Promise instead of stream passed in at index ${idx}`)
+    }
     return pipeline.pipe(stream)
   })
 }

@@ -10,10 +10,10 @@ export const objectReadableStream = (input = [], streamOptions) => {
 
 export const objectCountStream = ({ resultKey } = {}, streamOptions) => {
   let value = 0
-  const transform = () => {
+  const passThrough = () => {
     value += 1
   }
-  const stream = createPassThroughStream(transform, streamOptions)
+  const stream = createPassThroughStream(passThrough, streamOptions)
   stream.result = () => ({ key: resultKey ?? 'count', value })
   return stream
 }
