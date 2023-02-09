@@ -1,6 +1,6 @@
 {
   "name": "@datastream/aws",
-  "version": "0.0.15",
+  "version": "0.0.19",
   "description": "",
   "type": "module",
   "engines": {
@@ -125,19 +125,19 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "3.214.0",
-    "@aws-sdk/client-s3": "3.213.0",
-    "@aws-sdk/client-sns": "3.213.0",
-    "@aws-sdk/client-sqs": "3.213.0",
-    "@aws-sdk/client-ssm": "3.213.0",
-    "@aws-sdk/lib-dynamodb": "3.214.0",
-    "@aws-sdk/lib-storage": "3.213.0",
-    "@datastream/aws": "0.0.15",
-    "@datastream/core": "0.0.15"
+    "@datastream/aws": "0.0.19",
+    "@datastream/core": "0.0.19"
   },
   "gitHead": "b80902d104561d27ca0ba7aedf27fc7dc70f8a2b",
   "devDependencies": {
-    "@datastream/charset": "0.0.15",
-    "aws-sdk-client-mock": "2.0.0"
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/client-sns": "^3.0.0",
+    "@aws-sdk/client-sqs": "^3.0.0",
+    "@aws-sdk/client-ssm": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-storage": "^3.0.0",
+    "@datastream/charset": "0.0.19",
+    "aws-sdk-client-mock": "^2.0.0"
   }
 }

@@ -17,6 +17,25 @@ export const stringLengthStream = ({ resultKey } = {}, streamOptions) => {
   stream.result = () => ({ key: resultKey ?? 'length', value })
   return stream
 }
+export const stringCountStream = (
+  { substr, resultKey } = {},
+  streamOptions
+) => {
+  let value = 0
+  const passThrough = (chunk) => {
+    let cursor = 0
+    while (cursor < chunk.length) {
+      cursor = chunk.indexOf(substr, cursor + 1)
+      if (cursor === -1) {
+        break
+      }
+      value += 1
+    }
+  }
+  const stream = createPassThroughStream(passThrough, streamOptions)
+  stream.result = () => ({ key: resultKey ?? 'count', value })
+  return stream
+}
 
 export const stringSkipConsecutiveDuplicates = (options, streamOptions) => {
   let previousChunk

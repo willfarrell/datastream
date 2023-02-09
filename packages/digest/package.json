@@ -1,6 +1,6 @@
 {
   "name": "@datastream/digest",
-  "version": "0.0.15",
+  "version": "0.0.19",
   "description": "",
   "type": "module",
   "engines": {
@@ -65,8 +65,8 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/core": "0.0.15",
-    "@datastream/digest": "0.0.15",
+    "@datastream/core": "0.0.19",
+    "@datastream/digest": "0.0.19",
     "hash-wasm": "4.9.0"
   },
   "gitHead": "b80902d104561d27ca0ba7aedf27fc7dc70f8a2b"

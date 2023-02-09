@@ -31,7 +31,7 @@ const charsets = {
   'ISO-8859-9': 0
 }
 
-export const charsetDetectStream = ({ resultKey }, streamOptions) => {
+export const charsetDetectStream = ({ resultKey } = {}, streamOptions) => {
   const passThrough = (chunk) => {
     const matches = detect(chunk)
     if (matches.length) {

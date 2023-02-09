@@ -16,32 +16,36 @@ const awsClientDefaults = {
   ].includes(process.env.AWS_REGION)
 }
 
-let client = new S3Client(awsClientDefaults)
+let defaultClient = new S3Client(awsClientDefaults)
 export const awsS3SetClient = (s3Client) => {
-  client = s3Client
+  defaultClient = s3Client
 }
 
 export const awsS3GetObjectStream = async (options, streamOptions) => {
-  const { Body } = await client.send(new GetObjectCommand(options))
+  const { client, ...params } = options
+  const { Body } = await (client ?? defaultClient).send(
+    new GetObjectCommand(params)
+  )
   if (!Body) {
-    throw new Error('S3.GetObject not Found', { cause: options })
+    throw new Error('S3.GetObject not Found', { cause: params })
   }
   return createReadableStream(Body, streamOptions)
 }
 
 export const awsS3PutObjectStream = (options, streamOptions) => {
+  const { onProgress, client, tags, ...params } = options
   const stream = createPassThroughStream(() => {}, streamOptions)
   const upload = new Upload({
-    client,
+    client: client ?? defaultClient,
     params: {
       ServerSideEncryption: 'AES256',
-      ...options,
+      ...params,
       Body: stream
     },
-    tags: options.tags
+    tags
   })
-  if (options.onProgress) {
-    stream.on('httpUploadProgress', options.onProgress)
+  if (onProgress) {
+    stream.on('httpUploadProgress', onProgress)
   }
   const result = upload.done()
 
