@@ -3,6 +3,7 @@
 <br/><br/><br/><br/><br/><br/><br/>-->
 <h1>&lt;datastream&gt;</h1>
 <p>Commonly used stream patterns for Web Streams API and NodeJS Stream.</p>
+<p>If you're iterating over an array more than once, it's time to use streams.</p>
 <br />
 <p>
   <a href="https://www.npmjs.com/package/@datastream/core?activeTab=versions">

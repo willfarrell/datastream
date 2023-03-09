@@ -17,7 +17,7 @@ export const transpileSchema = (schema, ajvOptions) => {
 }
 
 export const validateStream = (
-  { schema, idxStart, resultKey, ...ajvOptions },
+  { schema, idxStart, onErrorSkip, resultKey },
   streamOptions
 ) => {
   idxStart ??= 0
@@ -43,7 +43,9 @@ export const validateStream = (
         value[id].idx.push(idx)
       }
     }
-    enqueue(chunk) // TODO option to not pass chunk on?
+    if (!onErrorSkip) {
+      enqueue(chunk)
+    }
   }
   const stream = createTransformStream(transform, streamOptions)
   stream.result = () => ({ key: resultKey ?? 'validate', value })

@@ -1,6 +1,6 @@
 {
   "name": "@datastream/core",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "description": "",
   "type": "module",
   "engines": {
@@ -68,8 +68,8 @@
     "cloneable-readable": "3.0.0"
   },
   "devDependencies": {
-    "@datastream/core": "0.0.19",
-    "@datastream/object": "0.0.19"
+    "@datastream/core": "0.0.20",
+    "@datastream/object": "0.0.20"
   },
   "gitHead": "b80902d104561d27ca0ba7aedf27fc7dc70f8a2b"
 }
