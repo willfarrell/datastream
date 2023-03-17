@@ -81,7 +81,8 @@ export const objectPivotWideToLongStream = (
       delete row[key]
     }
     for (const key of keys) {
-      if (chunk[key]) {
+      // skip if pivot key doesn't exist
+      if (Object.hasOwn(chunk, key)) {
         enqueue({ ...row, [keyParam]: key, [valueParam]: chunk[key] })
       }
     }
@@ -110,6 +111,18 @@ export const objectKeyValuesStream = ({ key, values }, streamOptions) => {
       [chunk[key]]: value
     }
     enqueue(chunk)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
+export const objectKeyMap = ({ keys }, streamOptions) => {
+  const transform = (chunk, enqueue) => {
+    const value = {}
+    for (const key in chunk) {
+      const newKey = keys[key] ?? key
+      value[newKey] = chunk[key]
+    }
+    enqueue(value)
   }
   return createTransformStream(transform, streamOptions)
 }
