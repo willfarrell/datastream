@@ -183,7 +183,7 @@ test(`${variant}: objectPivotWideToLongStream should pivot chunks to wide`, asyn
   const streams = [
     createReadableStream(input),
     objectPivotWideToLongStream({
-      keys: ['l m', 'w m'],
+      keys: ['l m', 'w m', 'a m'],
       keyParam: 'b u',
       valueParam: 'v'
     })

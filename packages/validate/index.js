@@ -17,7 +17,7 @@ export const transpileSchema = (schema, ajvOptions) => {
 }
 
 export const validateStream = (
-  { schema, idxStart, onErrorSkip, resultKey },
+  { schema, idxStart, onErrorEnqueue, allowCoerceTypes, resultKey },
   streamOptions
 ) => {
   idxStart ??= 0
@@ -30,7 +30,7 @@ export const validateStream = (
   let idx = idxStart - 1
   const transform = (chunk, enqueue) => {
     idx += 1
-
+    const data = structuredClone(chunk)
     const chunkValid = schema(chunk)
     // console.log({ chunkValid })
     if (!chunkValid) {
@@ -43,7 +43,8 @@ export const validateStream = (
         value[id].idx.push(idx)
       }
     }
-    if (!onErrorSkip) {
+    if (chunkValid || onErrorEnqueue) {
+      chunk = allowCoerceTypes ? chunk : data
       enqueue(chunk)
     }
   }
