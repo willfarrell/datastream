@@ -76,14 +76,14 @@ export const objectPivotWideToLongStream = (
   valueParam ??= 'valueParam'
 
   const transform = (chunk, enqueue) => {
-    const row = { ...chunk }
+    const value = structuredClone(chunk)
     for (const key of keys) {
-      delete row[key]
+      delete value[key]
     }
     for (const key of keys) {
       // skip if pivot key doesn't exist
       if (Object.hasOwn(chunk, key)) {
-        enqueue({ ...row, [keyParam]: key, [valueParam]: chunk[key] })
+        enqueue({ ...value, [keyParam]: key, [valueParam]: chunk[key] })
       }
     }
   }
@@ -115,7 +115,7 @@ export const objectKeyValuesStream = ({ key, values }, streamOptions) => {
   return createTransformStream(transform, streamOptions)
 }
 
-export const objectKeyMap = ({ keys }, streamOptions) => {
+export const objectKeyMapStream = ({ keys }, streamOptions) => {
   const transform = (chunk, enqueue) => {
     const value = {}
     for (const key in chunk) {
@@ -127,7 +127,29 @@ export const objectKeyMap = ({ keys }, streamOptions) => {
   return createTransformStream(transform, streamOptions)
 }
 
-export const objectSkipConsecutiveDuplicates = (options, streamOptions) => {
+export const objectKeyJoinStream = ({ keys, separator }, streamOptions) => {
+  const transform = (chunk, enqueue) => {
+    const value = structuredClone(chunk)
+    for (const newKey in keys) {
+      // perf opportunity
+      value[newKey] = keys[newKey]
+        .map((oldKey) => {
+          delete value[oldKey]
+          return chunk[oldKey]
+        })
+        .join(separator)
+    }
+    enqueue(value)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
+// objectKeySplit = ({keys: { oldKey: /^(?<newKey>.*)$/ }) => { }
+
+export const objectSkipConsecutiveDuplicatesStream = (
+  options,
+  streamOptions
+) => {
   let previousChunk
   const transform = (chunk, enqueue) => {
     const chunkStringified = JSON.stringify(chunk)
@@ -147,5 +169,7 @@ export default {
   pivotWideToLongStream: objectPivotWideToLongStream,
   keyValueStream: objectKeyValueStream,
   keyValuesStream: objectKeyValuesStream,
-  skipConsecutiveDuplicates: objectSkipConsecutiveDuplicates
+  keyMapStream: objectKeyMapStream,
+  keyJoinStream: objectKeyJoinStream,
+  skipConsecutiveDuplicatesStream: objectSkipConsecutiveDuplicatesStream
 }
