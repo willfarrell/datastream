@@ -95,7 +95,7 @@ test(`${variant}: csvFormatStream should format csv from string[]`, async (t) =>
       ['1', '2', '3', '4'],
       ['1', '2', '3', '4']
     ]),
-    csvFormatStream({ header: ['a', 'b', 'c', 'd'] })
+    csvFormatStream({ columns: ['a', 'b', 'c', 'd'] })
   ]
   const stream = pipejoin(streams)
   const output = await streamToString(stream)

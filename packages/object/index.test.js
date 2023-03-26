@@ -16,7 +16,7 @@ import {
   objectPivotWideToLongStream,
   objectKeyValueStream,
   objectKeyValuesStream,
-  objectSkipConsecutiveDuplicates
+  objectSkipConsecutiveDuplicatesStream
 } from '@datastream/object'
 
 let variant = 'unknown'
@@ -243,11 +243,11 @@ test(`${variant}: objectKeyValuesStream should transform to {chunk[key]:chunk[va
 })
 
 // *** objectSkipConsecutiveDuplicates *** //
-test(`${variant}: objectSkipConsecutiveDuplicates should skip consecutive duplicates`, async (t) => {
+test(`${variant}: objectSkipConsecutiveDuplicatesStream should skip consecutive duplicates`, async (t) => {
   const input = [{ a: 1 }, { b: 2 }, { b: 2 }, { c: 3 }]
   const streams = [
     createReadableStream(input),
-    objectSkipConsecutiveDuplicates()
+    objectSkipConsecutiveDuplicatesStream()
   ]
 
   const stream = pipejoin(streams)
