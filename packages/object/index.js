@@ -115,18 +115,6 @@ export const objectKeyValuesStream = ({ key, values }, streamOptions) => {
   return createTransformStream(transform, streamOptions)
 }
 
-export const objectKeyMapStream = ({ keys }, streamOptions) => {
-  const transform = (chunk, enqueue) => {
-    const value = {}
-    for (const key in chunk) {
-      const newKey = keys[key] ?? key
-      value[newKey] = chunk[key]
-    }
-    enqueue(value)
-  }
-  return createTransformStream(transform, streamOptions)
-}
-
 export const objectKeyJoinStream = ({ keys, separator }, streamOptions) => {
   const transform = (chunk, enqueue) => {
     const value = structuredClone(chunk)
@@ -140,6 +128,26 @@ export const objectKeyJoinStream = ({ keys, separator }, streamOptions) => {
         .join(separator)
     }
     enqueue(value)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
+export const objectKeyMapStream = ({ keys }, streamOptions) => {
+  const transform = (chunk, enqueue) => {
+    const value = {}
+    for (const key in chunk) {
+      const newKey = keys[key] ?? key
+      value[newKey] = chunk[key]
+    }
+    enqueue(value)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
+export const objectValueMapStream = ({ key, values }, streamOptions) => {
+  const transform = (chunk, enqueue) => {
+    chunk[key] = values[chunk[key]]
+    enqueue(chunk)
   }
   return createTransformStream(transform, streamOptions)
 }
@@ -169,7 +177,8 @@ export default {
   pivotWideToLongStream: objectPivotWideToLongStream,
   keyValueStream: objectKeyValueStream,
   keyValuesStream: objectKeyValuesStream,
-  keyMapStream: objectKeyMapStream,
   keyJoinStream: objectKeyJoinStream,
+  keyMapStream: objectKeyMapStream,
+  valueMapStream: objectValueMapStream,
   skipConsecutiveDuplicatesStream: objectSkipConsecutiveDuplicatesStream
 }
