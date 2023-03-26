@@ -1,6 +1,6 @@
 {
   "name": "@datastream/fetch",
-  "version": "0.0.22",
+  "version": "0.0.24",
   "description": "",
   "type": "module",
   "engines": {
@@ -66,6 +66,6 @@
   "homepage": "https://datastream.js.org",
   "gitHead": "e141574d48cf6bbc13c40ac9e5c3f343baf59a4d",
   "dependencies": {
-    "@datastream/core": "0.0.22"
+    "@datastream/core": "0.0.24"
   }
 }
