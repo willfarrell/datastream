@@ -9,7 +9,7 @@ import {
   createPassThroughStream
 } from '@datastream/core'
 
-import { fetchResponseStream, fetchSetDefaults } from './index.js'
+import { fetchResponseStream, fetchSetDefaults } from '@datastream/fetch'
 
 let variant = 'unknown'
 for (const execArgv of process.execArgv) {
