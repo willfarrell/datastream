@@ -11,6 +11,8 @@ const defaults = {
   dataPath: undefined, // for json response, where the data is to return form body root
   nextPath: undefined, // for json pagination, body root
   qs: {}, // object to convert to query string
+  offsetParam: undefined, // offset query parameter to use for pagination
+  offsetAmount: undefined,  // offset amount to use for pagination
 
   // fetch
   method: 'GET',
@@ -70,6 +72,11 @@ async function * fetchGenerator (fetchOptionsArray, streamOptions) {
   for (let options of fetchOptionsArray) {
     options = mergeOptions(options)
     options.rateLimitTimestamp ??= rateLimitTimestamp
+
+    if (options.offsetParam) {
+      options.qs[options.offsetParam] ??= 0
+    }
+
     if (Object.keys(options.qs).length) {
       options.url += ('?' + new URLSearchParams(options.qs)).replaceAll(
         '+',
@@ -96,33 +103,52 @@ const fetchUnknown = async (options, streamOptions) => {
 }
 
 const nextLinkRegExp = /<(.*?)>; rel="next"/
+
 async function * fetchJson (options, streamOptions) {
   const { dataPath, nextPath } = options
+  let { url } = options
 
   while (options.url) {
-    const response =
-      options.prefetchResponse ??
-      (await fetchRateLimit(options, streamOptions))
+    const response = options.prefetchResponse ?? await fetchRateLimit(options, streamOptions)
     delete options.prefetchResponse
     const body = await response.json()
-    options.url = nextPath && pickPath(body, nextPath)
-    options.url ??= parseLink(response.headers)
+    url = parseLinkFromHeader(response.headers)
+    url ??= parseNextPath(body, nextPath)
+    url ??= paginateUsingQuery(options)
+    options.url = url
     const data = pickPath(body, dataPath)
     if (Array.isArray(data)) {
       for (const item of data) {
         yield item
       }
+
+      if (options.offsetParam && !data.length) break
     } else {
       yield data
     }
   }
 }
 
-const parseLink = (headers) => {
+const paginateUsingQuery = (options) => {
+  if (!options.offsetParam || !options.offsetAmount) return undefined
+
+  const url = new URL(options.url)
+  let offset = url.searchParams.get(options.offsetParam)
+  if (!offset) return null
+
+  offset = Number.parseInt(offset) + options.offsetAmount
+  url.searchParams.delete(options.offsetParam)
+  url.searchParams.set(options.offsetParam, offset)
+  return url.toString()
+}
+
+const parseNextPath = (body, nextPath) => {
+  return nextPath ? pickPath(body, nextPath) : undefined
+}
+
+const parseLinkFromHeader = (headers) => {
   const link = headers.get('Link')
-  if (link) {
-    return link.match(nextLinkRegExp)?.[1]
-  }
+  return link?.match(nextLinkRegExp)?.[1]
 }
 
 export const fetchRateLimit = async (options, streamOptions = {}) => {

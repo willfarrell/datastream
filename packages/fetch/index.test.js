@@ -9,7 +9,7 @@ import {
   createPassThroughStream
 } from '@datastream/core'
 
-import { fetchResponseStream, fetchSetDefaults } from '@datastream/fetch'
+import { fetchResponseStream, fetchSetDefaults } from './index.js'
 
 let variant = 'unknown'
 for (const execArgv of process.execArgv) {
@@ -97,7 +97,50 @@ const mockResponses = {
         })
       }
     ),
-
+  [`https://example.org/json-arr?${new URLSearchParams({ '$limit': 3, '$offset': 0 })}`]: () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          { key: 'item', value: 1 },
+          { key: 'item', value: 2 },
+          { key: 'item', value: 3 }
+        ]
+      }),
+      {
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers({
+          'Content-Type': 'application/json; charset=UTF-8'
+        })
+      }
+    ),
+  [`https://example.org/json-arr?${new URLSearchParams({ '$limit': 3, '$offset': 3 })}`]: () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          { key: 'item', value: 4 },
+          { key: 'item', value: 5 }
+        ]
+      }),
+      {
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers({
+          'Content-Type': 'application/json; charset=UTF-8'
+        })
+      }
+    ),
+  [`https://example.org/json-arr?${new URLSearchParams({ '$limit': 3, '$offset': 6 })}`]: () =>
+    new Response(
+      JSON.stringify({ data: [] }),
+      {
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers({
+          'Content-Type': 'application/json; charset=UTF-8'
+        })
+      }
+    ),
   'https://example.org/404': () =>
     new Response('', { status: 404, statusText: 'Not Found' }),
   'https://example.org/429': () =>
@@ -207,4 +250,28 @@ test(`${variant}: fetchResponseStream should work with pipeline`, async (t) => {
   ])
 
   deepEqual(result, {})
+})
+
+test(`${variant}: fetchResponseStream should paginate using query parameters`, async () => {
+  fetchSetDefaults({ headers: { Accept: 'application/json' } })
+  const config = {
+    url: 'https://example.org/json-arr',
+    qs: {
+      $limit: 3
+    },
+    offsetParam: '$offset',
+    offsetAmount: 3,
+    dataPath: 'data'
+  }
+
+  const stream = pipejoin([fetchResponseStream(config)])
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [
+    { key: 'item', value: 1 },
+    { key: 'item', value: 2 },
+    { key: 'item', value: 3 },
+    { key: 'item', value: 4 },
+    { key: 'item', value: 5 },
+  ])
 })
