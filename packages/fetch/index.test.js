@@ -97,7 +97,10 @@ const mockResponses = {
         })
       }
     ),
-  [`https://example.org/json-arr?${new URLSearchParams({ '$limit': 3, '$offset': 0 })}`]: () =>
+  [`https://example.org/json-arr?${new URLSearchParams({
+    $limit: 3,
+    $offset: 0
+  })}`]: () =>
     new Response(
       JSON.stringify({
         data: [
@@ -114,7 +117,10 @@ const mockResponses = {
         })
       }
     ),
-  [`https://example.org/json-arr?${new URLSearchParams({ '$limit': 3, '$offset': 3 })}`]: () =>
+  [`https://example.org/json-arr?${new URLSearchParams({
+    $limit: 3,
+    $offset: 3
+  })}`]: () =>
     new Response(
       JSON.stringify({
         data: [
@@ -130,17 +136,17 @@ const mockResponses = {
         })
       }
     ),
-  [`https://example.org/json-arr?${new URLSearchParams({ '$limit': 3, '$offset': 6 })}`]: () =>
-    new Response(
-      JSON.stringify({ data: [] }),
-      {
-        status: 200,
-        statusText: 'OK',
-        headers: new Headers({
-          'Content-Type': 'application/json; charset=UTF-8'
-        })
-      }
-    ),
+  [`https://example.org/json-arr?${new URLSearchParams({
+    $limit: 3,
+    $offset: 6
+  })}`]: () =>
+    new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({
+        'Content-Type': 'application/json; charset=UTF-8'
+      })
+    }),
   'https://example.org/404': () =>
     new Response('', { status: 404, statusText: 'Not Found' }),
   'https://example.org/429': () =>
@@ -272,6 +278,6 @@ test(`${variant}: fetchResponseStream should paginate using query parameters`, a
     { key: 'item', value: 2 },
     { key: 'item', value: 3 },
     { key: 'item', value: 4 },
-    { key: 'item', value: 5 },
+    { key: 'item', value: 5 }
   ])
 })

@@ -12,7 +12,7 @@ const defaults = {
   nextPath: undefined, // for json pagination, body root
   qs: {}, // object to convert to query string
   offsetParam: undefined, // offset query parameter to use for pagination
-  offsetAmount: undefined,  // offset amount to use for pagination
+  offsetAmount: undefined, // offset amount to use for pagination
 
   // fetch
   method: 'GET',
@@ -109,7 +109,9 @@ async function * fetchJson (options, streamOptions) {
   let { url } = options
 
   while (options.url) {
-    const response = options.prefetchResponse ?? await fetchRateLimit(options, streamOptions)
+    const response =
+      options.prefetchResponse ??
+      (await fetchRateLimit(options, streamOptions))
     delete options.prefetchResponse
     const body = await response.json()
     url = parseLinkFromHeader(response.headers)
