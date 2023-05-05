@@ -1,6 +1,6 @@
 {
   "name": "@datastream/aws",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "description": "",
   "type": "module",
   "engines": {
@@ -43,6 +43,22 @@
       "import": {
         "types": "./dynamodb.d.ts",
         "default": "./dynamodb.web.mjs"
+      }
+    },
+    "./lambda": {
+      "node": {
+        "import": {
+          "types": "./lambda.d.ts",
+          "default": "./lambda.node.mjs"
+        },
+        "__require": {
+          "types": "./lambda.d.ts",
+          "default": "./lambda.node.cjs"
+        }
+      },
+      "import": {
+        "types": "./lambda.d.ts",
+        "default": "./lambda.web.mjs"
       }
     },
     "./s3": {
@@ -103,7 +119,7 @@
   ],
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "ava",
+    "test:unit": "node --test",
     "test:benchmark": "node __benchmarks__/index.js"
   },
   "license": "MIT",
@@ -125,19 +141,20 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/aws": "0.0.29",
-    "@datastream/core": "0.0.29"
+    "@datastream/aws": "0.0.30",
+    "@datastream/core": "0.0.30"
   },
-  "gitHead": "e141574d48cf6bbc13c40ac9e5c3f343baf59a4d",
+  "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4",
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-lambda": "^3.0.0",
     "@aws-sdk/client-s3": "^3.0.0",
     "@aws-sdk/client-sns": "^3.0.0",
     "@aws-sdk/client-sqs": "^3.0.0",
     "@aws-sdk/client-ssm": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0",
     "@aws-sdk/lib-storage": "^3.0.0",
-    "@datastream/charset": "0.0.29",
+    "@datastream/charset": "0.0.30",
     "aws-sdk-client-mock": "^2.0.0"
   }
 }

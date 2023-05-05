@@ -138,7 +138,7 @@ export const makeOptions = ({
 export const createReadableStream = (input = '', streamOptions) => {
   // string doesn't chunk, and is slow
   if (typeof input === 'string') {
-    function * iterator () {
+    function * iterator (input) {
       const size = streamOptions?.chunkSize ?? 16 * 1024
       let position = 0
       const length = input.length
@@ -147,7 +147,7 @@ export const createReadableStream = (input = '', streamOptions) => {
         position += size
       }
     }
-    return Readable.from(iterator(), streamOptions)
+    return Readable.from(iterator(input), streamOptions)
   }
   return Readable.from(input, streamOptions)
 }

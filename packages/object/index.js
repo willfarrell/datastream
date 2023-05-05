@@ -152,6 +152,33 @@ export const objectValueMapStream = ({ key, values }, streamOptions) => {
   return createTransformStream(transform, streamOptions)
 }
 
+export const objectPickStream = ({ keys }, streamOptions) => {
+  keys = keys.map((k) => ({ k: true }))
+  const transform = (chunk, enqueue) => {
+    const value = {}
+    for (const key in chunk) {
+      if (keys[key]) {
+        value[key] = chunk[key]
+      }
+    }
+    enqueue(value)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
+export const objectOmitStream = ({ keys }, streamOptions) => {
+  keys = keys.map((k) => ({ k: true }))
+  const transform = (chunk, enqueue) => {
+    const value = {}
+    for (const key in chunk) {
+      if (!keys[key]) {
+        value[key] = chunk[key]
+      }
+    }
+    enqueue(value)
+  }
+  return createTransformStream(transform, streamOptions)
+}
 // objectKeySplit = ({keys: { oldKey: /^(?<newKey>.*)$/ }) => { }
 
 export const objectSkipConsecutiveDuplicatesStream = (
@@ -172,6 +199,8 @@ export const objectSkipConsecutiveDuplicatesStream = (
 export default {
   readableStream: objectReadableStream,
   countStream: objectCountStream,
+  pickStream: objectPickStream,
+  omitStream: objectOmitStream,
   batchStream: objectBatchStream,
   pivotLongToWideStream: objectPivotLongToWideStream,
   pivotWideToLongStream: objectPivotWideToLongStream,

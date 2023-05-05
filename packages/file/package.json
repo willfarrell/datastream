@@ -1,6 +1,6 @@
 {
   "name": "@datastream/file",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "description": "",
   "type": "module",
   "engines": {
@@ -43,7 +43,7 @@
   ],
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "ava",
+    "test:unit": "node --test",
     "test:benchmark": "node __benchmarks__/index.js"
   },
   "license": "MIT",
@@ -65,8 +65,8 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/core": "0.0.29",
-    "@datastream/file": "0.0.29"
+    "@datastream/core": "0.0.30",
+    "@datastream/file": "0.0.30"
   },
-  "gitHead": "e141574d48cf6bbc13c40ac9e5c3f343baf59a4d"
+  "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
 }

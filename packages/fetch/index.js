@@ -59,7 +59,6 @@ export const fetchWritableStream = async (options, streamOptions = {}) => {
 export const fetchRequestStream = fetchWritableStream
 
 export const fetchReadableStream = (fetchOptions, streamOptions) => {
-  if (!Array.isArray(fetchOptions)) fetchOptions = [fetchOptions]
   return createReadableStream(
     fetchGenerator(fetchOptions, streamOptions),
     streamOptions
@@ -67,9 +66,10 @@ export const fetchReadableStream = (fetchOptions, streamOptions) => {
 }
 export const fetchResponseStream = fetchReadableStream
 
-async function * fetchGenerator (fetchOptionsArray, streamOptions) {
+async function * fetchGenerator (fetchOptions, streamOptions) {
   let rateLimitTimestamp = 0
-  for (let options of fetchOptionsArray) {
+  if (!Array.isArray(fetchOptions)) fetchOptions = [fetchOptions]
+  for (let options of fetchOptions) {
     options = mergeOptions(options)
     options.rateLimitTimestamp ??= rateLimitTimestamp
 

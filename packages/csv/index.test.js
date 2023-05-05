@@ -22,7 +22,7 @@ for (const execArgv of process.execArgv) {
 // *** csvParseStream *** //
 test(`${variant}: csvParseStream should parse csv to object[]`, async (t) => {
   const streams = [
-    createReadableStream('a,b,c,d\r\n1,2,3,4\r\n1,2,3,4\r\n'),
+    createReadableStream('a,b,c,d\r\n1,2,3,4\r\n1,2,3,4'),
     csvParseStream()
   ]
   const stream = pipejoin(streams)
