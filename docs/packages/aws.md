@@ -39,7 +39,7 @@
 ## awsDynamoDBGetItemStream (Readable)
 
 <a id="awsDynamoDBPutItemStream"></a>
-## awsDynamoDBPuItemtStream (Writable)
+## awsDynamoDBPuItemStream (Writable)
 
 <a id="awsDynamoDBDeleteItemStream"></a>
 ## awsDynamoDBDeleteItemStream (Writable)
