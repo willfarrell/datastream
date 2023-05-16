@@ -14,24 +14,24 @@ export const brotliCompressStream = ({ quality } = {}, streamOptions) => {
   const transform = (chunk, enqueue) => {
     enqueue(engine.compress(chunk))
   }
-  streamOptions.flush = (enqueue) => {
+  const flush = (enqueue) => {
     if (engine.result() === BrotliStreamResult.NeedsMoreInput) {
       enqueue(engine.compress(undefined, 100))
     }
   }
-  return createTransformStream(transform, streamOptions)
+  return createTransformStream(transform, flush, streamOptions)
 }
 export const brotliDecompressStream = (options, streamOptions) => {
   const engine = new DecompressStream()
   const transform = (chunk, enqueue) => {
     enqueue(engine.decompress(chunk))
   }
-  streamOptions.flush = (enqueue) => {
+  const flush = (enqueue) => {
     if (engine.result() === BrotliStreamResult.NeedsMoreInput) {
       enqueue(engine.decompress(undefined, 100))
     }
   }
-  return createTransformStream(transform, streamOptions)
+  return createTransformStream(transform, flush, streamOptions)
 }
 
 export default {

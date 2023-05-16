@@ -8,12 +8,12 @@ for package in packages/*; do
       module=index
     fi
     if [ -f ${package}/${module}.js ]; then
-      node_modules/.bin/esbuild --platform=node    --target=node18 --format=cjs ${package}/${module}.js      --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.cjs
+      #node_modules/.bin/esbuild --platform=node    --target=node18 --format=cjs ${package}/${module}.js      --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.cjs
       node_modules/.bin/esbuild --platform=node    --target=node18 --format=esm ${package}/${module}.js      --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.mjs
       node_modules/.bin/esbuild --platform=browser                 --format=esm ${package}/${module}.js      --sourcemap=external --allow-overwrite --outfile=${package}/${module}.web.mjs
     fi
     if [ -f ${package}/${module}.node.js ]; then
-      node_modules/.bin/esbuild --platform=node    --target=node18 --format=cjs ${package}/${module}.node.js --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.cjs
+      #node_modules/.bin/esbuild --platform=node    --target=node18 --format=cjs ${package}/${module}.node.js --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.cjs
       node_modules/.bin/esbuild --platform=node    --target=node18 --format=esm ${package}/${module}.node.js --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.mjs
     fi
     if [ -f ${package}/${module}.web.js ]; then

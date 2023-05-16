@@ -31,8 +31,8 @@ const charsets = {
   'ISO-8859-9': 0
 }
 
-export const charsetDetectStream = ({ resultKey }, streamOptions) => {
-  const transform = (chunk) => {
+export const charsetDetectStream = ({ resultKey } = {}, streamOptions) => {
+  const passThrough = (chunk) => {
     const matches = detect(chunk)
     if (matches.length) {
       for (const match of matches) {
@@ -40,7 +40,7 @@ export const charsetDetectStream = ({ resultKey }, streamOptions) => {
       }
     }
   }
-  const stream = createPassThroughStream(transform, streamOptions)
+  const stream = createPassThroughStream(passThrough, streamOptions)
   stream.result = () => {
     const values = Object.entries(charsets)
       .map(([charset, confidence]) => ({ charset, confidence }))

@@ -1,6 +1,6 @@
 {
   "name": "@datastream/fetch",
-  "version": "0.0.5",
+  "version": "0.0.30",
   "description": "",
   "type": "module",
   "engines": {
@@ -23,7 +23,7 @@
           "types": "./index.d.ts",
           "default": "./index.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./index.d.ts",
           "default": "./index.node.cjs"
         }
@@ -58,14 +58,14 @@
   "repository": {
     "type": "git",
     "url": "github:willfarrell/datastream",
-    "directory": "packages/file-read"
+    "directory": "packages/fetch"
   },
   "bugs": {
     "url": "https://github.com/willfarrell/datastream/issues"
   },
   "homepage": "https://datastream.js.org",
-  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1",
+  "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4",
   "dependencies": {
-    "@datastream/core": "0.0.5"
+    "@datastream/core": "0.0.30"
   }
 }

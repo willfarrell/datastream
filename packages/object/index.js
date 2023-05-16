@@ -10,15 +10,15 @@ export const objectReadableStream = (input = [], streamOptions) => {
 
 export const objectCountStream = ({ resultKey } = {}, streamOptions) => {
   let value = 0
-  const transform = () => {
+  const passThrough = () => {
     value += 1
   }
-  const stream = createPassThroughStream(transform, streamOptions)
+  const stream = createPassThroughStream(passThrough, streamOptions)
   stream.result = () => ({ key: resultKey ?? 'count', value })
   return stream
 }
 
-export const objectBatchStream = ({ keys }, streamOptions = {}) => {
+export const objectBatchStream = ({ keys }, streamOptions) => {
   let previousId
   let batch
   const transform = (chunk, enqueue) => {
@@ -32,12 +32,12 @@ export const objectBatchStream = ({ keys }, streamOptions = {}) => {
     }
     batch.push(chunk)
   }
-  streamOptions.flush = (enqueue) => {
+  const flush = (enqueue) => {
     if (batch) {
       enqueue(batch)
     }
   }
-  return createTransformStream(transform, streamOptions)
+  return createTransformStream(transform, flush, streamOptions)
 }
 
 export const objectPivotLongToWideStream = (
@@ -76,13 +76,14 @@ export const objectPivotWideToLongStream = (
   valueParam ??= 'valueParam'
 
   const transform = (chunk, enqueue) => {
-    const row = { ...chunk }
+    const value = structuredClone(chunk)
     for (const key of keys) {
-      delete row[key]
+      delete value[key]
     }
     for (const key of keys) {
-      if (chunk[key]) {
-        enqueue({ ...row, [keyParam]: key, [valueParam]: chunk[key] })
+      // skip if pivot key doesn't exist
+      if (Object.hasOwn(chunk, key)) {
+        enqueue({ ...value, [keyParam]: key, [valueParam]: chunk[key] })
       }
     }
   }
@@ -114,12 +115,99 @@ export const objectKeyValuesStream = ({ key, values }, streamOptions) => {
   return createTransformStream(transform, streamOptions)
 }
 
+export const objectKeyJoinStream = ({ keys, separator }, streamOptions) => {
+  const transform = (chunk, enqueue) => {
+    const value = structuredClone(chunk)
+    for (const newKey in keys) {
+      // perf opportunity
+      value[newKey] = keys[newKey]
+        .map((oldKey) => {
+          delete value[oldKey]
+          return chunk[oldKey]
+        })
+        .join(separator)
+    }
+    enqueue(value)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
+export const objectKeyMapStream = ({ keys }, streamOptions) => {
+  const transform = (chunk, enqueue) => {
+    const value = {}
+    for (const key in chunk) {
+      const newKey = keys[key] ?? key
+      value[newKey] = chunk[key]
+    }
+    enqueue(value)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
+export const objectValueMapStream = ({ key, values }, streamOptions) => {
+  const transform = (chunk, enqueue) => {
+    chunk[key] = values[chunk[key]]
+    enqueue(chunk)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
+export const objectPickStream = ({ keys }, streamOptions) => {
+  keys = keys.map((k) => ({ k: true }))
+  const transform = (chunk, enqueue) => {
+    const value = {}
+    for (const key in chunk) {
+      if (keys[key]) {
+        value[key] = chunk[key]
+      }
+    }
+    enqueue(value)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
+export const objectOmitStream = ({ keys }, streamOptions) => {
+  keys = keys.map((k) => ({ k: true }))
+  const transform = (chunk, enqueue) => {
+    const value = {}
+    for (const key in chunk) {
+      if (!keys[key]) {
+        value[key] = chunk[key]
+      }
+    }
+    enqueue(value)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+// objectKeySplit = ({keys: { oldKey: /^(?<newKey>.*)$/ }) => { }
+
+export const objectSkipConsecutiveDuplicatesStream = (
+  options,
+  streamOptions
+) => {
+  let previousChunk
+  const transform = (chunk, enqueue) => {
+    const chunkStringified = JSON.stringify(chunk)
+    if (chunkStringified !== previousChunk) {
+      enqueue(chunk)
+      previousChunk = chunkStringified
+    }
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
 export default {
   readableStream: objectReadableStream,
   countStream: objectCountStream,
+  pickStream: objectPickStream,
+  omitStream: objectOmitStream,
   batchStream: objectBatchStream,
   pivotLongToWideStream: objectPivotLongToWideStream,
   pivotWideToLongStream: objectPivotWideToLongStream,
   keyValueStream: objectKeyValueStream,
-  keyValuesStream: objectKeyValuesStream
+  keyValuesStream: objectKeyValuesStream,
+  keyJoinStream: objectKeyJoinStream,
+  keyMapStream: objectKeyMapStream,
+  valueMapStream: objectValueMapStream,
+  skipConsecutiveDuplicatesStream: objectSkipConsecutiveDuplicatesStream
 }

@@ -22,7 +22,7 @@ for (const execArgv of process.execArgv) {
 // *** csvParseStream *** //
 test(`${variant}: csvParseStream should parse csv to object[]`, async (t) => {
   const streams = [
-    createReadableStream('a,b,c,d\r\n1,2,3,4\r\n1,2,3,4\r\n'),
+    createReadableStream('a,b,c,d\r\n1,2,3,4\r\n1,2,3,4'),
     csvParseStream()
   ]
   const stream = pipejoin(streams)
@@ -89,13 +89,27 @@ test(`${variant}: csvFormatStream should format csv from object[]`, async (t) =>
   deepEqual(output, 'a,b,c,d\r\n1,2,3,4\r\n1,2,3,4\r\n')
 })
 
+test(`${variant}: csvFormatStream should format csv from object[] with columns`, async (t) => {
+  const streams = [
+    createReadableStream([
+      { a: '1', b: '2', c: '3', d: '4' },
+      { a: '1', b: '2', c: '3', d: '4' }
+    ]),
+    csvFormatStream({ header: false, columns: ['d', 'c', 'b', 'a'] })
+  ]
+  const stream = pipejoin(streams)
+  const output = await streamToString(stream)
+
+  deepEqual(output, '4,3,2,1\r\n4,3,2,1\r\n')
+})
+
 test(`${variant}: csvFormatStream should format csv from string[]`, async (t) => {
   const streams = [
     createReadableStream([
       ['1', '2', '3', '4'],
       ['1', '2', '3', '4']
     ]),
-    csvFormatStream({ header: ['a', 'b', 'c', 'd'] })
+    csvFormatStream({ columns: ['a', 'b', 'c', 'd'] })
   ]
   const stream = pipejoin(streams)
   const output = await streamToString(stream)

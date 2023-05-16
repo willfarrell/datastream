@@ -24,11 +24,30 @@ test(`${variant}: digestStream should calculate digest`, async (t) => {
 
   equal(key, 'digest')
   equal(
-    result.digest,
+    value,
     'SHA2-256:37db36876b9ccaaa88394679f019c3435af9320dea117e867003840317870e25'
   )
   equal(
+    result.digest,
+    'SHA2-256:37db36876b9ccaaa88394679f019c3435af9320dea117e867003840317870e25'
+  )
+})
+test(`${variant}: digestStream should calculate digest`, async (t) => {
+  const streams = [
+    createReadableStream(['1,', '2,', '3,', '4']),
+    await digestStream({ algorithm: 'SHA2-256' })
+  ]
+  const result = await pipeline(streams)
+
+  const { key, value } = streams[1].result()
+
+  equal(key, 'digest')
+  equal(
     value,
+    'SHA2-256:37db36876b9ccaaa88394679f019c3435af9320dea117e867003840317870e25'
+  )
+  equal(
+    result.digest,
     'SHA2-256:37db36876b9ccaaa88394679f019c3435af9320dea117e867003840317870e25'
   )
 })

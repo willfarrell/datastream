@@ -1,6 +1,6 @@
 /* global TextDecoderStream */
 
-export const charsetDecodeStream = (charset = 'UTF-8', streamOptions) => {
+export const charsetDecodeStream = ({ charset } = {}, streamOptions) => {
   // doesn't support signal?
   return new TextDecoderStream(charset)
 }

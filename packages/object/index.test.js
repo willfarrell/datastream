@@ -15,7 +15,8 @@ import {
   objectPivotLongToWideStream,
   objectPivotWideToLongStream,
   objectKeyValueStream,
-  objectKeyValuesStream
+  objectKeyValuesStream,
+  objectSkipConsecutiveDuplicatesStream
 } from '@datastream/object'
 
 let variant = 'unknown'
@@ -148,29 +149,29 @@ test(`${variant}: objectPivotLongToWideStream should pivot chunks to wide`, asyn
   ])
 })
 
-/* test(`${variant}: objectPivotLongToWideStream should catch invalid chunk type`, async (t) => {
+test(`${variant}: objectPivotLongToWideStream should catch invalid chunk type`, async (t) => {
   const input = [
     { a: '1', b: 'l', v: 1, u: 'm' },
     { a: '1', b: 'w', v: 2, u: 'm' },
     { a: '2', b: 'w', v: 3, u: 'm' },
     { a: '3', b: 'l', v: 4, u: 'm' },
-    { a: '3', b: 'w', v: 5, u: 'm' },
+    { a: '3', b: 'w', v: 5, u: 'm' }
   ]
 
   const streams = [
     createReadableStream(input),
-    objectPivotLongToWideStream({ keys: ['b', 'u'], valueParam: 'v' }),
+    objectPivotLongToWideStream({ keys: ['b', 'u'], valueParam: 'v' })
   ]
   try {
     const stream = pipejoin(streams)
-    const output = await streamToArray(stream)
+    await streamToArray(stream)
   } catch (e) {
     deepEqual(
       e.message,
       'Expected chunk to be array, use with objectBatchStream'
     )
   }
-}) */
+})
 
 // *** objectPivotWideToLongStream *** //
 test(`${variant}: objectPivotWideToLongStream should pivot chunks to wide`, async (t) => {
@@ -182,7 +183,7 @@ test(`${variant}: objectPivotWideToLongStream should pivot chunks to wide`, asyn
   const streams = [
     createReadableStream(input),
     objectPivotWideToLongStream({
-      keys: ['l m', 'w m'],
+      keys: ['l m', 'w m', 'a m'],
       keyParam: 'b u',
       valueParam: 'v'
     })
@@ -239,4 +240,18 @@ test(`${variant}: objectKeyValuesStream should transform to {chunk[key]:chunk[va
   const output = await streamToArray(stream)
 
   deepEqual(output, [{ 1: { b: '2' } }])
+})
+
+// *** objectSkipConsecutiveDuplicates *** //
+test(`${variant}: objectSkipConsecutiveDuplicatesStream should skip consecutive duplicates`, async (t) => {
+  const input = [{ a: 1 }, { b: 2 }, { b: 2 }, { c: 3 }]
+  const streams = [
+    createReadableStream(input),
+    objectSkipConsecutiveDuplicatesStream()
+  ]
+
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [{ a: 1 }, { b: 2 }, { c: 3 }])
 })

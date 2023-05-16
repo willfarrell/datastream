@@ -8,10 +8,11 @@ import {
 const defaults = {
   // custom
   rateLimit: 0.01, // 100 per sec
-  rateLimitTimestamp: 0,
   dataPath: undefined, // for json response, where the data is to return form body root
   nextPath: undefined, // for json pagination, body root
-  qs: undefined, // object to convert to query string
+  qs: {}, // object to convert to query string
+  offsetParam: undefined, // offset query parameter to use for pagination
+  offsetAmount: undefined, // offset amount to use for pagination
 
   // fetch
   method: 'GET',
@@ -21,18 +22,28 @@ const defaults = {
   }
 }
 
+const mergeOptions = (options = {}) => {
+  return {
+    ...defaults,
+    ...options,
+    headers: { ...defaults.headers, ...options.headers },
+    qs: { ...defaults.qs, ...options.qs }
+  }
+}
+
 export const fetchSetDefaults = (options) => {
-  const headers = { ...defaults.headers, ...options.headers }
-  Object.assign(defaults, options, { headers })
+  Object.assign(defaults, mergeOptions(options))
 }
 
 // Note: requires EncodeStream to ensure it's Uint8Array
 // Poor browser support - https://github.com/Fyrd/caniuse/issues/6375
 // TODO needs testing
-export const fetchRequestStream = async (options, streamOptions = {}) => {
+// TODO mulit-part upload
+export const fetchWritableStream = async (options, streamOptions = {}) => {
   const body = createReadableStream()
   // Duplex: half - For browser compatibility - https://developer.chrome.com/articles/fetch-streaming-requests/#half-duplex
-  const value = await fetch(options.url, {
+  options = mergeOptions(options)
+  const value = await fetchRateLimit({
     ...options,
     body,
     duplex: 'half',
@@ -43,87 +54,121 @@ export const fetchRequestStream = async (options, streamOptions = {}) => {
   }
   const stream = createWritableStream(write, streamOptions)
   stream.result = () => ({ key: 'output', value })
+  return stream
 }
+export const fetchRequestStream = fetchWritableStream
 
-export const fetchResponseStream = (fetchOptions, streamOptions = {}) => {
-  if (!Array.isArray(fetchOptions)) fetchOptions = [fetchOptions]
+export const fetchReadableStream = (fetchOptions, streamOptions) => {
   return createReadableStream(
     fetchGenerator(fetchOptions, streamOptions),
     streamOptions
   )
 }
-async function * fetchGenerator (fetchOptionsArray, streamOptions) {
-  const requests = []
-  for (let options of fetchOptionsArray) {
-    options.headers = { ...defaults.headers, ...options.headers }
-    options = { ...defaults, ...options }
-    if (options.qs) {
+export const fetchResponseStream = fetchReadableStream
+
+async function * fetchGenerator (fetchOptions, streamOptions) {
+  let rateLimitTimestamp = 0
+  if (!Array.isArray(fetchOptions)) fetchOptions = [fetchOptions]
+  for (let options of fetchOptions) {
+    options = mergeOptions(options)
+    options.rateLimitTimestamp ??= rateLimitTimestamp
+
+    if (options.offsetParam) {
+      options.qs[options.offsetParam] ??= 0
+    }
+
+    if (Object.keys(options.qs).length) {
       options.url += ('?' + new URLSearchParams(options.qs)).replaceAll(
         '+',
         '%20'
       )
     }
-    if (
-      typeof options.dataPath !== 'undefined' &&
-      /application\/([a-z.]+\+|)json/.test(options.headers.Accept)
-    ) {
-      requests.push(fetchJson(options, streamOptions))
-    } else {
-      requests.push(fetchBody(options, streamOptions))
-    }
-  }
-  for (const request of requests) {
-    const response = await request
+    const response = await fetchUnknown(options, streamOptions)
     for await (const chunk of response) {
       yield chunk
     }
+    // ensure there is rate limiting between req with different options
+    rateLimitTimestamp = options.rateLimitTimestamp
   }
 }
 
-const fetchBody = async (options, streamOptions) => {
+const jsonContentTypeRegExp = /^application\/(.+\+)?json($|;.+)/
+const fetchUnknown = async (options, streamOptions) => {
   const response = await fetchRateLimit(options, streamOptions)
+  if (jsonContentTypeRegExp.test(response.headers.get('Content-Type'))) {
+    options.prefetchResponse = response // hack
+    return fetchJson(options, streamOptions)
+  }
   return response.body
 }
 
 const nextLinkRegExp = /<(.*?)>; rel="next"/
+
 async function * fetchJson (options, streamOptions) {
   const { dataPath, nextPath } = options
+  let { url } = options
 
   while (options.url) {
-    const response = await fetchRateLimit(options, streamOptions)
-    const body = await response.json() // Blocking - stream parse?
-    options.url = nextPath && pickPath(body, nextPath)
-    options.url ??= parseLink(response.headers)
+    const response =
+      options.prefetchResponse ??
+      (await fetchRateLimit(options, streamOptions))
+    delete options.prefetchResponse
+    const body = await response.json()
+    url = parseLinkFromHeader(response.headers)
+    url ??= parseNextPath(body, nextPath)
+    url ??= paginateUsingQuery(options)
+    options.url = url
     const data = pickPath(body, dataPath)
     if (Array.isArray(data)) {
       for (const item of data) {
         yield item
       }
+
+      if (options.offsetParam && !data.length) break
     } else {
       yield data
     }
   }
 }
 
-const parseLink = (headers) => {
-  const link = headers.get('Link')
-  if (link) {
-    return link.match(nextLinkRegExp)?.[1]
-  }
+const paginateUsingQuery = (options) => {
+  if (!options.offsetParam || !options.offsetAmount) return undefined
+
+  const url = new URL(options.url)
+  let offset = url.searchParams.get(options.offsetParam)
+  if (!offset) return null
+
+  offset = Number.parseInt(offset) + options.offsetAmount
+  url.searchParams.delete(options.offsetParam)
+  url.searchParams.set(options.offsetParam, offset)
+  return url.toString()
 }
 
-const fetchRateLimit = async (options, { signal }) => {
-  options.rateLimitTimestamp ??= 0
+const parseNextPath = (body, nextPath) => {
+  return nextPath ? pickPath(body, nextPath) : undefined
+}
+
+const parseLinkFromHeader = (headers) => {
+  const link = headers.get('Link')
+  return link?.match(nextLinkRegExp)?.[1]
+}
+
+export const fetchRateLimit = async (options, streamOptions = {}) => {
   const now = Date.now()
-  if (now < options.rateLimitTimestamp) {
-    await timeout(options.rateLimitTimestamp - now, { signal })
+  if (now < options.rateLimitTimestamp ?? 0) {
+    await timeout(options.rateLimitTimestamp - now, streamOptions)
   }
-  options.rateLimitTimestamp = now + 1000 * options.rateLimit
-  const response = await fetch(options.url, { ...options, signal })
+  options.rateLimitTimestamp = Date.now() + 1000 * options.rateLimit
+  options = mergeOptions(options) // for when called directly
+
+  const response = await fetch(options.url, {
+    ...options,
+    signal: streamOptions.signal
+  })
   if (!response.ok) {
     // 429 Too Many Requests
     if (response.statusCode === 429) {
-      return fetchRateLimit(options, { signal })
+      return fetchRateLimit(options, streamOptions)
     }
     throw new Error('fetch', {
       cause: { request: options, response }
@@ -132,7 +177,7 @@ const fetchRateLimit = async (options, { signal }) => {
   return response
 }
 
-const pickPath = (obj, path) => {
+const pickPath = (obj, path = '') => {
   if (path === '') return obj
   if (!Array.isArray(path)) path = path.split('.')
   return path
@@ -144,6 +189,7 @@ const pickPath = (obj, path) => {
 
 export default {
   setDefaults: fetchSetDefaults,
-  responseStream: fetchResponseStream
-  // writableStream: fetchWritableStream,
+  readableStream: fetchReadableStream,
+  responseStream: fetchReadableStream
+  // writableStream: fetchRequestStream,
 }

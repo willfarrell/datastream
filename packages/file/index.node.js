@@ -2,21 +2,21 @@ import { extname } from 'node:path'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { makeOptions } from '@datastream/core'
 
-export const fileReadStream = async ({ path, types }, streamOptions) => {
+export const fileReadStream = ({ path, types }, streamOptions) => {
   enforceType(path, types)
   return createReadStream(path, makeOptions(streamOptions))
 }
 
-export const fileWriteStream = async ({ path, types }, streamOptions) => {
+export const fileWriteStream = ({ path, types }, streamOptions) => {
   enforceType(path, types)
-  return createReadStream(path, makeOptions(streamOptions))
+  return createWriteStream(path, makeOptions(streamOptions))
 }
 
 const enforceType = (path, types = []) => {
   const pathExt = extname(path)
-  for(const type of types) {
-    for(const mime in type.accept) {
-      for(const ext of type.accept[mime]){
+  for (const type of types) {
+    for (const mime in type.accept) {
+      for (const ext of type.accept[mime]) {
         if (pathExt === ext) {
           return
         }
@@ -24,7 +24,7 @@ const enforceType = (path, types = []) => {
     }
   }
   if (types.length) {
-    throw new Error('fileReadStream: invalid extension')
+    throw new Error('invalid extension')
   }
 }
 

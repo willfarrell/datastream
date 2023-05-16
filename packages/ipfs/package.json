@@ -1,5 +1,5 @@
 {
-  "name": "@datastream/csv",
+  "name": "@datastream/ipfs",
   "version": "0.0.30",
   "description": "",
   "type": "module",
@@ -32,46 +32,6 @@
         "types": "./index.d.ts",
         "default": "./index.web.mjs"
       }
-    },
-    "./parse": {
-      "node": {
-        "webstream": {
-          "types": "./parse.d.ts",
-          "default": "./parse.web.mjs"
-        },
-        "import": {
-          "types": "./parse.d.ts",
-          "default": "./parse.node.mjs"
-        },
-        "__require": {
-          "types": "./parse.d.ts",
-          "default": "./parse.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./parse.d.ts",
-        "default": "./parse.web.mjs"
-      }
-    },
-    "./format": {
-      "node": {
-        "webstream": {
-          "types": "./format.d.ts",
-          "default": "./format.web.mjs"
-        },
-        "import": {
-          "types": "./format.d.ts",
-          "default": "./format.node.mjs"
-        },
-        "__require": {
-          "types": "./format.d.ts",
-          "default": "./format.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./format.d.ts",
-        "default": "./format.web.mjs"
-      }
     }
   },
   "types": "index.d.ts",
@@ -101,7 +61,7 @@
   "repository": {
     "type": "git",
     "url": "github:willfarrell/datastream",
-    "directory": "packages/csv"
+    "directory": "packages/ipfs"
   },
   "bugs": {
     "url": "https://github.com/willfarrell/datastream/issues"
@@ -109,8 +69,7 @@
   "homepage": "https://datastream.js.org",
   "dependencies": {
     "@datastream/core": "0.0.30",
-    "@datastream/csv": "0.0.30",
-    "csv-rex": "0.5.2"
+    "@datastream/ipfs": "0.0.30"
   },
   "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
 }

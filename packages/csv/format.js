@@ -6,11 +6,9 @@ export const csvFormatStream = (options, streamOptions) => {
   csvOptions.escapeChar ??= csvOptions.quoteChar
   let format
   const transform = (chunk, enqueue) => {
-    if (csvOptions.header === true) {
-      csvOptions.header = Object.keys(chunk)
-    }
-    if (typeof format === 'undefined' && Array.isArray(csvOptions.header)) {
-      enqueue(formatArray(csvOptions.header, csvOptions))
+    csvOptions.columns ??= Object.keys(chunk)
+    if (typeof format === 'undefined' && csvOptions.header === true) {
+      enqueue(formatArray(csvOptions.columns, csvOptions))
     }
     format ??= Array.isArray(chunk) ? formatArray : formatObject
     enqueue(format(chunk, csvOptions))

@@ -3,6 +3,7 @@
 <br/><br/><br/><br/><br/><br/><br/>-->
 <h1>&lt;datastream&gt;</h1>
 <p>Commonly used stream patterns for Web Streams API and NodeJS Stream.</p>
+<p>If you're iterating over an array more than once, it's time to use streams.</p>
 <br />
 <p>
   <a href="https://www.npmjs.com/package/@datastream/core?activeTab=versions">
@@ -33,15 +34,38 @@
 Warning: This library is in Alpha, and will contain breaking changes as modules mature to have consistent usage patterns.
 
 ## Roadmap
-- Documentation
-- More stream modules
-  - charset detection and encoding/decoding 
-  - compression
-  - JSON Schema
-- Possible future stream modules
-  - JSON Stream
-  - JSON
-  - IPFS
-  - encrypt/decrypt
-  - XML
 
+- Documentation
+- Extend Modules
+  - core
+    - merge - connect multiple readable into one stream (see fetch)
+- New Modules
+  - json
+    - parse - https://github.com/jimhigson/oboe.js / https://github.com/dscape/clarinet
+    - parseChunk (json-stream notation) - fastify/secure-json-parse
+    - format
+    - formatChunk (json-stream notation) - fastify/fast-json-stringify
+    - https://github.com/uhop/stream-json
+    - https://github.com/creationix/jsonparse
+    - https://github.com/dominictarr/JSONStream
+    - https://www.npmjs.com/package/json-stream - string chunk -> look for \n -> JSON.parse
+- Maybe Future
+
+  - compression
+
+    - zstd - simple-zstd (NodeStream)
+    - protobuf - protobufjs / pbf - https://buf.build/blog/protobuf-es-the-protocol-buffers-typescript-javascript-runtime-we-all-deserve
+
+  - encryption
+    - encrypt [transform]
+    - decrypt [transform]
+  - ipfs
+    - readable - get
+    - writable - add https://github.com/ipfs/js-ipfs/blob/master/docs/core-api/FILES.md#ipfsadddata-options
+      https://github.com/ipfs/js-datastore-s3/blob/master/examples/full-s3-repo/index.js
+      // https://github.com/ipfs-examples/js-ipfs-examples/blob/master/examples/browser-add-readable-stream/src/index.js
+  - xml
+    - parse - https://github.com/isaacs/sax-js / KeeeX/sax-js
+    - format
+  - type
+    - pg - obj to db types

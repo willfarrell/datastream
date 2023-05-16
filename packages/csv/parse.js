@@ -24,7 +24,7 @@ export const csvParseStream = (options, streamOptions = {}) => {
     chunk = previousChunk() + chunk
     chunkParse(chunk, { enqueue: enqueueRow })
   }
-  streamOptions.flush = (enqueue) => {
+  const flush = (enqueue) => {
     const enqueueRow = (row) => {
       if (row.err) {
         handlerError(row)
@@ -36,7 +36,7 @@ export const csvParseStream = (options, streamOptions = {}) => {
     chunkParse(chunk, { enqueue: enqueueRow }, true)
   }
   streamOptions.decodeStrings = false
-  const stream = createTransformStream(transform, streamOptions)
+  const stream = createTransformStream(transform, flush, streamOptions)
   stream.result = () => ({ key: options?.resultKey ?? 'csvErrors', value })
   return stream
 }

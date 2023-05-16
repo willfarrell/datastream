@@ -1,6 +1,6 @@
 {
   "name": "@datastream/core",
-  "version": "0.0.5",
+  "version": "0.0.30",
   "description": "",
   "type": "module",
   "engines": {
@@ -23,7 +23,7 @@
           "types": "./index.d.ts",
           "default": "./index.node.mjs"
         },
-        "require": {
+        "__require": {
           "types": "./index.d.ts",
           "default": "./index.node.cjs"
         }
@@ -43,7 +43,7 @@
   ],
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "ava",
+    "test:unit": "node --test",
     "test:benchmark": "node __benchmarks__/index.js"
   },
   "license": "MIT",
@@ -68,8 +68,8 @@
     "cloneable-readable": "3.0.0"
   },
   "devDependencies": {
-    "@datastream/core": "0.0.5",
-    "@datastream/object": "0.0.5"
+    "@datastream/core": "0.0.30",
+    "@datastream/object": "0.0.30"
   },
-  "gitHead": "c1774a4040720e50335008861b279b738e2e3ff1"
+  "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
 }

@@ -30,21 +30,26 @@
 </details>
 
 <a id="awsDynamoDBQueryStream"></a>
+
 ## awsDynamoDBQueryStream (Readable)
 
 <a id="awsDynamoDBScanStream"></a>
+
 ## awsDynamoDBScanStream (Readable)
 
 <a id="awsDynamoDBGetItemStream"></a>
+
 ## awsDynamoDBGetItemStream (Readable)
 
 <a id="awsDynamoDBPutItemStream"></a>
-## awsDynamoDBPuItemStream (Writable)
 
+## awsDynamoDBPuItemStream (Writable)
 <a id="awsDynamoDBDeleteItemStream"></a>
+
 ## awsDynamoDBDeleteItemStream (Writable)
 
 <a id="awsS3GetObjectStream"></a>
+
 ## awsS3GetObjectStream (Readable)
 
 ### Support
@@ -60,13 +65,14 @@
 ### Help us make it better
 
 <a id="awsS3PutObjectStream"></a>
+
 ## awsS3PutObjectStream (Writable)
 
 ### Support
 
 | node:stream | node:stream/web | Chrome | Edge | Firefox | Safari | Comments |
 | ----------- | --------------- | ------ | ---- | ------- | ------ | -------- |
-| 16.x        | 18.0.0          | N/A    | N/A  | N/A     | N/A    |          |
+| 16.x        | NO              | N/A    | N/A  | N/A     | N/A    |          |
 
 ### Options
 
@@ -74,20 +80,18 @@
 
 ### Help us make it better
 
-
 <a id="awsSNSPublishMessageStream"></a>
+
 ## awsSNSPublishMessageStream (Writable)
 
-
-
 <a id="awsSQSReceiveMessageStream"></a>
+
 ## awsSQSReceiveMessageStream (Readable)
 
 <a id="awsSQSDeleteMessageStream"></a>
+
 ## awsSQSDeleteMessageStream (Writable)
 
 <a id="awsSQSSendMessageStream"></a>
+
 ## awsSQSSendMessageStream (Writable)
-
-
-

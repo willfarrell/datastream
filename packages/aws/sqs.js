@@ -1,21 +1,12 @@
 import {
   SQSClient,
+  ReceiveMessageCommand,
   DeleteMessageBatchCommand,
   SendMessageBatchCommand
 } from '@aws-sdk/client-sqs'
 import { createWritableStream } from '@datastream/core'
 
-import { Agent } from 'node:https'
-import { NodeHttpHandler } from '@aws-sdk/node-http-handler'
-import AWSXRay from 'aws-xray-sdk-core'
-
 const awsClientDefaults = {
-  requestHandler: new NodeHttpHandler({
-    httpsAgent: new Agent({
-      keepAlive: true,
-      secureProtocol: 'TLSv1_2_method'
-    })
-  }),
   // https://aws.amazon.com/compliance/fips/
   useFipsEndpoint: [
     'us-east-1',
@@ -25,15 +16,28 @@ const awsClientDefaults = {
   ].includes(process.env.AWS_REGION)
 }
 
-let client = AWSXRay.captureAWSv3Client(new SQSClient(awsClientDefaults))
+let client = new SQSClient(awsClientDefaults)
 export const awsSQSSetClient = (sqsClient) => {
   client = sqsClient
 }
 
-export const awsSQSReceiveMessageStream = (options, streamOptions) => {
-  // TODO receiveMessage(params = {}, callback) ⇒ AWS.Request
-  // TODO use `pull`
-  // await client.send(new ReceiveMessageCommand)
+export const awsSQSReceiveMessageStream = async (
+  options,
+  streamOptions = {}
+) => {
+  // TODO needs option to keep polling or not
+  async function * command (options) {
+    let expectMore = true
+    while (expectMore) {
+      const response = await client.send(new ReceiveMessageCommand(options))
+      console.log(response)
+      for (const item of response.Messages) {
+        yield item
+      }
+      expectMore = response.Messages.length
+    }
+  }
+  return command(options)
 }
 
 export const awsSQSDeleteMessageStream = (options, streamOptions) => {
@@ -49,8 +53,8 @@ export const awsSQSDeleteMessageStream = (options, streamOptions) => {
     }
     batch.push(chunk)
   }
-  streamOptions.final = send
-  return createWritableStream(write, streamOptions)
+  const final = send
+  return createWritableStream(write, final, streamOptions)
 }
 
 export const awsSQSSendMessageStream = (options, streamOptions) => {
@@ -66,8 +70,8 @@ export const awsSQSSendMessageStream = (options, streamOptions) => {
     }
     batch.push(chunk)
   }
-  streamOptions.final = send
-  return createWritableStream(write, streamOptions)
+  const final = send
+  return createWritableStream(write, final, streamOptions)
 }
 
 export default {

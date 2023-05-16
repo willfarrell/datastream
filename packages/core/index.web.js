@@ -1,4 +1,5 @@
 /* global ReadableStream, TransformStream, WritableStream */
+
 export const pipeline = async (streams, streamOptions) => {
   // Ensure stream ends with only writable
   const lastStream = streams[streams.length - 1]
@@ -13,6 +14,9 @@ export const pipeline = async (streams, streamOptions) => {
 export const pipejoin = (streams) => {
   const lastIndex = streams.length - 1
   return streams.reduce((pipeline, stream, idx) => {
+    if (typeof stream.then === 'function') {
+      throw new Error(`Promise instead of stream passed in at index ${idx}`)
+    }
     if (idx === lastIndex && stream.getWriter) {
       return pipeline.pipeTo(stream)
     }
@@ -25,7 +29,9 @@ export const result = async (streams) => {
   for (const stream of streams) {
     if (typeof stream.result === 'function') {
       const { key, value } = await stream.result()
-      output[key] = value
+      if (key) {
+        output[key] = value
+      }
     }
   }
   return output
@@ -97,7 +103,7 @@ export const makeOptions = ({
   }
 }
 
-export const createReadableStream = (input = '', streamOptions) => {
+export const createReadableStream = (input, streamOptions) => {
   const queued = []
   const stream = new ReadableStream(
     {
@@ -115,46 +121,56 @@ export const createReadableStream = (input = '', streamOptions) => {
             controller.enqueue(chunk)
             position += chunkSize
           }
+          controller.close()
         } else if (Array.isArray(input)) {
           // TODO update to for(;;) loop, faster
           for (const chunk of input) {
             controller.enqueue(chunk)
           }
-        } else {
+          controller.close()
+        } else if (['function', 'object'].includes(typeof input)) {
           for await (const chunk of input) {
             controller.enqueue(chunk)
           }
+          controller.close()
         }
-
-        controller.close()
       },
-      async pull (controller) {
+      pull (controller) {
         while (queued.length) {
           const chunk = queued.shift()
-          controller.enqueue(chunk)
+          if (chunk === null) {
+            controller.close()
+          } else {
+            controller.enqueue(chunk)
+          }
         }
       }
     },
     makeOptions(streamOptions)
   )
-  stream.push = queued.push
+  stream.push = (chunk) => queued.push(chunk)
   return stream
 }
 
 export const createPassThroughStream = (
   passThrough = (chunk) => {},
+  flush,
   streamOptions
 ) => {
+  if (typeof flush !== 'function') {
+    streamOptions = flush
+    flush = undefined
+  }
   return new TransformStream(
     {
       start () {},
       async transform (chunk, controller) {
-        await passThrough(Object.freeze(chunk))
+        await passThrough(chunk)
         controller.enqueue(chunk)
       },
       async flush (controller) {
-        if (typeof streamOptions?.flush === 'function') {
-          await streamOptions.flush()
+        if (flush) {
+          await flush()
         }
         controller.terminate()
       }
@@ -165,8 +181,13 @@ export const createPassThroughStream = (
 
 export const createTransformStream = (
   transform = (chunk, enqueue) => enqueue(chunk),
+  flush,
   streamOptions
 ) => {
+  if (typeof flush !== 'function') {
+    streamOptions = flush
+    flush = undefined
+  }
   return new TransformStream(
     {
       start () {},
@@ -177,11 +198,11 @@ export const createTransformStream = (
         await transform(chunk, enqueue)
       },
       async flush (controller) {
-        if (typeof streamOptions?.flush === 'function') {
+        if (flush) {
           const enqueue = (chunk, encoding) => {
             controller.enqueue(chunk, encoding)
           }
-          await streamOptions.flush(enqueue)
+          await flush(enqueue)
         }
         controller.terminate()
       }
@@ -190,15 +211,23 @@ export const createTransformStream = (
   )
 }
 
-export const createWritableStream = (write = () => {}, streamOptions) => {
+export const createWritableStream = (
+  write = () => {},
+  close,
+  streamOptions
+) => {
+  if (typeof close !== 'function') {
+    streamOptions = close
+    close = undefined
+  }
   return new WritableStream(
     {
       async write (chunk) {
         await write(chunk)
       },
-      async final () {
-        if (typeof streamOptions?.final === 'function') {
-          await streamOptions.final()
+      async close () {
+        if (close) {
+          await close()
         }
       }
     },
@@ -206,22 +235,37 @@ export const createWritableStream = (write = () => {}, streamOptions) => {
   )
 }
 
-export const createBranchStream = ({streams, resultKey} = {}, streamOptions) => {
-  const stream = createPassThroughStream(undefined, streamOptions)
-  streams.unshift(stream.tee())
+export const createBranchStream = (
+  { streams, resultKey } = {},
+  streamOptions
+) => {
+  // TODO refactor, not good enough
+  // https://streams.spec.whatwg.org/#rs-model
+  const branchStream = createReadableStream(undefined, streamOptions)
+  const passThrough = (chunk) => {
+    console.log('push')
+    branchStream.push(chunk)
+  }
+  const flush = () => {
+    console.log('flush')
+    branchStream.push(null)
+  }
+  const stream = createPassThroughStream(passThrough, flush, streamOptions)
+
+  streams.unshift(branchStream)
   const value = pipeline(streams, streamOptions)
   stream.result = async () => {
     return {
       key: resultKey ?? 'branch',
-      value: await value
+      value // await causes: Promise resolution is still pending but the event loop has already resolved
     }
   }
   return stream
 }
 
-export const tee = (sourceStream) => {
-  return [sourceStream, sourceStream.tee()]
-}
+/* export const tee = (sourceStream) => {
+  return sourceStream.tee()
+} */
 
 // Polyfill for `import { setTimeout } from 'node:timers/promises'`
 export const timeout = (ms, { signal } = {}) => {

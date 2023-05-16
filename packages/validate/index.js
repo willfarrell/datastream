@@ -1,47 +1,39 @@
 import { createTransformStream } from '@datastream/core'
-import _ajv from 'ajv/dist/2020.js'
-import formats from 'ajv-formats'
-import formatsDraft2019 from 'ajv-formats-draft2019'
-// import ajvErrors from 'ajv-errors'
-import uriResolver from 'fast-uri'
-
-const Ajv = _ajv.default // esm workaround for linting
+import { compile } from 'ajv-cmd'
 
 const ajvDefaults = {
   strict: true,
   coerceTypes: true,
   allErrors: true,
   useDefaults: 'empty',
-  uriResolver
+  messages: true // needs to be true to allow multi-locale errorMessage to work
+}
+
+// This is pulled out due to it's performance cost (50-100ms on cold start)
+// Precompile your schema during a build step is recommended.
+export const transpileSchema = (schema, ajvOptions) => {
+  const options = { ...ajvDefaults, ...ajvOptions }
+  return compile(schema, options)
 }
 
 export const validateStream = (
-  { schema, idxStart, resultKey, ...ajvOptions },
+  { schema, idxStart, onErrorEnqueue, allowCoerceTypes, resultKey },
   streamOptions
 ) => {
   idxStart ??= 0
-  // language ??= 'en'
 
   if (typeof schema !== 'function') {
-    const ajv = new Ajv({ ...ajvDefaults, ...ajvOptions })
-    formats(ajv)
-    formatsDraft2019(ajv)
-    // ajvErrors(ajv)
-    schema = ajv.compile(schema)
+    schema = transpileSchema(schema)
   }
 
   const value = {} // aka errors
   let idx = idxStart - 1
   const transform = (chunk, enqueue) => {
     idx += 1
-
+    const data = structuredClone(chunk)
     const chunkValid = schema(chunk)
     // console.log({ chunkValid })
     if (!chunkValid) {
-      // if (availableLanguages) {
-      //   availableLanguages[language](chunkSchema.errors)
-      // }
-
       for (const error of schema.errors) {
         const { id, keys, message } = processError(error)
 
@@ -51,7 +43,10 @@ export const validateStream = (
         value[id].idx.push(idx)
       }
     }
-    enqueue(chunk) // TODO option to not pass chunk on?
+    if (chunkValid || onErrorEnqueue) {
+      chunk = allowCoerceTypes ? chunk : data
+      enqueue(chunk)
+    }
   }
   const stream = createTransformStream(transform, streamOptions)
   stream.result = () => ({ key: resultKey ?? 'validate', value })
