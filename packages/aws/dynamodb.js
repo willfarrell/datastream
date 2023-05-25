@@ -1,9 +1,11 @@
 import { createWritableStream, timeout } from '@datastream/core'
-import { DynamoDBClient,
-  BatchGetCommand,
-  BatchWriteCommand,
+import {
+  DynamoDBClient,
+  BatchGetItemCommand,
+  BatchWriteItemCommand,
   QueryCommand,
-  ScanCommand } from '@aws-sdk/client-dynamodb'
+  ScanCommand
+} from '@aws-sdk/client-dynamodb'
 
 const awsClientDefaults = {
   // https://aws.amazon.com/compliance/fips/
@@ -17,12 +19,8 @@ const awsClientDefaults = {
 }
 
 let client = new DynamoDBClient(awsClientDefaults)
-let dynamodbDocument
 export const awsDynamoDBSetClient = (ddbClient, translateConfig) => {
   client = ddbClient
-  awsDynamoDBDocumentSetClient(
-    DynamoDBDocumentClient.from(client, translateConfig)
-  )
 }
 awsDynamoDBSetClient(client)
 
@@ -67,7 +65,7 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
   async function * command (options) {
     while (true) {
       const response = await client.send(
-        new BatchGetCommand({
+        new BatchGetItemCommand({
           RequestItems: {
             [options.TableName]: { Keys: options.Keys }
           }
@@ -137,7 +135,7 @@ const dynamodbBatchWrite = async (options, batch, streamOptions) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10
   const { UnprocessedItems } = await client.send(
-    new BatchWriteCommand({
+    new BatchWriteItemCommand({
       RequestItems: {
         [options.TableName]: batch
       }

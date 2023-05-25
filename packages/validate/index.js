@@ -32,7 +32,6 @@ export const validateStream = (
     idx += 1
     const data = structuredClone(chunk)
     const chunkValid = schema(chunk)
-    // console.log({ chunkValid })
     if (!chunkValid) {
       for (const error of schema.errors) {
         const { id, keys, message } = processError(error)

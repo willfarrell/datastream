@@ -3,12 +3,12 @@ import { deepEqual, equal } from 'node:assert'
 // import sinon from 'sinon'
 import { mockClient } from 'aws-sdk-client-mock'
 import {
-  BatchGetCommand,
+  BatchGetItemCommand,
   QueryCommand,
   ScanCommand,
-  BatchWriteCommand,
-  DynamoDBDocumentClient
-} from '@aws-sdk/lib-dynamodb'
+  BatchWriteItemCommand,
+  DynamoDBClient
+} from '@aws-sdk/client-dynamodb'
 
 import {
   pipeline,
@@ -17,7 +17,7 @@ import {
 } from '@datastream/core'
 
 import {
-  awsDynamoDBDocumentSetClient,
+  awsDynamoDBSetClient,
   awsDynamoDBQueryStream,
   awsDynamoDBScanStream,
   awsDynamoDBGetItemStream,
@@ -34,10 +34,10 @@ for (const execArgv of process.execArgv) {
 }
 
 test(`${variant}: awsDynamoDBGetStream should return items`, async (t) => {
-  const client = mockClient(DynamoDBDocumentClient)
-  awsDynamoDBDocumentSetClient(client)
+  const client = mockClient(DynamoDBClient)
+  awsDynamoDBSetClient(client)
   client
-    .on(BatchGetCommand, {
+    .on(BatchGetItemCommand, {
       RequestItems: {
         TableName: {
           Keys: [{ key: 'a' }, { key: 'b' }, { key: 'c' }]
@@ -57,7 +57,7 @@ test(`${variant}: awsDynamoDBGetStream should return items`, async (t) => {
         }
       }
     })
-    .on(BatchGetCommand, {
+    .on(BatchGetItemCommand, {
       RequestItems: {
         TableName: {
           Keys: [{ key: 'c' }]
@@ -86,10 +86,10 @@ test(`${variant}: awsDynamoDBGetStream should return items`, async (t) => {
 })
 
 test(`${variant}: awsDynamoDBGetStream should throw error`, async (t) => {
-  const client = mockClient(DynamoDBDocumentClient)
-  awsDynamoDBDocumentSetClient(client)
+  const client = mockClient(DynamoDBClient)
+  awsDynamoDBSetClient(client)
   client
-    .on(BatchGetCommand, {
+    .on(BatchGetItemCommand, {
       RequestItems: {
         TableName: {
           Keys: [{ key: 'a' }, { key: 'b' }, { key: 'c' }]
@@ -109,7 +109,7 @@ test(`${variant}: awsDynamoDBGetStream should throw error`, async (t) => {
         }
       }
     })
-    .on(BatchGetCommand, {
+    .on(BatchGetItemCommand, {
       RequestItems: {
         TableName: {
           Keys: [{ key: 'c' }]
@@ -141,8 +141,8 @@ test(`${variant}: awsDynamoDBGetStream should throw error`, async (t) => {
 })
 
 test(`${variant}: awsDynamoDBQueryStream should return items`, async (t) => {
-  const client = mockClient(DynamoDBDocumentClient)
-  awsDynamoDBDocumentSetClient(client)
+  const client = mockClient(DynamoDBClient)
+  awsDynamoDBSetClient(client)
   client
     .on(QueryCommand, {
       TableName: 'TableName'
@@ -179,8 +179,8 @@ test(`${variant}: awsDynamoDBQueryStream should return items`, async (t) => {
 })
 
 test(`${variant}: awsDynamoDBScanStream should return items`, async (t) => {
-  const client = mockClient(DynamoDBDocumentClient)
-  awsDynamoDBDocumentSetClient(client)
+  const client = mockClient(DynamoDBClient)
+  awsDynamoDBSetClient(client)
   client
     .on(ScanCommand, {
       TableName: 'TableName'
@@ -217,10 +217,10 @@ test(`${variant}: awsDynamoDBScanStream should return items`, async (t) => {
 })
 
 test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
-  const client = mockClient(DynamoDBDocumentClient)
-  awsDynamoDBDocumentSetClient(client)
+  const client = mockClient(DynamoDBClient)
+  awsDynamoDBSetClient(client)
   client
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: 'abcdefghijklmnopqrstuvwxy'.split('').map((key, value) => ({
           PutRequest: {
@@ -247,7 +247,7 @@ test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
       }
     })
     // y failed, retry
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: [
           {
@@ -263,7 +263,7 @@ test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
     })
     .resolves({ UnprocessedItems: {} })
     // final
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: [
           {
@@ -295,10 +295,10 @@ test(`${variant}: awsDynamoDBPutItemStream should store items`, async (t) => {
 })
 
 test(`${variant}: awsDynamoDBPutItemStream should throw error`, async (t) => {
-  const client = mockClient(DynamoDBDocumentClient)
-  awsDynamoDBDocumentSetClient(client)
+  const client = mockClient(DynamoDBClient)
+  awsDynamoDBSetClient(client)
   client
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: [
           {
@@ -326,7 +326,7 @@ test(`${variant}: awsDynamoDBPutItemStream should throw error`, async (t) => {
         ]
       }
     })
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: [
           {
@@ -372,10 +372,10 @@ test(`${variant}: awsDynamoDBPutItemStream should throw error`, async (t) => {
 })
 
 test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (t) => {
-  const client = mockClient(DynamoDBDocumentClient)
-  awsDynamoDBDocumentSetClient(client)
+  const client = mockClient(DynamoDBClient)
+  awsDynamoDBSetClient(client)
   client
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: 'abcdefghijklmnopqrstuvwxy'.split('').map((key) => ({
           DeleteRequest: {
@@ -397,7 +397,7 @@ test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (t) => 
         ]
       }
     })
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: [
           {
@@ -412,7 +412,7 @@ test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (t) => 
     })
     .resolves({ UnprocessedItems: {} })
     // final
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: [
           {
@@ -439,10 +439,10 @@ test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (t) => 
 })
 
 /* test(`${variant}: awsDynamoDBDeleteItemStream should throw error`, async (t) => {
-  const client = mockClient(DynamoDBDocumentClient)
-  awsDynamoDBDocumentSetClient(client)
+  const client = mockClient(DynamoDBClient)
+  awsDynamoDBSetClient(client)
   client
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: [
           {
@@ -464,7 +464,7 @@ test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (t) => 
         ]
       }
     })
-    .on(BatchWriteCommand, {
+    .on(BatchWriteItemCommand, {
       RequestItems: {
         TableName: [
           {

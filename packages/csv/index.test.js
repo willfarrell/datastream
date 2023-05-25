@@ -95,12 +95,12 @@ test(`${variant}: csvFormatStream should format csv from object[] with columns`,
       { a: '1', b: '2', c: '3', d: '4' },
       { a: '1', b: '2', c: '3', d: '4' }
     ]),
-    csvFormatStream({ header: false, columns: ['d', 'c', 'b', 'a'] })
+    csvFormatStream({ header: ['d', 'c', 'b', 'a'] })
   ]
   const stream = pipejoin(streams)
   const output = await streamToString(stream)
 
-  deepEqual(output, '4,3,2,1\r\n4,3,2,1\r\n')
+  deepEqual(output, 'd,c,b,a\r\n4,3,2,1\r\n4,3,2,1\r\n')
 })
 
 test(`${variant}: csvFormatStream should format csv from string[]`, async (t) => {
@@ -109,7 +109,7 @@ test(`${variant}: csvFormatStream should format csv from string[]`, async (t) =>
       ['1', '2', '3', '4'],
       ['1', '2', '3', '4']
     ]),
-    csvFormatStream({ columns: ['a', 'b', 'c', 'd'] })
+    csvFormatStream({ header: ['a', 'b', 'c', 'd'] })
   ]
   const stream = pipejoin(streams)
   const output = await streamToString(stream)

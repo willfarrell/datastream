@@ -4,10 +4,7 @@ import { defaultOptions, formatArray, formatObject } from 'csv-rex/format'
 export const csvFormatStream = (options, streamOptions) => {
   const csvOptions = { ...defaultOptions, ...options }
   csvOptions.escapeChar ??= csvOptions.quoteChar
-  let columns, format
-  if (Array.isArray(csvOptions.header)) {
-    columns = csvOptions.header
-  }
+  let format
   const transform = (chunk, enqueue) => {
     if (typeof format === 'undefined' && csvOptions.header !== false) {
       if (csvOptions.header === true && !Array.isArray(chunk)) {
