@@ -1,13 +1,9 @@
 import { createWritableStream, timeout } from '@datastream/core'
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-
-import {
+import { DynamoDBClient,
   BatchGetCommand,
   BatchWriteCommand,
   QueryCommand,
-  ScanCommand,
-  DynamoDBDocumentClient
-} from '@aws-sdk/lib-dynamodb'
+  ScanCommand } from '@aws-sdk/client-dynamodb'
 
 const awsClientDefaults = {
   // https://aws.amazon.com/compliance/fips/
@@ -28,12 +24,7 @@ export const awsDynamoDBSetClient = (ddbClient, translateConfig) => {
     DynamoDBDocumentClient.from(client, translateConfig)
   )
 }
-export const awsDynamoDBDocumentSetClient = (ddbdocClient) => {
-  dynamodbDocument = ddbdocClient
-}
 awsDynamoDBSetClient(client)
-
-// Docs: https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/DynamoDB/DocumentClient.html
 
 // options = {TableName, ...}
 
@@ -41,7 +32,7 @@ export const awsDynamoDBQueryStream = async (options, streamOptions) => {
   async function * command (options) {
     let expectMore = true
     while (expectMore) {
-      const response = await dynamodbDocument.send(new QueryCommand(options))
+      const response = await client.send(new QueryCommand(options))
       for (const item of response.Items) {
         yield item
       }
@@ -56,7 +47,7 @@ export const awsDynamoDBScanStream = async (options, streamOptions) => {
   async function * command (options) {
     let expectMore = true
     while (expectMore) {
-      const response = await dynamodbDocument.send(new ScanCommand(options))
+      const response = await client.send(new ScanCommand(options))
       for (const item of response.Items) {
         yield item
       }
@@ -75,7 +66,7 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions) => {
   options.retryMaxCount ??= 10
   async function * command (options) {
     while (true) {
-      const response = await dynamodbDocument.send(
+      const response = await client.send(
         new BatchGetCommand({
           RequestItems: {
             [options.TableName]: { Keys: options.Keys }
@@ -145,7 +136,7 @@ export const awsDynamoDBDeleteItemStream = (options, streamOptions) => {
 const dynamodbBatchWrite = async (options, batch, streamOptions) => {
   options.retryCount ??= 0
   options.retryMaxCount ??= 10
-  const { UnprocessedItems } = await dynamodbDocument.send(
+  const { UnprocessedItems } = await client.send(
     new BatchWriteCommand({
       RequestItems: {
         [options.TableName]: batch

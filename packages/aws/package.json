@@ -124,6 +124,12 @@
   },
   "license": "MIT",
   "keywords": [
+    "AWS",
+    "DynamoDB",
+    "Lambda",
+    "S3",
+    "SNS",
+    "SQS",
     "Web Stream API",
     "Node Stream API"
   ],
@@ -152,9 +158,7 @@
     "@aws-sdk/client-sns": "^3.0.0",
     "@aws-sdk/client-sqs": "^3.0.0",
     "@aws-sdk/client-ssm": "^3.0.0",
-    "@aws-sdk/lib-dynamodb": "^3.0.0",
     "@aws-sdk/lib-storage": "^3.0.0",
-    "@datastream/charset": "0.0.30",
     "aws-sdk-client-mock": "^2.0.0"
   }
 }
