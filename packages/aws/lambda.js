@@ -10,8 +10,8 @@ const awsClientDefaults = {
     'us-east-1',
     'us-east-2',
     'us-west-1',
-    'us-west-2',
-    'ca-central-1'
+    'us-west-2'
+    // 'ca-central-1'
   ].includes(process.env.AWS_REGION)
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@datastream/aws",
-  "version": "0.0.30",
+  "version": "0.0.32",
   "description": "",
   "type": "module",
   "engines": {
@@ -147,10 +147,10 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/aws": "0.0.30",
-    "@datastream/core": "0.0.30"
+    "@datastream/aws": "0.0.32",
+    "@datastream/core": "0.0.32"
   },
-  "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4",
+  "gitHead": "69f6650ffe7b31dba8e4b96a3cc5d1e95a1fa971",
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/client-lambda": "^3.0.0",
