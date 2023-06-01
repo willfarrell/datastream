@@ -1,6 +1,6 @@
 {
   "name": "@datastream/object",
-  "version": "0.0.33",
+  "version": "0.0.34",
   "description": "",
   "type": "module",
   "engines": {
@@ -65,10 +65,10 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/core": "0.0.33"
+    "@datastream/core": "0.0.34"
   },
   "devDependencies": {
-    "@datastream/object": "0.0.33"
+    "@datastream/object": "0.0.34"
   },
   "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
 }
