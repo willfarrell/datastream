@@ -21,9 +21,6 @@ export const pipeline = async (streams, streamOptions = {}) => {
 
 export const pipejoin = (streams) => {
   return streams.reduce((pipeline, stream, idx) => {
-    // stream.on('error', (e) => {
-    //   console.log('***', e)
-    // })
     if (typeof stream.then === 'function') {
       throw new Error(`Promise instead of stream passed in at index ${idx}`)
     }

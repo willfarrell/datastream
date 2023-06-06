@@ -1,5 +1,5 @@
 import test from 'node:test'
-import { deepEqual } from 'node:assert'
+import { equal, deepEqual } from 'node:assert'
 // import sinon from 'sinon'
 import { mockClient } from 'aws-sdk-client-mock'
 import {
@@ -7,7 +7,7 @@ import {
   InvokeWithResponseStreamCommand
 } from '@aws-sdk/client-lambda'
 
-import { createReadableStream } from '@datastream/core'
+import { pipeline, createReadableStream } from '@datastream/core'
 
 import { awsLambdaSetClient, awsLambdaReadableStream } from '@datastream/aws'
 
@@ -47,4 +47,29 @@ test(`${variant}: awsLambdaReadableStream should return chunk`, async (t) => {
   }
 
   deepEqual(result, '12')
+})
+
+test(`${variant}: awsLambdaReadableStream should throw error`, async (t) => {
+  const client = mockClient(LambdaClient)
+  awsLambdaSetClient(client)
+
+  client.on(InvokeWithResponseStreamCommand, {}).resolves({
+    EventStream: createReadableStream([
+      {
+        InvokeComplete: {
+          ErrorCode: 'ErrorCode',
+          ErrorDetails: 'ErrorDetails'
+        }
+      }
+    ])
+  })
+
+  try {
+    await pipeline(await awsLambdaReadableStream({}))
+
+    equal(true, false)
+  } catch (e) {
+    equal(e.message, 'ErrorCode')
+    equal(e.cause, 'ErrorDetails')
+  }
 })

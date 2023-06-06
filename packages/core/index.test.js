@@ -27,7 +27,7 @@ for (const execArgv of process.execArgv) {
   }
 }
 
-// *** streamTo{Array,String,Buffer} *** //
+// *** streamTo{Array,String,Object} *** //
 const types = {
   boolean: [true, false],
   integer: [-1, 0, 1],
@@ -431,6 +431,24 @@ test(`${variant}: pipeline should throw error when promise passed in`, async (t)
   }
 })
 
+test(`${variant}: pipeline should throw error when a stream thrown an error`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = (chunk, enqueue) => {
+    if (chunk === 'b') throw new Error('Error')
+  }
+  const streams = [
+    createReadableStream(input),
+    createTransformStream(transform)
+  ]
+  try {
+    await pipeline(streams)
+    equal(true, false)
+  } catch (e) {
+    equal(e.message, 'Error')
+  }
+})
+
+// *** pipejoin *** //
 test(`${variant}: pipejoin should throw error when promise passed in`, async (t) => {
   const input = ['a', 'b', 'c']
   const transform = sinon.spy()
@@ -445,6 +463,25 @@ test(`${variant}: pipejoin should throw error when promise passed in`, async (t)
     equal(e.message, 'Promise instead of stream passed in at index 1')
   }
 })
+
+// TODO
+/* test(`${variant}: pipejoin should throw error when a stream thrown an error`, async (t) => {
+  const input = ['a', 'b', 'c']
+  const transform = (chunk, enqueue) => {
+    if (chunk === 'b') throw new Error('Error')
+    console.log(chunk)
+  }
+  const streams = [
+    createReadableStream(input),
+    createTransformStream(transform)
+  ]
+  try {
+    await pipejoin(streams)
+    equal(true, false)
+  } catch (e) {
+    equal(e.message, 'Error')
+  }
+}) */
 
 // *** makeOptions *** //
 if (variant === 'node') {

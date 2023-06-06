@@ -1,6 +1,6 @@
 /* global ReadableStream, TransformStream, WritableStream */
 
-export const pipeline = async (streams, streamOptions) => {
+export const pipeline = async (streams, streamOptions = {}) => {
   // Ensure stream ends with only writable
   const lastStream = streams[streams.length - 1]
   if (isReadable(lastStream)) {

@@ -48,6 +48,20 @@ test(`${variant}: csvParseStream should parse csv to string[]`, async (t) => {
   ])
 })
 
+test(`${variant}: csvParseStream should parse newline when not in first chunk`, async (t) => {
+  const streams = [
+    createReadableStream(['a,b,c', ',d\r\n1,2,', '3,4\r\n1,2,', '3,4']),
+    csvParseStream()
+  ]
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, [
+    { a: '1', b: '2', c: '3', d: '4' },
+    { a: '1', b: '2', c: '3', d: '4' }
+  ])
+})
+
 test(`${variant}: csvParseStream should return csv parsing errors`, async (t) => {
   const streams = [
     createReadableStream('a,b,c,d\r\n1,2,3\r\n1,2,3,4,5\r\n'),
@@ -58,13 +72,13 @@ test(`${variant}: csvParseStream should return csv parsing errors`, async (t) =>
   const { key, value } = streams[1].result()
 
   const csvErrors = {
-    FieldsMismatchTooFew: {
-      id: 'FieldsMismatchTooFew',
+    MissingFields: {
+      id: 'MissingFields',
       idx: [2],
       message: 'Too few fields were parsed, expected 4.'
     },
-    FieldsMismatchTooMany: {
-      id: 'FieldsMismatchTooMany',
+    ExtraFields: {
+      id: 'ExtraFields',
       idx: [3],
       message: 'Too many fields were parsed, expected 4.'
     }
