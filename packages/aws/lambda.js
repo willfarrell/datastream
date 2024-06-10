@@ -35,6 +35,7 @@ async function * awsLambdaGenerator (lambdaOptions, streamOptions) {
       if (chunk?.PayloadChunk?.Payload) {
         yield chunk.PayloadChunk.Payload
       } else if (chunk?.InvokeComplete?.ErrorCode) {
+        // TODO not handled by readable properly
         throw new Error(chunk.InvokeComplete.ErrorCode, {
           cause: chunk.InvokeComplete.ErrorDetails
         })
