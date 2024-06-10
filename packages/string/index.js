@@ -56,7 +56,10 @@ export const stringReplaceStream = (options, streamOptions) => {
     enqueue(newChunk.substring(0, previousChunk.length))
     previousChunk = newChunk.substring(previousChunk.length)
   }
-  return createTransformStream(transform, streamOptions)
+  const flush = (enqueue) => {
+    enqueue(previousChunk)
+  }
+  return createTransformStream(transform, flush, streamOptions)
 }
 
 export default {
