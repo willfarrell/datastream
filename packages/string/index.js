@@ -48,8 +48,20 @@ export const stringSkipConsecutiveDuplicates = (options, streamOptions) => {
   return createTransformStream(transform, streamOptions)
 }
 
+export const stringReplaceStream = (options, streamOptions) => {
+  const { pattern, replacement } = options
+  let previousChunk = ''
+  const transform = (chunk, enqueue) => {
+    const newChunk = (previousChunk + chunk).replace(pattern, replacement)
+    enqueue(newChunk.substring(0, previousChunk.length))
+    previousChunk = newChunk.substring(previousChunk.length)
+  }
+  return createTransformStream(transform, streamOptions)
+}
+
 export default {
   readableStream: stringReadableStream,
   lengthStream: stringLengthStream,
-  skipConsecutiveDuplicates: stringSkipConsecutiveDuplicates
+  skipConsecutiveDuplicates: stringSkipConsecutiveDuplicates,
+  replaceStream: stringReplaceStream
 }
