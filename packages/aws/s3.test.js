@@ -19,8 +19,9 @@ import {
 import {
   awsS3SetClient,
   awsS3GetObjectStream,
-  awsS3PutObjectStream
-} from '@datastream/aws'
+  awsS3PutObjectStream,
+  awsS3ChecksumStream
+} from './s3.js'
 
 let variant = 'unknown'
 for (const execArgv of process.execArgv) {
@@ -103,5 +104,113 @@ if (variant === 'node') {
     deepEqual(result, {})
   })
 } else {
-  console.log("awsS3PutObjectStream doesn't work with webstreams at this time")
+  console.info(
+    "awsS3PutObjectStream doesn't work with webstreams at this time"
+  )
+
+  test(`${variant}: awsS3ChecksumStream should make checksum of 8MB string (0.5 block)`, async (t) => {
+    const input = 'x'.repeat(8 * 1024 * 1024)
+    const options = {
+      ChecksumAlgorithm: 'SHA256'
+    }
+
+    const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
+    const result = await pipeline(stream)
+
+    deepEqual(result, {
+      checksum: 'DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg='
+    })
+  })
+  //   test(`${variant}: awsS3ChecksumStream should make checksum of 16 MB string (1 block)`, async (t) => {
+  //     const input = 'x'.repeat(17179870)
+  //     const options = {
+  //       ChecksumAlgorithm: 'SHA256'
+  //     }
+  //
+  //     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
+  //     const result = await pipeline(stream)
+  //
+  //     deepEqual(result, {
+  //       checksum: 'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o='
+  //     })
+  //   })
+  //   test(`${variant}: awsS3ChecksumStream should make checksum of 24MB string (1.5 blocks)`, async (t) => {
+  //     const input = 'x'.repeat(24 * 1024 * 1024)
+  //     const options = {
+  //       ChecksumAlgorithm: 'SHA256'
+  //     }
+  //
+  //     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
+  //     const result = await pipeline(stream)
+  //
+  //     deepEqual(result, {
+  //       checksum: 'eWQzGj3USSV0NvWbhxtpmbkHgNReYxUzwVBXAU86X/4=-2'
+  //     })
+  //   })
+  //   test(`${variant}: awsS3ChecksumStream should make checksum of file 32 MB string (2 blocks)`, async (t) => {
+  //     const input = 'x'.repeat(17179870 * 2)
+  //     const options = {
+  //       ChecksumAlgorithm: 'SHA256'
+  //     }
+  //
+  //     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
+  //     const result = await pipeline(stream)
+  //
+  //     deepEqual(result, {
+  //       checksum: '65/QvEoh9MiBIPeSgTqKTptI3Vnf+vaJ1om/MYYMpBU=-2'
+  //     })
+  //   })
+
+  test(`${variant}: awsS3ChecksumStream should make checksum of 8MB ArrayBuffer (0.5 block)`, async (t) => {
+    const input = new TextEncoder('utf-8').encode('x'.repeat(8 * 1024 * 1024))
+    const options = {
+      ChecksumAlgorithm: 'SHA256'
+    }
+
+    const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
+    const result = await pipeline(stream)
+
+    deepEqual(result, {
+      checksum: 'DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg='
+    })
+  })
+  //   test(`${variant}: awsS3ChecksumStream should make checksum of 16 MB ArrayBuffer (1 block)`, async (t) => {
+  //     const input = new TextEncoder('utf-8').encode('x'.repeat(17179870))
+  //     const options = {
+  //       ChecksumAlgorithm: 'SHA256'
+  //     }
+  //
+  //     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
+  //     const result = await pipeline(stream)
+  //
+  //     deepEqual(result, {
+  //       checksum: 'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o='
+  //     })
+  //   })
+  //   test(`${variant}: awsS3ChecksumStream should make checksum of 24MB ArrayBuffer (1.5 blocks)`, async (t) => {
+  //     const input = new TextEncoder('utf-8').encode('x'.repeat(24 * 1024 * 1024))
+  //     const options = {
+  //       ChecksumAlgorithm: 'SHA256'
+  //     }
+  //
+  //     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
+  //     const result = await pipeline(stream)
+  //
+  //     deepEqual(result, {
+  //       checksum: 'eWQzGj3USSV0NvWbhxtpmbkHgNReYxUzwVBXAU86X/4=-2'
+  //     })
+  //   })
+  //   test(`${variant}: awsS3ChecksumStream should make checksum of file 32 MB ArrayBuffer (2 blocks)`, async (t) => {
+  //     const input = new TextEncoder('utf-8').encode('x'.repeat(17179870 * 2))
+  //     const options = {
+  //       ChecksumAlgorithm: 'SHA256'
+  //     }
+  //
+  //     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
+  //     const result = await pipeline(stream)
+  //
+  //     deepEqual(result, {
+  //       checksum: '65/QvEoh9MiBIPeSgTqKTptI3Vnf+vaJ1om/MYYMpBU=-2'
+  //     })
+  //   })
 }

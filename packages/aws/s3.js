@@ -1,3 +1,4 @@
+/* global crypto */
 import {
   createReadableStream,
   createPassThroughStream
@@ -38,7 +39,6 @@ export const awsS3PutObjectStream = (options, streamOptions) => {
   const upload = new Upload({
     client: client ?? defaultClient,
     params: {
-      ServerSideEncryption: 'AES256',
       ...params,
       Body: stream
     },
@@ -56,8 +56,88 @@ export const awsS3PutObjectStream = (options, streamOptions) => {
   return stream
 }
 
+// This is designed to be used in the browser on a file that you want to upload via a presigned URL
+export const awsS3ChecksumStream = (
+  { ChecksumAlgorithm, resultKey },
+  streamOptions
+) => {
+  const algorithm = _algorithms[ChecksumAlgorithm]
+  const s3BlockSize = 17179870 // magic number, no 16MB as mentioned in the docs
+  const checksums = []
+  let bytes = new Uint8Array(0)
+  const passThrough = async (chunk) => {
+    if (typeof chunk === 'string') {
+      chunk = new TextEncoder('utf-8').encode(chunk)
+    }
+    while (bytes.byteLength + chunk.byteLength > s3BlockSize) {
+      chunk = _concatBuffers([bytes, chunk])
+      const prefixChunk = chunk.slice(0, s3BlockSize)
+
+      const checksum = await crypto.subtle.digest(algorithm, prefixChunk)
+      checksums.push(checksum)
+      chunk = chunk.slice(prefixChunk.byteLength)
+
+      bytes = new Uint8Array(0)
+    }
+    bytes = _concatBuffers([bytes, chunk])
+  }
+  const flush = async () => {
+    if (bytes.byteLength) {
+      const checksum = await crypto.subtle.digest(algorithm, bytes)
+      checksums.push(checksum)
+    }
+  }
+  const stream = createPassThroughStream(passThrough, flush, streamOptions)
+  let checksum
+  stream.result = async () => {
+    if (!checksum) {
+      if (checksums.length > 1) {
+        checksum = await crypto.subtle.digest(
+          algorithm,
+          _concatBuffers(checksums)
+        )
+        checksum = _arrayBufferToBase64(checksum) + '-' + checksums.length
+      } else {
+        checksum = _arrayBufferToBase64(checksums[0])
+      }
+    }
+    return {
+      key: resultKey ?? 'checksum',
+      value: checksum
+    }
+  }
+  return stream
+}
+
+// TODO support CRC32, CRC32C
+const _algorithms = {
+  SHA1: 'SHA-1',
+  SHA256: 'SHA-256'
+}
+const _concatBuffers = function (buffers) {
+  const tmp = new Uint8Array(
+    buffers.reduce((byteLength, buffer) => byteLength + buffer.byteLength, 0)
+  )
+  let byteLength = 0
+  for (let i = 0, l = buffers.length; i < l; i++) {
+    tmp.set(new Uint8Array(buffers[i]), byteLength)
+    byteLength += buffers[i].byteLength
+  }
+  return tmp.buffer
+}
+const _arrayBufferToBase64 = (buffer) => {
+  let binary = ''
+  const bytes = new Uint8Array(buffer)
+  const len = bytes.byteLength
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
+
 export default {
   setClient: awsS3SetClient,
   getObjectStream: awsS3GetObjectStream,
-  putObjectStream: awsS3PutObjectStream
+  putObjectStream: awsS3PutObjectStream,
+  checksumStream: awsS3ChecksumStream
 }
