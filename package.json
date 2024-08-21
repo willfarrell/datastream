@@ -44,7 +44,7 @@
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/middyjs/middy/issues"
+    "url": "https://github.com/willfarrell/datastream/issues"
   },
   "homepage": "https://datastream.js.org",
   "devDependencies": {
