@@ -62,6 +62,34 @@ export const stringReplaceStream = (options, streamOptions) => {
   return createTransformStream(transform, flush, streamOptions)
 }
 
+export const stringSplitStream = (options, streamOptions) => {
+  const { separator } = options
+  let previousChunk = ''
+  const transform = (chunk, enqueue) => {
+    chunk = previousChunk + chunk
+    let pos = 0
+    while (true) {
+      const idx = chunk.indexOf(separator, pos)
+      if (idx > -1) {
+        enqueue(chunk.substring(pos, idx))
+        pos = idx + separator.length
+      } else {
+        previousChunk = chunk.substring(pos)
+        break
+      }
+    }
+    // chunk = previousChunk + chunk
+    // const chunks = chunk.split(separator)
+    // previousChunk = chunks.pop()
+    // console.log(chunk)
+    // enqueue(chunk)
+  }
+  const flush = (enqueue) => {
+    enqueue(previousChunk)
+  }
+  return createTransformStream(transform, flush, streamOptions)
+}
+
 export default {
   readableStream: stringReadableStream,
   lengthStream: stringLengthStream,

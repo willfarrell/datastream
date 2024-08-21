@@ -11,7 +11,8 @@ import {
 import {
   stringReadableStream,
   stringLengthStream,
-  stringSkipConsecutiveDuplicates
+  stringSkipConsecutiveDuplicates,
+  stringSplitStream
 } from '@datastream/string'
 
 let variant = 'unknown'
@@ -72,4 +73,31 @@ test(`${variant}: stringSkipConsecutiveDuplicates should skip consecutive duplic
   const output = await streamToArray(stream)
 
   deepEqual(output, ['1', '2', '3'])
+})
+
+// *** stringSplitStream *** //
+test(`${variant}: stringSplitStream should split into empty strings`, async (t) => {
+  const input = [',,', ',,']
+  const streams = [
+    createReadableStream(input),
+    stringSplitStream({ separator: ',' })
+  ]
+
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, ['', '', '', '', ''])
+})
+
+test(`${variant}: stringSplitStream should split into empty strings`, async (t) => {
+  const input = ['a,b', 'c,d']
+  const streams = [
+    createReadableStream(input),
+    stringSplitStream({ separator: ',' })
+  ]
+
+  const stream = pipejoin(streams)
+  const output = await streamToArray(stream)
+
+  deepEqual(output, ['a', 'bc', 'd'])
 })
