@@ -95,13 +95,13 @@ export const streamToString = async (stream) => {
   return value
 }
 
-/* export const streamToBuffer = async (stream) => {
-  let value = []
+export const streamToBuffer = async (stream) => {
+  const value = []
   for await (const chunk of stream) {
     value.push(Buffer.from(chunk))
   }
   return Buffer.concat(value)
-} */
+}
 
 export const isReadable = (stream) => {
   return !!stream._readableState

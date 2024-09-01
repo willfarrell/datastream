@@ -69,6 +69,7 @@ test(`${variant}: awsLambdaReadableStream should throw error`, async (t) => {
 
     equal(true, false)
   } catch (e) {
+    console.error(e)
     equal(e.message, 'ErrorCode')
     equal(e.cause, 'ErrorDetails')
   }
