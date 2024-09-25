@@ -155,7 +155,7 @@ const parseLinkFromHeader = (headers) => {
 
 export const fetchRateLimit = async (options, streamOptions = {}) => {
   const now = Date.now()
-  if (now < options.rateLimitTimestamp ?? 0) {
+  if (now < (options.rateLimitTimestamp ?? 0)) {
     await timeout(options.rateLimitTimestamp - now, streamOptions)
   }
   options.rateLimitTimestamp = Date.now() + 1000 * options.rateLimit
