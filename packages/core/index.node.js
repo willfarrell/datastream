@@ -135,18 +135,38 @@ export const makeOptions = ({
 export const createReadableStream = (input = '', streamOptions) => {
   // string doesn't chunk, and is slow
   if (typeof input === 'string') {
-    function * iterator (input) {
-      const size = streamOptions?.chunkSize ?? 16 * 1024
-      let position = 0
-      const length = input.length
-      while (position < length) {
-        yield input.substring(position, position + size)
-        position += size
-      }
-    }
-    return Readable.from(iterator(input), streamOptions)
+    return createReadableStreamFromString(input, streamOptions)
+  } else if (typeof input === 'object' && input.byteLength) {
+    return createReadableStreamFromArrayBuffer(input, streamOptions)
   }
   return Readable.from(input, streamOptions)
+}
+
+export const createReadableStreamFromString = (input, streamOptions) => {
+  function * iterator (input) {
+    const size = streamOptions?.chunkSize ?? 16 * 1024
+    let position = 0
+    const length = input.length
+    while (position < length) {
+      yield input.substring(position, position + size)
+      position += size
+    }
+  }
+  return Readable.from(iterator(input), streamOptions)
+}
+
+export const createReadableStreamFromArrayBuffer = (input, streamOptions) => {
+  function * iterator (input) {
+    const size = streamOptions?.chunkSize ?? 16 * 1024
+    const bytes = new Uint8Array(input)
+    let position = 0
+    const length = bytes.byteLength
+    while (position < length) {
+      yield bytes.subarray(position, (position += size))
+      position += size
+    }
+  }
+  return Readable.from(iterator(input), streamOptions)
 }
 
 export const createPassThroughStream = (

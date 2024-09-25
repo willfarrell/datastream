@@ -1,6 +1,6 @@
 {
   "name": "@datastream/compress",
-  "version": "0.0.38",
+  "version": "0.0.39",
   "description": "",
   "type": "module",
   "engines": {
@@ -165,9 +165,9 @@
   },
   "homepage": "https://datastream.js.org",
   "dependencies": {
-    "@datastream/compress": "0.0.38",
-    "@datastream/core": "0.0.38",
-    "brotli-wasm": "1.3.1"
+    "@datastream/compress": "0.0.39",
+    "@datastream/core": "0.0.39",
+    "brotli-wasm": "3.0.1"
   },
   "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
 }

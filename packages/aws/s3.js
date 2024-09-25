@@ -57,21 +57,23 @@ export const awsS3PutObjectStream = (options, streamOptions) => {
 }
 
 // This is designed to be used in the browser on a file that you want to upload via a presigned URL
-export const awsS3ChecksumStream = (
-  { ChecksumAlgorithm, resultKey },
+// partSize; magic number, no 16MB as mentioned in the docs
+const awsS3ChecksumStream = (
+  { ChecksumAlgorithm, partSize, resultKey } = {},
   streamOptions
 ) => {
+  ChecksumAlgorithm ??= 'SHA256'
+  partSize ??= 17179870
   const algorithm = _algorithms[ChecksumAlgorithm]
-  const s3BlockSize = 17179870 // magic number, no 16MB as mentioned in the docs
-  const checksums = []
+  let checksums = []
   let bytes = new Uint8Array(0)
   const passThrough = async (chunk) => {
     if (typeof chunk === 'string') {
       chunk = new TextEncoder('utf-8').encode(chunk)
     }
-    while (bytes.byteLength + chunk.byteLength > s3BlockSize) {
+    while (bytes.byteLength + chunk.byteLength > partSize) {
       chunk = _concatBuffers([bytes, chunk])
-      const prefixChunk = chunk.slice(0, s3BlockSize)
+      const prefixChunk = chunk.slice(0, partSize)
 
       const checksum = await crypto.subtle.digest(algorithm, prefixChunk)
       checksums.push(checksum)
@@ -100,10 +102,11 @@ export const awsS3ChecksumStream = (
       } else {
         checksum = _arrayBufferToBase64(checksums[0])
       }
+      checksums = checksums.map(_arrayBufferToBase64)
     }
     return {
-      key: resultKey ?? 'checksum',
-      value: checksum
+      key: resultKey ?? 's3',
+      value: { checksum, checksums, partSize }
     }
   }
   return stream
