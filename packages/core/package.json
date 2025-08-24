@@ -1,75 +1,75 @@
 {
-  "name": "@datastream/core",
-  "version": "0.0.40",
-  "description": "",
-  "type": "module",
-  "engines": {
-    "node": ">=18"
-  },
-  "engineStrict": true,
-  "publishConfig": {
-    "access": "public"
-  },
-  "main": "./index.web.mjs",
-  "module": "./index.web.mjs",
-  "exports": {
-    ".": {
-      "node": {
-        "webstream": {
-          "types": "./index.d.ts",
-          "default": "./index.web.mjs"
-        },
-        "import": {
-          "types": "./index.d.ts",
-          "default": "./index.node.mjs"
-        },
-        "__require": {
-          "types": "./index.d.ts",
-          "default": "./index.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./index.d.ts",
-        "default": "./index.web.mjs"
-      }
-    }
-  },
-  "types": "index.d.ts",
-  "files": [
-    "*.mjs",
-    "*.cjs",
-    "*.map",
-    "*.d.ts"
-  ],
-  "scripts": {
-    "test": "npm run test:unit",
-    "test:unit": "node --test",
-    "test:benchmark": "node __benchmarks__/index.js"
-  },
-  "license": "MIT",
-  "keywords": [
-    "Web Stream API",
-    "Node Stream API"
-  ],
-  "author": {
-    "name": "datastream contributors",
-    "url": "https://github.com/willfarrell/datastream/graphs/contributors"
-  },
-  "repository": {
-    "type": "git",
-    "url": "github:willfarrell/datastream",
-    "directory": "packages/core"
-  },
-  "bugs": {
-    "url": "https://github.com/willfarrell/datastream/issues"
-  },
-  "homepage": "https://datastream.js.org",
-  "dependencies": {
-    "cloneable-readable": "3.0.0"
-  },
-  "devDependencies": {
-    "@datastream/core": "0.0.40",
-    "@datastream/object": "0.0.40"
-  },
-  "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
+	"name": "@datastream/core",
+	"version": "0.0.40",
+	"description": "",
+	"type": "module",
+	"engines": {
+		"node": ">=22"
+	},
+	"engineStrict": true,
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.web.mjs",
+	"module": "./index.web.mjs",
+	"exports": {
+		".": {
+			"node": {
+				"import": {
+					"types": "./index.d.ts",
+					"default": "./index.node.mjs"
+				},
+				"__require": {
+					"types": "./index.d.ts",
+					"default": "./index.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./index.d.ts",
+				"default": "./index.web.mjs"
+			}
+		},
+		"./webstream": {
+			"types": "./index.d.ts",
+			"default": "./index.web.mjs"
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"*.mjs",
+		"*.cjs",
+		"*.map",
+		"*.d.ts"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test",
+		"test:benchmark": "node __benchmarks__/index.js"
+	},
+	"license": "MIT",
+	"keywords": [
+		"Web Stream API",
+		"Node Stream API"
+	],
+	"author": {
+		"name": "datastream contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "github:willfarrell/datastream",
+		"directory": "packages/core"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"dependencies": {
+		"cloneable-readable": "3.0.0"
+	},
+	"devDependencies": {
+		"@datastream/core": "0.0.40",
+		"@datastream/object": "0.0.40"
+	},
+	"gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
 }

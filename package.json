@@ -1,64 +1,67 @@
 {
-  "name": "@datastream/monorepo",
-  "version": "0.0.40",
-  "description": "Streams made easy.",
-  "private": true,
-  "type": "module",
-  "engines": {
-    "node": ">=18"
-  },
-  "engineStrict": true,
-  "scripts": {
-    "prepare": "husky install",
-    "commit-msg": "commitlint --config commitlint.config.cjs --edit",
-    "pre-commit": "lint-staged",
-    "install": "lerna bootstrap",
-    "lint": "prettier --write packages/*/*.js && standard --fix packages/*/*.js",
-    "start": "docsify serve docs",
-    "test": "npm run build && c8 node --test --conditions=node packages && c8 node --test --conditions=webstream packages",
-    "build": "bin/esbuild",
-    "release:tag": "git tag $npm_package_version && git push --tags",
-    "lerna:rm": "npm run lerna:rm:node_modules && npm run lerna:rm:lock",
-    "lerna:rm:lock": "lerna exec -- rm -rf package-lock.json",
-    "lerna:rm:node_modules": "lerna exec -- rm -rf node_modules",
-    "lerna:update": "lerna exec --bail --concurrency 5 npm update && npm install",
-    "lerna:outdated": "lerna exec --concurrency 5 npm outdated",
-    "lerna:audit": "lerna exec --concurrency 2 npm audit fix",
-    "lerna:sync": "lerna publish --exact --yes --skip-npm --skip-git --repo-version $npm_package_version",
-    "lerna:publish": "npm run lint && npm run build && lerna publish --exact --yes --skip-git --repo-version $npm_package_version",
-    "lerna:publish:next": "npm run lint && npm run build && lerna publish --exact --yes --skip-git --repo-version $npm_package_version --dist-tag next"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/willfarrell/datastream.git"
-  },
-  "keywords": [
-    "datastream",
-    "Stream",
-    "Web Stream API",
-    "NodeJS Stream"
-  ],
-  "author": {
-    "name": "Middy contributors",
-    "url": "https://github.com/willfarrell/datastream/graphs/contributors"
-  },
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/willfarrell/datastream/issues"
-  },
-  "homepage": "https://datastream.js.org",
-  "devDependencies": {
-    "@commitlint/cli": "^19.0.0",
-    "@commitlint/config-conventional": "^19.0.0",
-    "benchmark": "^2.1.4",
-    "c8": "^10.0.0",
-    "docsify-cli": "^4.4.4",
-    "esbuild": "^0.24.0",
-    "husky": "^8.0.0",
-    "lerna": "^6.0.0",
-    "lint-staged": "^15.0.0",
-    "prettier": "^3.0.0",
-    "sinon": "^19.0.0",
-    "standard": "^17.0.0"
-  }
+	"name": "@datastream/monorepo",
+	"version": "0.0.40",
+	"description": "Streams made easy.",
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": ">=22"
+	},
+	"engineStrict": true,
+	"scripts": {
+		"prepare": "husky",
+		"preinstall": "npm link --workspaces",
+		"git:pre-commit": "npm run git:lint-staged && npm run git:test-staged",
+		"git:commit-msg": "commitlint --config commitlint.config.cjs --edit",
+		"git:lint-staged": "biome check --staged --no-errors-on-unmatched --files-ignore-unknown=true",
+		"git:test-staged": "which node && node -v && node --test",
+		"lint": "npm run build && biome check --write --no-errors-on-unmatched --files-ignore-unknown=true",
+		"start": "docsify serve docs",
+		"test": "npm run build && npm run test:unit:node && npm run test:unit:web",
+		"test:unit:node": "node --test --conditions=node --experimental-test-coverage --test-coverage-lines=94 --test-coverage-branches=92 --test-coverage-functions=93",
+		"test:unit:web": "node --test --conditions=webstream --experimental-test-coverage --test-coverage-lines=89 --test-coverage-branches=92 --test-coverage-functions=87",
+		"build": "bin/esbuild",
+		"release:tag": "git tag $npm_package_version && git push --tags",
+		"lerna:rm": "npm run lerna:rm:node_modules && npm run lerna:rm:lock",
+		"lerna:rm:lock": "lerna exec -- rm -rf package-lock.json",
+		"lerna:rm:node_modules": "lerna exec -- rm -rf node_modules",
+		"lerna:update": "lerna exec --bail --concurrency 5 npm update && npm install",
+		"lerna:outdated": "lerna exec --concurrency 5 npm outdated",
+		"lerna:audit": "lerna exec --concurrency 2 npm audit fix",
+		"lerna:sync": "lerna publish --exact --yes --skip-npm --skip-git --repo-version $npm_package_version",
+		"lerna:publish": "npm run lint && npm run build && lerna publish --exact --yes --skip-git --repo-version $npm_package_version",
+		"lerna:publish:next": "npm run lint && npm run build && lerna publish --exact --yes --skip-git --repo-version $npm_package_version --dist-tag next"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/willfarrell/datastream.git"
+	},
+	"keywords": [
+		"datastream",
+		"Stream",
+		"Web Stream API",
+		"NodeJS Stream"
+	],
+	"author": {
+		"name": "Middy contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"devDependencies": {
+		"@biomejs/biome": "^2.0.0",
+		"@commitlint/cli": "^19.0.0",
+		"@commitlint/config-conventional": "^19.0.0",
+		"fast-check": "^4.0.0",
+		"husky": "^9.0.0",
+		"tinybench": "^5.0.0",
+		"docsify-cli": "^4.4.4",
+		"esbuild": "^0.25.0"
+	},
+	"workspaces": [
+		"packages/*"
+	]
 }

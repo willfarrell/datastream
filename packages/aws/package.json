@@ -1,164 +1,164 @@
 {
-  "name": "@datastream/aws",
-  "version": "0.0.40",
-  "description": "",
-  "type": "module",
-  "engines": {
-    "node": ">=18"
-  },
-  "engineStrict": true,
-  "publishConfig": {
-    "access": "public"
-  },
-  "main": "./index.web.mjs",
-  "module": "./index.web.mjs",
-  "exports": {
-    ".": {
-      "node": {
-        "import": {
-          "types": "./index.d.ts",
-          "default": "./index.node.mjs"
-        },
-        "__require": {
-          "types": "./index.d.ts",
-          "default": "./index.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./index.d.ts",
-        "default": "./index.web.mjs"
-      }
-    },
-    "./dynamodb": {
-      "node": {
-        "import": {
-          "types": "./dynamodb.d.ts",
-          "default": "./dynamodb.node.mjs"
-        },
-        "__require": {
-          "types": "./dynamodb.d.ts",
-          "default": "./dynamodb.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./dynamodb.d.ts",
-        "default": "./dynamodb.web.mjs"
-      }
-    },
-    "./lambda": {
-      "node": {
-        "import": {
-          "types": "./lambda.d.ts",
-          "default": "./lambda.node.mjs"
-        },
-        "__require": {
-          "types": "./lambda.d.ts",
-          "default": "./lambda.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./lambda.d.ts",
-        "default": "./lambda.web.mjs"
-      }
-    },
-    "./s3": {
-      "node": {
-        "import": {
-          "types": "./s3.d.ts",
-          "default": "./s3.node.mjs"
-        },
-        "__require": {
-          "types": "./s3.d.ts",
-          "default": "./s3.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./s3.d.ts",
-        "default": "./s3.web.mjs"
-      }
-    },
-    "./sns": {
-      "node": {
-        "import": {
-          "types": "./sns.d.ts",
-          "default": "./sns.node.mjs"
-        },
-        "__require": {
-          "types": "./sns.d.ts",
-          "default": "./sns.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./sns.d.ts",
-        "default": "./sns.web.mjs"
-      }
-    },
-    "./sqs": {
-      "node": {
-        "import": {
-          "types": "./sqs.d.ts",
-          "default": "./sqs.node.mjs"
-        },
-        "__require": {
-          "types": "./sqs.d.ts",
-          "default": "./sqs.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./sqs.d.ts",
-        "default": "./sqs.web.mjs"
-      }
-    }
-  },
-  "types": "index.d.ts",
-  "files": [
-    "*.mjs",
-    "*.cjs",
-    "*.map",
-    "*.d.ts"
-  ],
-  "scripts": {
-    "test": "npm run test:unit",
-    "test:unit": "node --test",
-    "test:benchmark": "node __benchmarks__/index.js"
-  },
-  "license": "MIT",
-  "keywords": [
-    "AWS",
-    "DynamoDB",
-    "Lambda",
-    "S3",
-    "SNS",
-    "SQS",
-    "Web Stream API",
-    "Node Stream API"
-  ],
-  "author": {
-    "name": "datastream contributors",
-    "url": "https://github.com/willfarrell/datastream/graphs/contributors"
-  },
-  "repository": {
-    "type": "git",
-    "url": "github:willfarrell/datastream",
-    "directory": "packages/aws"
-  },
-  "bugs": {
-    "url": "https://github.com/willfarrell/datastream/issues"
-  },
-  "homepage": "https://datastream.js.org",
-  "dependencies": {
-    "@datastream/aws": "0.0.40",
-    "@datastream/core": "0.0.40"
-  },
-  "gitHead": "69f6650ffe7b31dba8e4b96a3cc5d1e95a1fa971",
-  "devDependencies": {
-    "@aws-sdk/client-dynamodb": "^3.0.0",
-    "@aws-sdk/client-lambda": "^3.0.0",
-    "@aws-sdk/client-s3": "^3.0.0",
-    "@aws-sdk/client-sns": "^3.0.0",
-    "@aws-sdk/client-sqs": "^3.0.0",
-    "@aws-sdk/client-ssm": "^3.0.0",
-    "@aws-sdk/lib-storage": "^3.0.0",
-    "aws-sdk-client-mock": "^4.0.0"
-  }
+	"name": "@datastream/aws",
+	"version": "0.0.40",
+	"description": "",
+	"type": "module",
+	"engines": {
+		"node": ">=22"
+	},
+	"engineStrict": true,
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.web.mjs",
+	"module": "./index.web.mjs",
+	"exports": {
+		".": {
+			"node": {
+				"import": {
+					"types": "./index.d.ts",
+					"default": "./index.node.mjs"
+				},
+				"__require": {
+					"types": "./index.d.ts",
+					"default": "./index.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./index.d.ts",
+				"default": "./index.web.mjs"
+			}
+		},
+		"./dynamodb": {
+			"node": {
+				"import": {
+					"types": "./dynamodb.d.ts",
+					"default": "./dynamodb.node.mjs"
+				},
+				"__require": {
+					"types": "./dynamodb.d.ts",
+					"default": "./dynamodb.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./dynamodb.d.ts",
+				"default": "./dynamodb.web.mjs"
+			}
+		},
+		"./lambda": {
+			"node": {
+				"import": {
+					"types": "./lambda.d.ts",
+					"default": "./lambda.node.mjs"
+				},
+				"__require": {
+					"types": "./lambda.d.ts",
+					"default": "./lambda.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./lambda.d.ts",
+				"default": "./lambda.web.mjs"
+			}
+		},
+		"./s3": {
+			"node": {
+				"import": {
+					"types": "./s3.d.ts",
+					"default": "./s3.node.mjs"
+				},
+				"__require": {
+					"types": "./s3.d.ts",
+					"default": "./s3.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./s3.d.ts",
+				"default": "./s3.web.mjs"
+			}
+		},
+		"./sns": {
+			"node": {
+				"import": {
+					"types": "./sns.d.ts",
+					"default": "./sns.node.mjs"
+				},
+				"__require": {
+					"types": "./sns.d.ts",
+					"default": "./sns.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./sns.d.ts",
+				"default": "./sns.web.mjs"
+			}
+		},
+		"./sqs": {
+			"node": {
+				"import": {
+					"types": "./sqs.d.ts",
+					"default": "./sqs.node.mjs"
+				},
+				"__require": {
+					"types": "./sqs.d.ts",
+					"default": "./sqs.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./sqs.d.ts",
+				"default": "./sqs.web.mjs"
+			}
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"*.mjs",
+		"*.cjs",
+		"*.map",
+		"*.d.ts"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test --conditions=node",
+		"test:benchmark": "node __benchmarks__/index.js"
+	},
+	"license": "MIT",
+	"keywords": [
+		"AWS",
+		"DynamoDB",
+		"Lambda",
+		"S3",
+		"SNS",
+		"SQS",
+		"Web Stream API",
+		"Node Stream API"
+	],
+	"author": {
+		"name": "datastream contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "github:willfarrell/datastream",
+		"directory": "packages/aws"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"dependencies": {
+		"@datastream/aws": "0.0.40",
+		"@datastream/core": "0.0.40"
+	},
+	"gitHead": "69f6650ffe7b31dba8e4b96a3cc5d1e95a1fa971",
+	"devDependencies": {
+		"@aws-sdk/client-dynamodb": "^3.0.0",
+		"@aws-sdk/client-lambda": "^3.0.0",
+		"@aws-sdk/client-s3": "^3.0.0",
+		"@aws-sdk/client-sns": "^3.0.0",
+		"@aws-sdk/client-sqs": "^3.0.0",
+		"@aws-sdk/client-ssm": "^3.0.0",
+		"@aws-sdk/lib-storage": "^3.0.0",
+		"aws-sdk-client-mock": "^4.0.0"
+	}
 }

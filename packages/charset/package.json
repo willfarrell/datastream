@@ -1,134 +1,134 @@
 {
-  "name": "@datastream/charset",
-  "version": "0.0.40",
-  "description": "",
-  "type": "module",
-  "engines": {
-    "node": ">=18"
-  },
-  "engineStrict": true,
-  "publishConfig": {
-    "access": "public"
-  },
-  "main": "./index.web.mjs",
-  "module": "./index.web.mjs",
-  "exports": {
-    ".": {
-      "node": {
-        "webstream": {
-          "types": "./index.d.ts",
-          "default": "./index.web.mjs"
-        },
-        "import": {
-          "types": "./index.d.ts",
-          "default": "./index.node.mjs"
-        },
-        "__require": {
-          "types": "./index.d.ts",
-          "default": "./index.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./index.d.ts",
-        "default": "./index.web.mjs"
-      }
-    },
-    "./detect": {
-      "node": {
-        "webstream": {
-          "types": "./detect.d.ts",
-          "default": "./detect.web.mjs"
-        },
-        "import": {
-          "types": "./detect.d.ts",
-          "default": "./detect.node.mjs"
-        },
-        "__require": {
-          "types": "./detect.d.ts",
-          "default": "./detect.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./detect.d.ts",
-        "default": "./detect.web.mjs"
-      }
-    },
-    "./decode": {
-      "node": {
-        "webstream": {
-          "types": "./decode.d.ts",
-          "default": "./decode.web.mjs"
-        },
-        "import": {
-          "types": "./decode.d.ts",
-          "default": "./decode.node.mjs"
-        },
-        "__require": {
-          "types": "./decode.d.ts",
-          "default": "./decode.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./decode.d.ts",
-        "default": "./decode.web.mjs"
-      }
-    },
-    "./encode": {
-      "node": {
-        "webstream": {
-          "types": "./encode.d.ts",
-          "default": "./encode.web.mjs"
-        },
-        "import": {
-          "types": "./encode.d.ts",
-          "default": "./encode.node.mjs"
-        },
-        "__require": {
-          "types": "./encode.d.ts",
-          "default": "./encode.node.cjs"
-        }
-      },
-      "import": {
-        "types": "./encode.d.ts",
-        "default": "./encode.web.mjs"
-      }
-    }
-  },
-  "types": "index.d.ts",
-  "files": [
-    "*.mjs",
-    "*.cjs",
-    "*.map",
-    "*.d.ts"
-  ],
-  "scripts": {
-    "test": "npm run test:unit",
-    "test:unit": "node --test",
-    "test:benchmark": "node __benchmarks__/index.js"
-  },
-  "license": "MIT",
-  "keywords": [
-    "Web Stream API",
-    "Node Stream API"
-  ],
-  "author": {
-    "name": "datastream contributors",
-    "url": "https://github.com/willfarrell/datastream/graphs/contributors"
-  },
-  "repository": {
-    "type": "git",
-    "url": "github:willfarrell/datastream",
-    "directory": "packages/file-read"
-  },
-  "bugs": {
-    "url": "https://github.com/willfarrell/datastream/issues"
-  },
-  "homepage": "https://datastream.js.org",
-  "dependencies": {
-    "@datastream/charset": "0.0.40",
-    "@datastream/core": "0.0.40",
-    "charset-detector": "0.0.2",
-    "iconv-lite": "0.6.3"
-  },
-  "gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
+	"name": "@datastream/charset",
+	"version": "0.0.40",
+	"description": "",
+	"type": "module",
+	"engines": {
+		"node": ">=22"
+	},
+	"engineStrict": true,
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.web.mjs",
+	"module": "./index.web.mjs",
+	"exports": {
+		".": {
+			"node": {
+				"import": {
+					"types": "./index.d.ts",
+					"default": "./index.node.mjs"
+				},
+				"__require": {
+					"types": "./index.d.ts",
+					"default": "./index.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./index.d.ts",
+				"default": "./index.web.mjs"
+			}
+		},
+		"./webstream": {
+			"types": "./index.d.ts",
+			"default": "./index.web.mjs"
+		},
+		"./detect": {
+			"node": {
+				"import": {
+					"types": "./detect.d.ts",
+					"default": "./detect.node.mjs"
+				},
+				"__require": {
+					"types": "./detect.d.ts",
+					"default": "./detect.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./detect.d.ts",
+				"default": "./detect.web.mjs"
+			}
+		},
+		"./detect/webstream": {
+			"types": "./detect.d.ts",
+			"default": "./detect.web.mjs"
+		},
+		"./decode": {
+			"node": {
+				"import": {
+					"types": "./decode.d.ts",
+					"default": "./decode.node.mjs"
+				},
+				"__require": {
+					"types": "./decode.d.ts",
+					"default": "./decode.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./decode.d.ts",
+				"default": "./decode.web.mjs"
+			}
+		},
+		"./decode/webstream": {
+			"types": "./decode.d.ts",
+			"default": "./decode.web.mjs"
+		},
+		"./encode": {
+			"node": {
+				"import": {
+					"types": "./encode.d.ts",
+					"default": "./encode.node.mjs"
+				},
+				"__require": {
+					"types": "./encode.d.ts",
+					"default": "./encode.node.cjs"
+				}
+			},
+			"import": {
+				"types": "./encode.d.ts",
+				"default": "./encode.web.mjs"
+			}
+		},
+		"./encode/webstream": {
+			"types": "./encode.d.ts",
+			"default": "./encode.web.mjs"
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"*.mjs",
+		"*.cjs",
+		"*.map",
+		"*.d.ts"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test",
+		"test:benchmark": "node __benchmarks__/index.js"
+	},
+	"license": "MIT",
+	"keywords": [
+		"Web Stream API",
+		"Node Stream API"
+	],
+	"author": {
+		"name": "datastream contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "github:willfarrell/datastream",
+		"directory": "packages/file-read"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"dependencies": {
+		"@datastream/charset": "0.0.40",
+		"@datastream/core": "0.0.40",
+		"charset-detector": "0.0.2",
+		"iconv-lite": "0.7.0"
+	},
+	"gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
 }

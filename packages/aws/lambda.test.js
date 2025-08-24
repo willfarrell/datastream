@@ -1,76 +1,76 @@
-import test from 'node:test'
-import { equal, deepEqual } from 'node:assert'
-// import sinon from 'sinon'
-import { mockClient } from 'aws-sdk-client-mock'
+import { deepEqual, equal } from "node:assert";
+import test from "node:test";
 import {
-  LambdaClient,
-  InvokeWithResponseStreamCommand
-} from '@aws-sdk/client-lambda'
+	InvokeWithResponseStreamCommand,
+	LambdaClient,
+} from "@aws-sdk/client-lambda";
+import { awsLambdaReadableStream, awsLambdaSetClient } from "@datastream/aws";
 
-import { pipeline, createReadableStream } from '@datastream/core'
+import { createReadableStream, pipeline } from "@datastream/core";
+// import sinon from 'sinon'
+import { mockClient } from "aws-sdk-client-mock";
 
-import { awsLambdaSetClient, awsLambdaReadableStream } from '@datastream/aws'
-
-let variant = 'unknown'
+let variant = "unknown";
 for (const execArgv of process.execArgv) {
-  const flag = '--conditions='
-  if (execArgv.includes(flag)) {
-    variant = execArgv.replace(flag, '')
-  }
+	const flag = "--conditions=";
+	if (execArgv.includes(flag)) {
+		variant = execArgv.replace(flag, "");
+	}
 }
 
-test(`${variant}: awsLambdaReadableStream should return chunk`, async (t) => {
-  const client = mockClient(LambdaClient)
-  awsLambdaSetClient(client)
+if (variant === "node") {
+	test(`${variant}: awsLambdaReadableStream should return chunk`, async (_t) => {
+		const client = mockClient(LambdaClient);
+		awsLambdaSetClient(client);
 
-  const encoder = new TextEncoder()
-  const decoder = new TextDecoder()
+		const encoder = new TextEncoder();
+		const decoder = new TextDecoder();
 
-  client.on(InvokeWithResponseStreamCommand, {}).resolves({
-    EventStream: createReadableStream([
-      {
-        PayloadChunk: {
-          Payload: encoder.encode('1')
-        }
-      },
-      {
-        PayloadChunk: {
-          Payload: encoder.encode('2')
-        }
-      }
-    ])
-  })
+		client.on(InvokeWithResponseStreamCommand, {}).resolves({
+			EventStream: createReadableStream([
+				{
+					PayloadChunk: {
+						Payload: encoder.encode("1"),
+					},
+				},
+				{
+					PayloadChunk: {
+						Payload: encoder.encode("2"),
+					},
+				},
+			]),
+		});
 
-  let result = ''
-  for await (const chunk of await awsLambdaReadableStream({})) {
-    result += decoder.decode(chunk)
-  }
+		let result = "";
+		for await (const chunk of await awsLambdaReadableStream({})) {
+			result += decoder.decode(chunk);
+		}
 
-  deepEqual(result, '12')
-})
+		deepEqual(result, "12");
+	});
 
-test(`${variant}: awsLambdaReadableStream should throw error`, async (t) => {
-  const client = mockClient(LambdaClient)
-  awsLambdaSetClient(client)
+	test(`${variant}: awsLambdaReadableStream should throw error`, async (_t) => {
+		const client = mockClient(LambdaClient);
+		awsLambdaSetClient(client);
 
-  client.on(InvokeWithResponseStreamCommand, {}).resolves({
-    EventStream: createReadableStream([
-      {
-        InvokeComplete: {
-          ErrorCode: 'ErrorCode',
-          ErrorDetails: 'ErrorDetails'
-        }
-      }
-    ])
-  })
+		client.on(InvokeWithResponseStreamCommand, {}).resolves({
+			EventStream: createReadableStream([
+				{
+					InvokeComplete: {
+						ErrorCode: "ErrorCode",
+						ErrorDetails: "ErrorDetails",
+					},
+				},
+			]),
+		});
 
-  try {
-    await pipeline(await awsLambdaReadableStream({}))
+		try {
+			await pipeline([awsLambdaReadableStream({})]);
 
-    equal(true, false)
-  } catch (e) {
-    console.error(e)
-    equal(e.message, 'ErrorCode')
-    equal(e.cause, 'ErrorDetails')
-  }
-})
+			equal(true, false);
+		} catch (e) {
+			equal(e.message, "ErrorCode");
+			equal(e.cause, "ErrorDetails");
+		}
+	});
+}

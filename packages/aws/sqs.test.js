@@ -1,107 +1,106 @@
-import test from 'node:test'
-import { deepEqual } from 'node:assert'
+import { deepEqual } from "node:assert";
+import test from "node:test";
+import {
+	DeleteMessageBatchCommand,
+	ReceiveMessageCommand,
+	SendMessageCommand,
+	SQSClient,
+} from "@aws-sdk/client-sqs";
+import {
+	awsSQSDeleteMessageStream,
+	awsSQSReceiveMessageStream,
+	awsSQSSendMessageStream,
+	awsSQSSetClient,
+} from "@datastream/aws";
+
+import {
+	createReadableStream,
+	pipeline,
+	streamToArray,
+} from "@datastream/core";
 // import sinon from 'sinon'
-import { mockClient } from 'aws-sdk-client-mock'
-import {
-  SQSClient,
-  ReceiveMessageCommand,
-  DeleteMessageBatchCommand,
-  SendMessageCommand
-} from '@aws-sdk/client-sqs'
+import { mockClient } from "aws-sdk-client-mock";
 
-import {
-  pipeline,
-  streamToArray,
-  createReadableStream
-} from '@datastream/core'
-
-import {
-  awsSQSSetClient,
-  awsSQSReceiveMessageStream,
-  awsSQSDeleteMessageStream,
-  awsSQSSendMessageStream
-} from '@datastream/aws'
-
-let variant = 'unknown'
+let variant = "unknown";
 for (const execArgv of process.execArgv) {
-  const flag = '--conditions='
-  if (execArgv.includes(flag)) {
-    variant = execArgv.replace(flag, '')
-  }
+	const flag = "--conditions=";
+	if (execArgv.includes(flag)) {
+		variant = execArgv.replace(flag, "");
+	}
 }
 
-test(`${variant}: awsSQSReceiveMessageStream should get chunk`, async (t) => {
-  const client = mockClient(SQSClient)
-  awsSQSSetClient(client)
+test(`${variant}: awsSQSReceiveMessageStream should get chunk`, async (_t) => {
+	const client = mockClient(SQSClient);
+	awsSQSSetClient(client);
 
-  client
-    .on(ReceiveMessageCommand)
-    .resolvesOnce({
-      Messages: [{ id: 'a' }]
-    })
-    .resolvesOnce({
-      Messages: []
-    })
+	client
+		.on(ReceiveMessageCommand)
+		.resolvesOnce({
+			Messages: [{ id: "a" }],
+		})
+		.resolvesOnce({
+			Messages: [],
+		});
 
-  const options = {}
-  const stream = await awsSQSReceiveMessageStream(options)
-  const output = await streamToArray(stream)
+	const options = {};
+	const stream = await awsSQSReceiveMessageStream(options);
+	const output = await streamToArray(stream);
 
-  deepEqual(output, [{ id: 'a' }])
-})
+	deepEqual(output, [{ id: "a" }]);
+});
 
-test(`${variant}: awsSQSDeleteMessageStream should delete chunk`, async (t) => {
-  const client = mockClient(SQSClient)
-  awsSQSSetClient(client)
+test(`${variant}: awsSQSDeleteMessageStream should delete chunk`, async (_t) => {
+	const client = mockClient(SQSClient);
+	awsSQSSetClient(client);
 
-  const input = 'abcdefghijk'.split('').map((Id) => ({ Id }))
-  const options = {
-    // TODO
-  }
+	const input = "abcdefghijk".split("").map((Id) => ({ Id }));
+	const options = {
+		// TODO
+	};
 
-  client
-    .on(DeleteMessageBatchCommand, {
-      Entries: 'abcdefghij'.split('').map((Id) => ({ Id }))
-    })
-    .resolves({})
-    .on(DeleteMessageBatchCommand, {
-      Entries: 'k'.split('').map((Id) => ({ Id }))
-    })
-    .resolves({})
+	client
+		.on(DeleteMessageBatchCommand, {
+			Entries: "abcdefghij".split("").map((Id) => ({ Id })),
+		})
+		.resolves({})
+		.on(DeleteMessageBatchCommand, {
+			Entries: "k".split("").map((Id) => ({ Id })),
+		})
+		.resolves({});
 
-  const stream = [
-    createReadableStream(input),
-    awsSQSDeleteMessageStream(options)
-  ]
-  const result = await pipeline(stream)
+	const stream = [
+		createReadableStream(input),
+		awsSQSDeleteMessageStream(options),
+	];
+	const result = await pipeline(stream);
 
-  deepEqual(result, {})
-})
+	deepEqual(result, {});
+});
 
-test(`${variant}: awsSQSSendMessageStream should put chunk`, async (t) => {
-  const client = mockClient(SQSClient)
-  awsSQSSetClient(client)
+test(`${variant}: awsSQSSendMessageStream should put chunk`, async (_t) => {
+	const client = mockClient(SQSClient);
+	awsSQSSetClient(client);
 
-  const input = 'abcdefghijk'.split('').map((id) => ({ id }))
-  const options = {
-    // TODO
-  }
+	const input = "abcdefghijk".split("").map((id) => ({ id }));
+	const options = {
+		// TODO
+	};
 
-  client
-    .on(SendMessageCommand, {
-      Entries: 'abcdefghij'.split('').map((id) => ({ id }))
-    })
-    .resolves({})
-    .on(SendMessageCommand, {
-      Entries: 'k'.split('').map((id) => ({ id }))
-    })
-    .resolves({})
+	client
+		.on(SendMessageCommand, {
+			Entries: "abcdefghij".split("").map((id) => ({ id })),
+		})
+		.resolves({})
+		.on(SendMessageCommand, {
+			Entries: "k".split("").map((id) => ({ id })),
+		})
+		.resolves({});
 
-  const stream = [
-    createReadableStream(input),
-    awsSQSSendMessageStream(options)
-  ]
-  const result = await pipeline(stream)
+	const stream = [
+		createReadableStream(input),
+		awsSQSSendMessageStream(options),
+	];
+	const result = await pipeline(stream);
 
-  deepEqual(result, {})
-})
+	deepEqual(result, {});
+});

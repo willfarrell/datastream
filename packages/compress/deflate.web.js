@@ -4,14 +4,14 @@
 // - not supported on firefox - https://bugzilla.mozilla.org/show_bug.cgi?id=1586639
 // - not supported in safari
 
-export const deflateCompressStream = (options, streamOptions) => {
-  return new CompressionStream('deflate')
-}
-export const deflateDecompressStream = (options, streamOptions) => {
-  return new DecompressionStream('deflate')
-}
+export const deflateCompressStream = (_options, _streamOptions = {}) => {
+	return new CompressionStream("deflate");
+};
+export const deflateDecompressStream = (_options, _streamOptions = {}) => {
+	return new DecompressionStream("deflate");
+};
 
 export default {
-  compressStream: deflateCompressStream,
-  decompressStream: deflateDecompressStream
-}
+	compressStream: deflateCompressStream,
+	decompressStream: deflateDecompressStream,
+};
