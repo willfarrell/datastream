@@ -226,6 +226,7 @@ export const createWritableStream = (write, close, streamOptions) => {
 	);
 };
 
+/*
 export const createBranchStream = (
 	{ streams, resultKey } = {},
 	streamOptions = {},
@@ -251,6 +252,7 @@ export const createBranchStream = (
 	};
 	return stream;
 };
+*/
 
 /* export const tee = (sourceStream) => {
   return sourceStream.tee()

@@ -1,7 +1,7 @@
 import { deepEqual, equal } from "node:assert";
 import test from "node:test";
 import {
-	createBranchStream,
+	//createBranchStream,
 	createPassThroughStream,
 	createReadableStream,
 	createTransformStream,
@@ -375,7 +375,7 @@ test(`${variant}: createWritableStream should catch final error`, async (_t) => 
 });
 
 // *** createBranchStream *** //
-if (variant === "node") {
+/*if (variant === "node") {
 	test(`${variant}: createBranchStream should create a branch stream`, async (_t) => {
 		const input = ["a", "b", "c"];
 		const transform = sinon.spy();
@@ -397,7 +397,7 @@ if (variant === "node") {
 		deepEqual(result, { branch: { a: 1 } });
 		equal(transform.callCount, 6);
 	});
-}
+}*/
 
 // *** pipeline *** //
 test(`${variant}: pipeline should add writable to end of streams array`, async (_t) => {

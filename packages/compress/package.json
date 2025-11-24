@@ -1,10 +1,10 @@
 {
 	"name": "@datastream/compress",
-	"version": "0.0.41",
+	"version": "0.0.42",
 	"description": "",
 	"type": "module",
 	"engines": {
-		"node": ">=22"
+		"node": ">=24"
 	},
 	"engineStrict": true,
 	"publishConfig": {
@@ -165,8 +165,8 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/compress": "0.0.41",
-		"@datastream/core": "0.0.41",
+		"@datastream/compress": "0.0.42",
+		"@datastream/core": "0.0.42",
 		"brotli-wasm": "3.0.1",
 		"zstd-codec": "0.1.5"
 	},

@@ -1,7 +1,6 @@
 import { Readable, Transform, Writable } from "node:stream";
 import { pipeline as pipelinePromise } from "node:stream/promises";
 import { setTimeout } from "node:timers/promises";
-import cloneable from "cloneable-readable";
 
 export const pipeline = async (streams, streamOptions = {}) => {
 	for (let idx = 0, l = streams.length; idx < l; idx++) {
@@ -274,26 +273,33 @@ export const createWritableStream = (write, final, streamOptions) => {
 	});
 };
 
+/*
 export const createBranchStream = (
 	{ streams, resultKey } = {},
 	streamOptions = {},
 ) => {
-	const stream = cloneable(createPassThroughStream(undefined, streamOptions));
-	streams.unshift(stream.clone());
+	// TODO refactor, not good enough
+	// https://streams.spec.whatwg.org/#rs-model
+	const branchStream = createReadableStream(undefined, streamOptions);
+	const passThrough = (chunk) => {
+		branchStream.push(chunk);
+	};
+	const flush = () => {
+		branchStream.push(null);
+	};
+	const stream = createPassThroughStream(passThrough, flush, streamOptions);
+
+	streams.unshift(branchStream);
 	const value = pipeline(streams, streamOptions);
 	stream.result = async () => {
 		return {
 			key: resultKey ?? "branch",
-			value: await value,
+			value, // await causes: Promise resolution is still pending but the event loop has already resolved
 		};
 	};
 	return stream;
 };
-
-/* export const tee = (sourceStream) => {
-  const stream = cloneable(sourceStream)
-  return [stream, stream.clone()]
-} */
+*/
 
 export const timeout = (ms, { signal } = {}) => {
 	return setTimeout(ms, { signal });

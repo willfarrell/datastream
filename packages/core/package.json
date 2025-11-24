@@ -1,10 +1,10 @@
 {
 	"name": "@datastream/core",
-	"version": "0.0.41",
+	"version": "0.0.42",
 	"description": "",
 	"type": "module",
 	"engines": {
-		"node": ">=22"
+		"node": ">=24"
 	},
 	"engineStrict": true,
 	"publishConfig": {
@@ -64,12 +64,10 @@
 		"url": "https://github.com/willfarrell/datastream/issues"
 	},
 	"homepage": "https://datastream.js.org",
-	"dependencies": {
-		"cloneable-readable": "3.0.0"
-	},
+	"dependencies": {},
 	"devDependencies": {
-		"@datastream/core": "0.0.41",
-		"@datastream/object": "0.0.41"
+		"@datastream/core": "0.0.42",
+		"@datastream/object": "0.0.42"
 	},
 	"gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
 }

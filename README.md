@@ -69,3 +69,4 @@ Warning: This library is in Alpha, and will contain breaking changes as modules 
     - format
   - type
     - pg - obj to db types
+  - benchmark using `node file.js | pv > /dev/null`
