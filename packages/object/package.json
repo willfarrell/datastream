@@ -67,8 +67,5 @@
 	"dependencies": {
 		"@datastream/core": "0.0.42"
 	},
-	"devDependencies": {
-		"@datastream/object": "0.0.42"
-	},
 	"gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
 }

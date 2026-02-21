@@ -1,4 +1,4 @@
-import { deepEqual } from "node:assert";
+import { deepStrictEqual } from "node:assert";
 import test from "node:test";
 import { PublishBatchCommand, SNSClient } from "@aws-sdk/client-sns";
 import { awsSNSPublishMessageStream, awsSNSSetClient } from "@datastream/aws";
@@ -40,5 +40,5 @@ test(`${variant}: awsSNSPublishMessageStream should put chunk`, async (_t) => {
 	];
 	const result = await pipeline(stream);
 
-	deepEqual(result, {});
+	deepStrictEqual(result, {});
 });

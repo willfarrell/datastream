@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	InvokeWithResponseStreamCommand,
@@ -46,7 +46,7 @@ if (variant === "node") {
 			result += decoder.decode(chunk);
 		}
 
-		deepEqual(result, "12");
+		deepStrictEqual(result, "12");
 	});
 
 	test(`${variant}: awsLambdaReadableStream should throw error`, async (_t) => {
@@ -67,10 +67,57 @@ if (variant === "node") {
 		try {
 			await pipeline([awsLambdaReadableStream({})]);
 
-			equal(true, false);
+			strictEqual(true, false);
 		} catch (e) {
-			equal(e.message, "ErrorCode");
-			equal(e.cause, "ErrorDetails");
+			strictEqual(e.message, "ErrorCode");
+			strictEqual(e.cause, "ErrorDetails");
 		}
+	});
+
+	test(`${variant}: awsLambdaReadableStream should handle array of options (multiple invocations)`, async (_t) => {
+		const client = mockClient(LambdaClient);
+		awsLambdaSetClient(client);
+
+		const encoder = new TextEncoder();
+		const decoder = new TextDecoder();
+
+		client
+			.on(InvokeWithResponseStreamCommand, { FunctionName: "fn1" })
+			.resolves({
+				EventStream: createReadableStream([
+					{
+						PayloadChunk: {
+							Payload: encoder.encode("a"),
+						},
+					},
+					{
+						PayloadChunk: {
+							Payload: encoder.encode("b"),
+						},
+					},
+				]),
+			});
+
+		client
+			.on(InvokeWithResponseStreamCommand, { FunctionName: "fn2" })
+			.resolves({
+				EventStream: createReadableStream([
+					{
+						PayloadChunk: {
+							Payload: encoder.encode("c"),
+						},
+					},
+				]),
+			});
+
+		let result = "";
+		for await (const chunk of await awsLambdaReadableStream([
+			{ FunctionName: "fn1" },
+			{ FunctionName: "fn2" },
+		])) {
+			result += decoder.decode(chunk);
+		}
+
+		deepStrictEqual(result, "abc");
 	});
 }

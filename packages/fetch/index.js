@@ -167,7 +167,7 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 	});
 	if (!response.ok) {
 		// 429 Too Many Requests
-		if (response.statusCode === 429) {
+		if (response.status === 429) {
 			return fetchRateLimit(options, streamOptions);
 		}
 		throw new Error("fetch", {

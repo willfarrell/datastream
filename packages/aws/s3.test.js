@@ -1,4 +1,4 @@
-import { deepEqual } from "node:assert";
+import { deepStrictEqual } from "node:assert";
 import test from "node:test";
 import {
 	CreateMultipartUploadCommand,
@@ -50,7 +50,30 @@ if (variant === "node") {
 		const stream = await awsS3GetObjectStream(options);
 		const output = await streamToString(stream);
 
-		deepEqual(output, "contents");
+		deepStrictEqual(output, "contents");
+	});
+
+	test(`${variant}: awsS3GetObjectStream should throw error when Body is null`, async (_t) => {
+		const client = mockClient(S3Client);
+		awsS3SetClient(client);
+		client
+			.on(GetObjectCommand, {
+				Bucket: "bucket",
+				Key: "file.ext",
+			})
+			.resolves({});
+
+		const options = {
+			Bucket: "bucket",
+			Key: "file.ext",
+		};
+
+		try {
+			await awsS3GetObjectStream(options);
+			throw new Error("Expected error was not thrown");
+		} catch (error) {
+			deepStrictEqual(error.message, "S3.GetObject not Found");
+		}
 	});
 
 	// TODO update
@@ -76,7 +99,7 @@ if (variant === "node") {
     const stream = [createReadableStream(input), awsS3PutObjectStream(options)]
     const result = await pipeline(stream)
 
-    deepEqual(result, {})
+    deepStrictEqual(result, {})
   }) */
 
 	test(`${variant}: awsS3PutObjectStream should put chunks`, async (_t) => {
@@ -106,7 +129,7 @@ if (variant === "node") {
 		const stream = [createReadableStream(input), awsS3PutObjectStream(options)];
 		const result = await pipeline(stream);
 
-		deepEqual(result, {});
+		deepStrictEqual(result, {});
 	});
 } else {
 	console.info(
@@ -123,7 +146,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (1 chu
 	const stream = [createReadableStream(input), awsS3ChecksumStream(options)];
 	const result = await pipeline(stream);
 
-	deepEqual(result, {
+	deepStrictEqual(result, {
 		s3: {
 			checksum: "FTbEIsMcyYg0dZ1whc2jlKNRCgPXgYgkiYamsacgfQM=",
 			checksums: ["FTbEIsMcyYg0dZ1whc2jlKNRCgPXgYgkiYamsacgfQM="],
@@ -141,10 +164,28 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 	const stream = [createReadableStream(input), awsS3ChecksumStream(options)];
 	const result = await pipeline(stream);
 
-	deepEqual(result, {
+	deepStrictEqual(result, {
 		s3: {
 			checksum: "Qnll9JqFcXTjCGWCJzJdvSP/Tsy+OZ1a1IF92j7Hn4c=",
 			checksums: ["Qnll9JqFcXTjCGWCJzJdvSP/Tsy+OZ1a1IF92j7Hn4c="],
+			partSize: 17_179_870,
+		},
+	});
+});
+
+test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string with SHA1`, async (_t) => {
+	const input = "x".repeat(1 * 16_384);
+	const options = {
+		ChecksumAlgorithm: "SHA1",
+	};
+
+	const stream = [createReadableStream(input), awsS3ChecksumStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result, {
+		s3: {
+			checksum: "XhuZUWG9FmZw1UqD0xSn0ik7bD0=",
+			checksums: ["XhuZUWG9FmZw1UqD0xSn0ik7bD0="],
 			partSize: 17_179_870,
 		},
 	});
@@ -159,7 +200,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //   const result = await pipeline(stream)
 
-//   deepEqual(result, {
+//   deepStrictEqual(result, {
 //     s3: {
 //       checksum: 'DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg=',
 //       checksums:['DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg='],
@@ -176,7 +217,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //   const result = await pipeline(stream)
 
-//   deepEqual(result, {
+//   deepStrictEqual(result, {
 //     s3: {
 //       checksum: 'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o=',
 //       checksums:['WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o='],
@@ -193,7 +234,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //   const result = await pipeline(stream)
 
-//   deepEqual(result, {
+//   deepStrictEqual(result, {
 //     s3: {
 //       checksum: 'eWQzGj3USSV0NvWbhxtpmbkHgNReYxUzwVBXAU86X/4=-2',
 //       checksums:[
@@ -213,7 +254,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //   const result = await pipeline(stream)
 
-//   deepEqual(result, {
+//   deepStrictEqual(result, {
 //     s3: {
 //       checksum: '65/QvEoh9MiBIPeSgTqKTptI3Vnf+vaJ1om/MYYMpBU=-2',
 //       checksums:[
@@ -234,7 +275,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //   const result = await pipeline(stream)
 
-//   deepEqual(result, {
+//   deepStrictEqual(result, {
 //     s3: {
 //       checksum: 'FTbEIsMcyYg0dZ1whc2jlKNRCgPXgYgkiYamsacgfQM=',
 //       checksums:['FTbEIsMcyYg0dZ1whc2jlKNRCgPXgYgkiYamsacgfQM='],
@@ -252,7 +293,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //   const result = await pipeline(stream)
 
-//   deepEqual(result, {
+//   deepStrictEqual(result, {
 //     s3: {
 //       checksum: 'Qnll9JqFcXTjCGWCJzJdvSP/Tsy+OZ1a1IF92j7Hn4c=',
 //       checksums:['Qnll9JqFcXTjCGWCJzJdvSP/Tsy+OZ1a1IF92j7Hn4c='],
@@ -270,7 +311,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //   const result = await pipeline(stream)
 
-//   deepEqual(result, {
+//   deepStrictEqual(result, {
 //     s3: {
 //       checksum: 'DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg=',
 //       checksums:['DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg='],
@@ -287,7 +328,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //   const result = await pipeline(stream)
 
-//   deepEqual(result, {
+//   deepStrictEqual(result, {
 //     s3: {
 //       checksum: 'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o=',
 //       checksums:['WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o='],
@@ -304,7 +345,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //     const result = await pipeline(stream)
 //
-//     deepEqual(result, {
+//     deepStrictEqual(result, {
 //   s3: {
 //     checksum: 'eWQzGj3USSV0NvWbhxtpmbkHgNReYxUzwVBXAU86X/4=-2',
 //     checksums:[
@@ -324,7 +365,7 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (2 chu
 //     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
 //     const result = await pipeline(stream)
 //
-//     deepEqual(result, {
+//     deepStrictEqual(result, {
 //   s3: {
 //     checksum: '65/QvEoh9MiBIPeSgTqKTptI3Vnf+vaJ1om/MYYMpBU=-2',
 //     checksums:[

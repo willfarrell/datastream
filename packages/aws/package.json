@@ -147,7 +147,6 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/aws": "0.0.42",
 		"@datastream/core": "0.0.42"
 	},
 	"gitHead": "69f6650ffe7b31dba8e4b96a3cc5d1e95a1fa971",

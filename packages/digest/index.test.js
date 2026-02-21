@@ -1,4 +1,4 @@
-import { equal } from "node:assert";
+import { strictEqual } from "node:assert";
 import test from "node:test";
 
 import { createReadableStream, pipeline } from "@datastream/core";
@@ -22,12 +22,12 @@ test(`${variant}: digestStream should calculate digest`, async (_t) => {
 
 	const { key, value } = streams[1].result();
 
-	equal(key, "digest");
-	equal(
+	strictEqual(key, "digest");
+	strictEqual(
 		value,
 		"SHA2-256:37db36876b9ccaaa88394679f019c3435af9320dea117e867003840317870e25",
 	);
-	equal(
+	strictEqual(
 		result.digest,
 		"SHA2-256:37db36876b9ccaaa88394679f019c3435af9320dea117e867003840317870e25",
 	);
@@ -41,12 +41,12 @@ test(`${variant}: digestStream should calculate digest`, async (_t) => {
 
 	const { key, value } = streams[1].result();
 
-	equal(key, "digest");
-	equal(
+	strictEqual(key, "digest");
+	strictEqual(
 		value,
 		"SHA2-256:37db36876b9ccaaa88394679f019c3435af9320dea117e867003840317870e25",
 	);
-	equal(
+	strictEqual(
 		result.digest,
 		"SHA2-256:37db36876b9ccaaa88394679f019c3435af9320dea117e867003840317870e25",
 	);

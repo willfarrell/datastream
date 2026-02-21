@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
 
 import {
@@ -28,7 +28,7 @@ test(`${variant}: csvParseStream should parse csv to object[]`, async (_t) => {
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ a: "1", b: "2", c: "3", d: "4" },
 		{ a: "1", b: "2", c: "3", d: "4" },
 	]);
@@ -42,7 +42,7 @@ test(`${variant}: csvParseStream should parse csv to string[]`, async (_t) => {
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		["1", "2", "3", "4"],
 		["1", "2", "3", "4"],
 	]);
@@ -56,7 +56,7 @@ test(`${variant}: csvParseStream should parse newline when not in first chunk`, 
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ a: "1", b: "2", c: "3", d: "4" },
 		{ a: "1", b: "2", c: "3", d: "4" },
 	]);
@@ -83,9 +83,9 @@ test(`${variant}: csvParseStream should return csv parsing errors`, async (_t) =
 			message: "Too many fields were parsed, expected 4.",
 		},
 	};
-	equal(key, "csvErrors");
-	deepEqual(result.csvErrors, csvErrors);
-	deepEqual(value, csvErrors);
+	strictEqual(key, "csvErrors");
+	deepStrictEqual(result.csvErrors, csvErrors);
+	deepStrictEqual(value, csvErrors);
 });
 
 // *** csvFormatStream *** //
@@ -100,7 +100,7 @@ test(`${variant}: csvFormatStream should format csv from object[]`, async (_t) =
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
 
-	deepEqual(output, "a,b,c,d\r\n1,2,3,4\r\n1,2,3,4\r\n");
+	deepStrictEqual(output, "a,b,c,d\r\n1,2,3,4\r\n1,2,3,4\r\n");
 });
 
 test(`${variant}: csvFormatStream should format csv from object[] with columns`, async (_t) => {
@@ -114,7 +114,7 @@ test(`${variant}: csvFormatStream should format csv from object[] with columns`,
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
 
-	deepEqual(output, "d,c,b,a\r\n4,3,2,1\r\n4,3,2,1\r\n");
+	deepStrictEqual(output, "d,c,b,a\r\n4,3,2,1\r\n4,3,2,1\r\n");
 });
 
 test(`${variant}: csvFormatStream should format csv from string[]`, async (_t) => {
@@ -128,5 +128,5 @@ test(`${variant}: csvFormatStream should format csv from string[]`, async (_t) =
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
 
-	deepEqual(output, "a,b,c,d\r\n1,2,3,4\r\n1,2,3,4\r\n");
+	deepStrictEqual(output, "a,b,c,d\r\n1,2,3,4\r\n1,2,3,4\r\n");
 });

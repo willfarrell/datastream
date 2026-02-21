@@ -1,4 +1,4 @@
-import { deepEqual } from "node:assert";
+import { deepStrictEqual } from "node:assert";
 import test from "node:test";
 import {
 	DeleteMessageBatchCommand,
@@ -46,7 +46,20 @@ test(`${variant}: awsSQSReceiveMessageStream should get chunk`, async (_t) => {
 	const stream = await awsSQSReceiveMessageStream(options);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [{ id: "a" }]);
+	deepStrictEqual(output, [{ id: "a" }]);
+});
+
+test(`${variant}: awsSQSReceiveMessageStream should handle empty queue (Messages: undefined)`, async (_t) => {
+	const client = mockClient(SQSClient);
+	awsSQSSetClient(client);
+
+	client.on(ReceiveMessageCommand).resolves({});
+
+	const options = {};
+	const stream = await awsSQSReceiveMessageStream(options);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, []);
 });
 
 test(`${variant}: awsSQSDeleteMessageStream should delete chunk`, async (_t) => {
@@ -74,7 +87,7 @@ test(`${variant}: awsSQSDeleteMessageStream should delete chunk`, async (_t) => 
 	];
 	const result = await pipeline(stream);
 
-	deepEqual(result, {});
+	deepStrictEqual(result, {});
 });
 
 test(`${variant}: awsSQSSendMessageStream should put chunk`, async (_t) => {
@@ -102,5 +115,5 @@ test(`${variant}: awsSQSSendMessageStream should put chunk`, async (_t) => {
 	];
 	const result = await pipeline(stream);
 
-	deepEqual(result, {});
+	deepStrictEqual(result, {});
 });

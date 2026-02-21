@@ -43,7 +43,7 @@ export const validateStream = (
 			}
 		}
 		if (chunkValid || onErrorEnqueue) {
-			chunk = allowCoerceTypes ? chunk : data;
+			chunk = allowCoerceTypes !== false ? chunk : data;
 			enqueue(chunk);
 		}
 	};

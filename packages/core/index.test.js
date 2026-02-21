@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	//createBranchStream,
@@ -48,7 +48,7 @@ for (const type of Object.keys(types)) {
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
 
-		deepEqual(output, input);
+		deepStrictEqual(output, input);
 	});
 
 	test(`${variant}: streamToArray should work with transform ${type} stream`, async (_t) => {
@@ -57,7 +57,7 @@ for (const type of Object.keys(types)) {
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
 
-		deepEqual(output, input);
+		deepStrictEqual(output, input);
 	});
 
 	test(`${variant}: streamToObject should work with transform ${type} stream`, async (_t) => {
@@ -71,7 +71,7 @@ for (const type of Object.keys(types)) {
 		const stream = pipejoin(streams);
 		const output = await streamToObject(stream);
 
-		deepEqual(output, { [type]: input[input.length - 1] });
+		deepStrictEqual(output, { [type]: input[input.length - 1] });
 	});
 
 	test(`${variant}: streamToString should work with readable ${type} stream`, async (_t) => {
@@ -80,7 +80,7 @@ for (const type of Object.keys(types)) {
 		const stream = pipejoin(streams);
 		const output = await streamToString(stream);
 
-		deepEqual(output, input.join(""));
+		deepStrictEqual(output, input.join(""));
 	});
 
 	test(`${variant}: streamToString should work with transform ${type} stream`, async (_t) => {
@@ -89,7 +89,7 @@ for (const type of Object.keys(types)) {
 		const stream = pipejoin(streams);
 		const output = await streamToString(stream);
 
-		deepEqual(output, input.join(""));
+		deepStrictEqual(output, input.join(""));
 	});
 }
 
@@ -100,9 +100,9 @@ test(`${variant}: createReadableStream should create a readable stream from stri
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
 
-	equal(isReadable(streams[0]), true);
-	equal(isWritable(streams[0]), false);
-	deepEqual(output, input);
+	strictEqual(isReadable(streams[0]), true);
+	strictEqual(isWritable(streams[0]), false);
+	deepStrictEqual(output, input);
 });
 
 test(`${variant}: createReadableStream should chunk long strings`, async (_t) => {
@@ -111,7 +111,7 @@ test(`${variant}: createReadableStream should chunk long strings`, async (_t) =>
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	equal(output.length, 2);
+	strictEqual(output.length, 2);
 });
 
 test(`${variant}: createReadableStream should create a readable stream from array`, async (_t) => {
@@ -120,9 +120,9 @@ test(`${variant}: createReadableStream should create a readable stream from arra
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	equal(isReadable(streams[0]), true);
-	equal(isWritable(streams[0]), false);
-	deepEqual(output, input);
+	strictEqual(isReadable(streams[0]), true);
+	strictEqual(isWritable(streams[0]), false);
+	deepStrictEqual(output, input);
 });
 
 test(`${variant}: createReadableStream should create a readable stream from iterable`, async (_t) => {
@@ -135,9 +135,9 @@ test(`${variant}: createReadableStream should create a readable stream from iter
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	equal(isReadable(streams[0]), true);
-	equal(isWritable(streams[0]), false);
-	deepEqual(output, ["a", "b", "c"]);
+	strictEqual(isReadable(streams[0]), true);
+	strictEqual(isWritable(streams[0]), false);
+	deepStrictEqual(output, ["a", "b", "c"]);
 });
 
 test(`${variant}: createReadableStream should allow pushing values onto it`, async (_t) => {
@@ -147,7 +147,7 @@ test(`${variant}: createReadableStream should allow pushing values onto it`, asy
 	streams[0].push(null);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, ["a"]);
+	deepStrictEqual(output, ["a"]);
 });
 
 if (variant === "node") {
@@ -166,8 +166,8 @@ if (variant === "node") {
 		await pipeline(streams);
 		// console.log(JSON.stringify(metrics))
 
-		deepEqual(metrics["0"].timeline.length, 3);
-		deepEqual(metrics["1"].timeline.length, 0);
+		deepStrictEqual(metrics["0"].timeline.length, 3);
+		deepStrictEqual(metrics["1"].timeline.length, 0);
 	});
 }
 
@@ -182,10 +182,10 @@ test(`${variant}: createPassThroughStream should create a passs through stream`,
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	equal(isReadable(streams[1]), true);
-	equal(isWritable(streams[1]), true);
-	equal(transform.callCount, 3);
-	deepEqual(output, input);
+	strictEqual(isReadable(streams[1]), true);
+	strictEqual(isWritable(streams[1]), true);
+	strictEqual(transform.callCount, 3);
+	deepStrictEqual(output, input);
 });
 
 test(`${variant}: createPassThroughStream should create a passs through stream with flush`, async (_t) => {
@@ -199,11 +199,11 @@ test(`${variant}: createPassThroughStream should create a passs through stream w
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	equal(isReadable(streams[1]), true);
-	equal(isWritable(streams[1]), true);
-	equal(transform.callCount, 3);
-	equal(flush.callCount, 1);
-	deepEqual(output, input);
+	strictEqual(isReadable(streams[1]), true);
+	strictEqual(isWritable(streams[1]), true);
+	strictEqual(transform.callCount, 3);
+	strictEqual(flush.callCount, 1);
+	deepStrictEqual(output, input);
 });
 
 test(`${variant}: createPassThroughStream should catch transform error`, async (_t) => {
@@ -218,7 +218,7 @@ test(`${variant}: createPassThroughStream should catch transform error`, async (
 	try {
 		await pipeline(streams);
 	} catch (e) {
-		equal(e.message, "error");
+		strictEqual(e.message, "error");
 	}
 });
 
@@ -234,7 +234,7 @@ test(`${variant}: createPassThroughStream should catch flush error`, async (_t) 
 	try {
 		await pipeline(streams);
 	} catch (e) {
-		equal(e.message, "error");
+		strictEqual(e.message, "error");
 	}
 });
 
@@ -249,10 +249,10 @@ test(`${variant}: createTransformStream should create a transform stream`, async
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	equal(isReadable(streams[1]), true);
-	equal(isWritable(streams[1]), true);
-	equal(transform.callCount, 3);
-	deepEqual(output, []);
+	strictEqual(isReadable(streams[1]), true);
+	strictEqual(isWritable(streams[1]), true);
+	strictEqual(transform.callCount, 3);
+	deepStrictEqual(output, []);
 });
 
 test(`${variant}: createTransformStream should create a transform stream with flush`, async (_t) => {
@@ -266,11 +266,11 @@ test(`${variant}: createTransformStream should create a transform stream with fl
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	equal(isReadable(streams[1]), true);
-	equal(isWritable(streams[1]), true);
-	equal(transform.callCount, 3);
-	equal(flush.callCount, 1);
-	deepEqual(output, []);
+	strictEqual(isReadable(streams[1]), true);
+	strictEqual(isWritable(streams[1]), true);
+	strictEqual(transform.callCount, 3);
+	strictEqual(flush.callCount, 1);
+	deepStrictEqual(output, []);
 });
 
 test(`${variant}: createTransformStream should catch transform error`, async (_t) => {
@@ -285,7 +285,7 @@ test(`${variant}: createTransformStream should catch transform error`, async (_t
 	try {
 		await pipeline(streams);
 	} catch (e) {
-		equal(e.message, "error");
+		strictEqual(e.message, "error");
 	}
 });
 
@@ -301,7 +301,7 @@ test(`${variant}: createTransformStream should catch flush error`, async (_t) =>
 	try {
 		await pipeline(streams);
 	} catch (e) {
-		equal(e.message, "error");
+		strictEqual(e.message, "error");
 	}
 });
 
@@ -314,13 +314,13 @@ test(`${variant}: createWritableStream should create a writable stream`, async (
 		createWritableStream(transform, {}),
 	];
 
-	equal(isReadable(streams[1]), false);
-	equal(isWritable(streams[1]), true);
+	strictEqual(isReadable(streams[1]), false);
+	strictEqual(isWritable(streams[1]), true);
 
 	const result = await pipeline(streams);
 
-	equal(transform.callCount, 3);
-	deepEqual(result, {});
+	strictEqual(transform.callCount, 3);
+	deepStrictEqual(result, {});
 });
 
 test(`${variant}: createWritableStream should create a writable stream with final`, async (_t) => {
@@ -332,14 +332,14 @@ test(`${variant}: createWritableStream should create a writable stream with fina
 		createWritableStream(transform, final, {}),
 	];
 
-	equal(isReadable(streams[1]), false);
-	equal(isWritable(streams[1]), true);
+	strictEqual(isReadable(streams[1]), false);
+	strictEqual(isWritable(streams[1]), true);
 
 	const result = await pipeline(streams);
 
-	equal(transform.callCount, 3);
-	equal(final.callCount, 1);
-	deepEqual(result, {});
+	strictEqual(transform.callCount, 3);
+	strictEqual(final.callCount, 1);
+	deepStrictEqual(result, {});
 });
 
 test(`${variant}: createWritableStream should catch transform error`, async (_t) => {
@@ -354,7 +354,7 @@ test(`${variant}: createWritableStream should catch transform error`, async (_t)
 	try {
 		await pipeline(streams);
 	} catch (e) {
-		equal(e.message, "error");
+		strictEqual(e.message, "error");
 	}
 });
 
@@ -370,7 +370,7 @@ test(`${variant}: createWritableStream should catch final error`, async (_t) => 
 	try {
 		await pipeline(streams);
 	} catch (e) {
-		equal(e.message, "error");
+		strictEqual(e.message, "error");
 	}
 });
 
@@ -389,13 +389,13 @@ test(`${variant}: createWritableStream should catch final error`, async (_t) => 
 			createWritableStream(transform),
 		];
 
-		equal(isReadable(streams[1]), true);
-		equal(isWritable(streams[1]), true);
+		strictEqual(isReadable(streams[1]), true);
+		strictEqual(isWritable(streams[1]), true);
 
 		const result = await pipeline(streams);
 
-		deepEqual(result, { branch: { a: 1 } });
-		equal(transform.callCount, 6);
+		deepStrictEqual(result, { branch: { a: 1 } });
+		strictEqual(transform.callCount, 6);
 	});
 }*/
 
@@ -410,10 +410,10 @@ test(`${variant}: pipeline should add writable to end of streams array`, async (
 	];
 	const result = await pipeline(streams);
 
-	equal(isReadable(streams[1]), true);
-	equal(isWritable(streams[1]), true);
-	equal(transform.callCount, 3);
-	deepEqual(result, { count: 3 });
+	strictEqual(isReadable(streams[1]), true);
+	strictEqual(isWritable(streams[1]), true);
+	strictEqual(transform.callCount, 3);
+	deepStrictEqual(result, { count: 3 });
 });
 
 test(`${variant}: pipeline should throw error when promise passed in`, async (_t) => {
@@ -427,7 +427,7 @@ test(`${variant}: pipeline should throw error when promise passed in`, async (_t
 	try {
 		await pipeline(streams);
 	} catch (e) {
-		equal(e.message, "Promise instead of stream passed in at index 1");
+		strictEqual(e.message, "Promise instead of stream passed in at index 1");
 	}
 });
 
@@ -443,9 +443,9 @@ test(`${variant}: pipeline should throw error when a stream thrown an error`, as
 	];
 	try {
 		await pipeline(streams);
-		equal(true, false);
+		strictEqual(true, false);
 	} catch (e) {
-		equal(e.message, "Error");
+		strictEqual(e.message, "Error");
 	}
 });
 
@@ -463,7 +463,7 @@ test(`${variant}: pipejoin should throw error when promise passed in`, async (_t
 			console.log(item);
 		}
 	} catch (e) {
-		equal(e.message, "Promise instead of stream passed in at index 1");
+		strictEqual(e.message, "Promise instead of stream passed in at index 1");
 	}
 });
 
@@ -486,7 +486,7 @@ test(`${variant}: pipejoin should throw error when promise passed in`, async (_t
 // 	    console.log(item)
 // 	  }
 // 	} catch (e) {
-// 	  equal(e.message, 'Error')
+// 	  strictEqual(e.message, 'Error')
 // 	}
 // });
 
@@ -497,7 +497,7 @@ if (variant === "node") {
 			highWaterMark: 1,
 			chunkSize: 2,
 		});
-		deepEqual(options, {
+		deepStrictEqual(options, {
 			chunkSize: 2,
 			highWaterMark: 1,
 			writableHighWaterMark: 1,
@@ -512,7 +512,7 @@ if (variant === "node") {
 	// test(`${variant}: makeOptions should return interoperable structure`, async (_t) => {
 	//   // Web Stream always is in object mode
 	//   const options = makeOptions({ highWaterMark: 1, chunkSize: 2 })
-	//   deepEqual(options, {
+	//   deepStrictEqual(options, {
 	//     writableStrategy: {
 	//       highWaterMark: 1,
 	//       size: { chunk: 2 }

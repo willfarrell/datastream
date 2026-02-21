@@ -1,4 +1,4 @@
-import { deepEqual } from "node:assert";
+import { deepStrictEqual } from "node:assert";
 import test from "node:test";
 import { base64DecodeStream, base64EncodeStream } from "@datastream/base64";
 // import sinon from 'sinon'
@@ -22,7 +22,7 @@ test(`${variant}: base64EncodeStream should encode`, async (_t) => {
 	const streams = [createReadableStream(input), base64EncodeStream()];
 	const output = await streamToString(pipejoin(streams));
 
-	deepEqual(output, btoa(input));
+	deepStrictEqual(output, btoa(input));
 });
 
 // *** base64DecodeStream *** //
@@ -31,7 +31,7 @@ test(`${variant}: base64DecodeStream should decode`, async (_t) => {
 	const streams = [createReadableStream(btoa(input)), base64DecodeStream()];
 	const output = await streamToString(pipejoin(streams));
 
-	deepEqual(output, input);
+	deepStrictEqual(output, input);
 });
 
 // *** Misc *** //
@@ -45,6 +45,6 @@ test(`${variant}: base64Stream should encode/decode`, async (_t) => {
 		];
 		const output = await streamToString(pipejoin(streams));
 
-		deepEqual(output, input);
+		deepStrictEqual(output, input);
 	}
 });

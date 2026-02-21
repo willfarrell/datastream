@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
 // import sinon from 'sinon'
 import {
@@ -34,7 +34,7 @@ test(`${variant}: objectReadableStream should read in initial chunks`, async (_t
 	const stream = streams[0];
 	const output = await streamToArray(stream);
 
-	deepEqual(output, input);
+	deepStrictEqual(output, input);
 });
 
 // *** objectCountStream *** //
@@ -45,9 +45,9 @@ test(`${variant}: objectCountStream should count length of chunks`, async (_t) =
 	const result = await pipeline(streams);
 	const { key, value } = streams[1].result();
 
-	equal(key, "count");
-	equal(result.count, 3);
-	equal(value, 3);
+	strictEqual(key, "count");
+	strictEqual(result.count, 3);
+	strictEqual(value, 3);
 });
 
 test(`${variant}: objectCountStream should count length of chunks with custom key`, async (_t) => {
@@ -60,9 +60,9 @@ test(`${variant}: objectCountStream should count length of chunks with custom ke
 	const result = await pipeline(streams);
 	const { key, value } = streams[1].result();
 
-	equal(key, "object");
-	equal(result.object, 3);
-	equal(value, 3);
+	strictEqual(key, "object");
+	strictEqual(result.object, 3);
+	strictEqual(value, 3);
 });
 
 // *** objectBatchStream *** //
@@ -82,7 +82,7 @@ test(`${variant}: objectBatchStream should batch chunks by key`, async (_t) => {
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		[
 			{ a: "1", b: "2" },
 			{ a: "1", b: "2" },
@@ -111,7 +111,7 @@ test(`${variant}: objectBatchStream should batch chunks by index`, async (_t) =>
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		[
 			["1", "1"],
 			["1", "2"],
@@ -142,7 +142,7 @@ test(`${variant}: objectPivotLongToWideStream should pivot chunks to wide`, asyn
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ a: "1", "l m": 1, "w m": 2 },
 		{ a: "2", "w m": 3 },
 		{ a: "3", "l m": 4, "w m": 5 },
@@ -167,7 +167,7 @@ test(`${variant}: objectPivotLongToWideStream should catch invalid chunk type`, 
 		const stream = pipejoin(streams);
 		await streamToArray(stream);
 	} catch (e) {
-		deepEqual(
+		deepStrictEqual(
 			e.message,
 			"Expected chunk to be array, use with objectBatchStream",
 		);
@@ -193,7 +193,7 @@ test(`${variant}: objectPivotWideToLongStream should pivot chunks to wide`, asyn
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ a: "1", "b u": "l m", v: 1 },
 		{ a: "1", "b u": "w m", v: 2 },
 		{ a: "2", "b u": "w m", v: 3 },
@@ -213,7 +213,7 @@ test(`${variant}: objectKeyValueStream should transform to {chunk[key]:chunk[val
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [{ 1: "2" }]);
+	deepStrictEqual(output, [{ 1: "2" }]);
 });
 
 // *** objectKeyValuesStream *** //
@@ -227,7 +227,7 @@ test(`${variant}: objectKeyValuesStream should transform to {chunk[key]:chunk}`,
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [{ 1: { a: "1", b: "2", c: "3" } }]);
+	deepStrictEqual(output, [{ 1: { a: "1", b: "2", c: "3" } }]);
 });
 
 test(`${variant}: objectKeyValuesStream should transform to {chunk[key]:chunk[values]}`, async (_t) => {
@@ -240,7 +240,7 @@ test(`${variant}: objectKeyValuesStream should transform to {chunk[key]:chunk[va
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [{ 1: { b: "2" } }]);
+	deepStrictEqual(output, [{ 1: { b: "2" } }]);
 });
 
 // *** objectSkipConsecutiveDuplicates *** //
@@ -254,5 +254,5 @@ test(`${variant}: objectSkipConsecutiveDuplicatesStream should skip consecutive 
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [{ a: 1 }, { b: 2 }, { c: 3 }]);
+	deepStrictEqual(output, [{ a: 1 }, { b: 2 }, { c: 3 }]);
 });

@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
 // import sinon from 'sinon'
 import {
@@ -30,7 +30,7 @@ test(`${variant}: stringReadableStream should read in initial chunks`, async (_t
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [input]);
+	deepStrictEqual(output, [input]);
 });
 
 // *** stringLengthStream *** //
@@ -41,9 +41,9 @@ test(`${variant}: stringLengthStream should count length of chunks`, async (_t) 
 	const result = await pipeline(streams);
 	const { key, value } = streams[1].result();
 
-	equal(key, "length");
-	equal(result.length, 3);
-	equal(value, 3);
+	strictEqual(key, "length");
+	strictEqual(result.length, 3);
+	strictEqual(value, 3);
 });
 
 test(`${variant}: stringSizeStream should count length of chunks with custom key`, async (_t) => {
@@ -56,9 +56,9 @@ test(`${variant}: stringSizeStream should count length of chunks with custom key
 	const result = await pipeline(streams);
 	const { key, value } = streams[1].result();
 
-	equal(key, "string");
-	equal(result.string, 3);
-	equal(value, 3);
+	strictEqual(key, "string");
+	strictEqual(result.string, 3);
+	strictEqual(value, 3);
 });
 
 // *** stringSkipConsecutiveDuplicates *** //
@@ -72,7 +72,7 @@ test(`${variant}: stringSkipConsecutiveDuplicates should skip consecutive duplic
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, ["1", "2", "3"]);
+	deepStrictEqual(output, ["1", "2", "3"]);
 });
 
 // *** stringSplitStream *** //
@@ -86,7 +86,7 @@ test(`${variant}: stringSplitStream should split into empty strings`, async (_t)
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, ["", "", "", "", ""]);
+	deepStrictEqual(output, ["", "", "", "", ""]);
 });
 
 test(`${variant}: stringSplitStream should split into empty strings`, async (_t) => {
@@ -99,5 +99,5 @@ test(`${variant}: stringSplitStream should split into empty strings`, async (_t)
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, ["a", "bc", "d"]);
+	deepStrictEqual(output, ["a", "bc", "d"]);
 });

@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	BatchGetItemCommand,
@@ -77,7 +77,7 @@ test(`${variant}: awsDynamoDBGetStream should return items`, async (_t) => {
 	const stream = await awsDynamoDBGetItemStream(options);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ key: "a", value: 1 },
 		{ key: "b", value: 2 },
 		{ key: "c", value: 3 },
@@ -135,7 +135,7 @@ test(`${variant}: awsDynamoDBGetStream should throw error`, async (_t) => {
 	try {
 		await streamToArray(stream);
 	} catch (e) {
-		equal(e.message, "awsDynamoDBBatchGetItem has UnprocessedKeys");
+		strictEqual(e.message, "awsDynamoDBBatchGetItem has UnprocessedKeys");
 	}
 });
 
@@ -170,7 +170,7 @@ test(`${variant}: awsDynamoDBQueryStream should return items`, async (_t) => {
 	const stream = await awsDynamoDBQueryStream(options);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ key: "a", value: 1 },
 		{ key: "b", value: 2 },
 		{ key: "c", value: 3 },
@@ -208,7 +208,7 @@ test(`${variant}: awsDynamoDBScanStream should return items`, async (_t) => {
 	const stream = await awsDynamoDBScanStream(options);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ key: "a", value: 1 },
 		{ key: "b", value: 2 },
 		{ key: "c", value: 3 },
@@ -290,7 +290,7 @@ test(`${variant}: awsDynamoDBPutItemStream should store items`, async (_t) => {
 	];
 	const output = await pipeline(stream);
 
-	deepEqual(output, {});
+	deepStrictEqual(output, {});
 });
 
 test(`${variant}: awsDynamoDBPutItemStream should throw error`, async (_t) => {
@@ -366,7 +366,7 @@ test(`${variant}: awsDynamoDBPutItemStream should throw error`, async (_t) => {
 	try {
 		await pipeline(stream);
 	} catch (e) {
-		equal(e.message, "awsDynamoDBBatchWriteItem has UnprocessedItems");
+		strictEqual(e.message, "awsDynamoDBBatchWriteItem has UnprocessedItems");
 	}
 });
 
@@ -434,70 +434,70 @@ test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (_t) =>
 	];
 	const output = await pipeline(stream);
 
-	deepEqual(output, {});
+	deepStrictEqual(output, {});
 });
 
-/* test(`${variant}: awsDynamoDBDeleteItemStream should throw error`, async (_t) => {
-  const client = mockClient(DynamoDBClient)
-  awsDynamoDBSetClient(client)
-  client
-    .on(BatchWriteItemCommand, {
-      RequestItems: {
-        TableName: [
-          {
-            DeleteRequest: {
-              Key: { key: 'a' }
-            }
-          }
-        ]
-      }
-    })
-    .resolves({
-      UnprocessedItems: {
-        TableName: [
-          {
-            DeleteRequest: {
-              Key: { key: 'a' }
-            }
-          }
-        ]
-      }
-    })
-    .on(BatchWriteItemCommand, {
-      RequestItems: {
-        TableName: [
-          {
-            DeleteRequest: {
-              Key: { key: 'a' }
-            }
-          }
-        ]
-      }
-    })
-    .resolves({
-      UnprocessedItems: {
-        TableName: [
-          {
-            DeleteRequest: {
-              Key: { key: 'a' }
-            }
-          }
-        ]
-      }
-    })
+test(`${variant}: awsDynamoDBDeleteItemStream should throw error`, async (_t) => {
+	const client = mockClient(DynamoDBClient);
+	awsDynamoDBSetClient(client);
+	client
+		.on(BatchWriteItemCommand, {
+			RequestItems: {
+				TableName: [
+					{
+						DeleteRequest: {
+							Key: { key: "a" },
+						},
+					},
+				],
+			},
+		})
+		.resolves({
+			UnprocessedItems: {
+				TableName: [
+					{
+						DeleteRequest: {
+							Key: { key: "a" },
+						},
+					},
+				],
+			},
+		})
+		.on(BatchWriteItemCommand, {
+			RequestItems: {
+				TableName: [
+					{
+						DeleteRequest: {
+							Key: { key: "a" },
+						},
+					},
+				],
+			},
+		})
+		.resolves({
+			UnprocessedItems: {
+				TableName: [
+					{
+						DeleteRequest: {
+							Key: { key: "a" },
+						},
+					},
+				],
+			},
+		});
 
-  const input = [{ key: 'a' }]
-  const options = {
-    TableName: 'TableName',
-    retryMaxCount: 0 // force
-  }
-  const stream = [
-    createReadableStream(input),
-    awsDynamoDBDeleteItemStream(options)
-  ]
-  try {
-    await pipeline(stream)
-  } catch (e) {
-    equal(e.message, 'awsDynamoDBBatchWriteItem has UnprocessedItems')
-  }
-}) */
+	const input = [{ key: "a" }];
+	const options = {
+		TableName: "TableName",
+		retryMaxCount: 0, // force
+	};
+	const stream = [
+		createReadableStream(input),
+		awsDynamoDBDeleteItemStream(options),
+	];
+	try {
+		await pipeline(stream);
+	} catch (e) {
+		strictEqual(e.message, "awsDynamoDBBatchWriteItem has UnprocessedItems");
+	}
+});

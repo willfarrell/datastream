@@ -1,6 +1,6 @@
 /* global Headers, Response */
 
-import { deepEqual } from "node:assert";
+import { deepStrictEqual } from "node:assert";
 import test from "node:test";
 // import sinon from 'sinon'
 import {
@@ -169,7 +169,7 @@ test(`${variant}: fetchResponseStream should fetch csv`, async (_t) => {
 	const stream = fetchResponseStream(config);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		Uint8Array.from("a,b,c\n1,2,3".split("").map((x) => x.charCodeAt())),
 	]);
 });
@@ -180,7 +180,7 @@ test(`${variant}: fetchResponseStream should fetch with qs`, async (_t) => {
 	const stream = fetchResponseStream(config);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		Uint8Array.from("a_b_c\n1_2_3".split("").map((x) => x.charCodeAt())),
 	]);
 });
@@ -194,7 +194,7 @@ test(`${variant}: fetchResponseStream should fetch json objects in parallel`, as
 	const stream = fetchResponseStream(config);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ key: "item", value: 1 },
 		{ key: "item", value: 2 },
 		{ key: "item", value: 3 },
@@ -212,7 +212,7 @@ test(`${variant}: fetchResponseStream should fetch paginated json in series`, as
 	const stream = fetchResponseStream(config);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ key: "item", value: 1 },
 		{ key: "item", value: 2 },
 		{ key: "item", value: 3 },
@@ -233,7 +233,7 @@ test(`${variant}: fetchResponseStream should work with pipejoin`, async (_t) => 
 	const stream = pipejoin([fetchResponseStream(config)]);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ key: "item", value: 1 },
 		{ key: "item", value: 2 },
 		{ key: "item", value: 3 },
@@ -256,7 +256,7 @@ test(`${variant}: fetchResponseStream should work with pipeline`, async (_t) => 
 		createPassThroughStream(),
 	]);
 
-	deepEqual(result, {});
+	deepStrictEqual(result, {});
 });
 
 test(`${variant}: fetchResponseStream should paginate using query parameters`, async () => {
@@ -274,11 +274,57 @@ test(`${variant}: fetchResponseStream should paginate using query parameters`, a
 	const stream = pipejoin([fetchResponseStream(config)]);
 	const output = await streamToArray(stream);
 
-	deepEqual(output, [
+	deepStrictEqual(output, [
 		{ key: "item", value: 1 },
 		{ key: "item", value: 2 },
 		{ key: "item", value: 3 },
 		{ key: "item", value: 4 },
 		{ key: "item", value: 5 },
 	]);
+});
+
+test(`${variant}: fetchResponseStream should retry on 429 status`, async (_t) => {
+	fetchSetDefaults({ dataPath: "", headers: { Accept: "application/json" } });
+	let callCount = 0;
+	const originalFetch = global.fetch;
+	global.fetch = (url) => {
+		if (url === "https://example.org/429") {
+			callCount++;
+			if (callCount === 1) {
+				return Promise.resolve(
+					new Response("", { status: 429, statusText: "Too Many Requests" }),
+				);
+			}
+			return Promise.resolve(
+				new Response(JSON.stringify({ success: true }), {
+					status: 200,
+					statusText: "OK",
+					headers: new Headers({ "Content-Type": "application/json" }),
+				}),
+			);
+		}
+		return originalFetch(url);
+	};
+
+	const config = [{ url: "https://example.org/429" }];
+	const stream = fetchResponseStream(config);
+	const output = await streamToArray(stream);
+
+	global.fetch = originalFetch;
+	deepStrictEqual(output, [{ success: true }]);
+});
+
+test(`${variant}: fetchResponseStream should throw on non-ok response`, async (_t) => {
+	fetchSetDefaults({ headers: { Accept: "application/json" } });
+	const config = [{ url: "https://example.org/404" }];
+
+	try {
+		const stream = fetchResponseStream(config);
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (error) {
+		deepStrictEqual(error.message, "fetch");
+		deepStrictEqual(error.cause.request.url, "https://example.org/404");
+		deepStrictEqual(error.cause.response.status, 404);
+	}
 });

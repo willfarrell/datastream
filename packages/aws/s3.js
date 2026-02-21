@@ -73,7 +73,7 @@ export const awsS3ChecksumStream = (
 	let bytes = new Uint8Array(0);
 	const passThrough = async (chunk) => {
 		if (typeof chunk === "string") {
-			chunk = new TextEncoder("utf-8").encode(chunk);
+			chunk = new TextEncoder().encode(chunk);
 		}
 		while (bytes.byteLength + chunk.byteLength > partSize) {
 			chunk = _concatBuffers([bytes, chunk]);

@@ -30,10 +30,11 @@ export const awsSQSReceiveMessageStream = async (
 		let expectMore = true;
 		while (expectMore) {
 			const response = await client.send(new ReceiveMessageCommand(options));
-			for (const item of response.Messages) {
+			const messages = response.Messages ?? [];
+			for (const item of messages) {
 				yield item;
 			}
-			expectMore = response.Messages.length;
+			expectMore = messages.length;
 		}
 	}
 	return command(options);
