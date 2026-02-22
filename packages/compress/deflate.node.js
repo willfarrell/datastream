@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import { createDeflate, createInflate } from "node:zlib";
 
 // TODO benchmark against `fflate`

@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 export const indexedDBReadStream = async (_option, _streamOptions = {}) => {
 	throw new Error("indexedDBReadStream: Not supported");
 };

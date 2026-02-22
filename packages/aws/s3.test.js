@@ -75,32 +75,6 @@ if (variant === "node") {
 		}
 	});
 
-	// TODO update
-	/* test(`${variant}: awsS3PutObjectStream should put chunk`, async (_t) => {
-    //process.env.AWS_REGION = 'ca-central-1' // not mocked when using PutObjectCommand for some reason
-    const client = mockClient(S3Client)
-    awsS3SetClient(client)
-
-    const input = 'x'.repeat(512)
-    const options = {
-      Bucket: 'bucket',
-      Key: 'file.ext'
-    }
-
-    client
-      .on(PutObjectCommand)
-      .resolves({ ETag: '1' })
-      .on(CreateMultipartUploadCommand)
-      .rejects()
-      .on(UploadPartCommand)
-      .rejects()
-
-    const stream = [createReadableStream(input), awsS3PutObjectStream(options)]
-    const result = await pipeline(stream)
-
-    deepStrictEqual(result, {})
-  }) */
-
 	test(`${variant}: awsS3PutObjectStream should put chunks`, async (_t) => {
 		const client = mockClient(S3Client);
 

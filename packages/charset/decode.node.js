@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import { createTransformStream } from "@datastream/core";
 import iconv from "iconv-lite";
 

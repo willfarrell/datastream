@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import { createReadStream, createWriteStream } from "node:fs";
 import { extname } from "node:path";
 import { makeOptions } from "@datastream/core";

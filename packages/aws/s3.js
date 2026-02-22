@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 /* global crypto */
 
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
@@ -6,20 +8,7 @@ import {
 	createPassThroughStream,
 	createReadableStream,
 } from "@datastream/core";
-
-// import { Crc32 } from '@aws-crypto/crc32';
-// import { Crc32c } from '@aws-crypto/crc32c';
-
-const awsClientDefaults = {
-	// https://aws.amazon.com/compliance/fips/
-	useFipsEndpoint: [
-		"us-east-1",
-		"us-east-2",
-		"us-west-1",
-		"us-west-2",
-		"ca-central-1",
-	].includes(process.env.AWS_REGION),
-};
+import { awsClientDefaults } from "./client.js";
 
 let defaultClient = new S3Client(awsClientDefaults);
 export const awsS3SetClient = (s3Client) => {

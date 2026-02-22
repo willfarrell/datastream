@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import { createReadableStream } from "@datastream/core";
 
 export const fileReadStream = async ({ types }, _streamOptions = {}) => {

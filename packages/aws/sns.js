@@ -1,15 +1,8 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import { PublishBatchCommand, SNSClient } from "@aws-sdk/client-sns";
 import { createWritableStream } from "@datastream/core";
-
-const awsClientDefaults = {
-	// https://aws.amazon.com/compliance/fips/
-	useFipsEndpoint: [
-		"us-east-1",
-		"us-east-2",
-		"us-west-1",
-		"us-west-2",
-	].includes(process.env.AWS_REGION),
-};
+import { awsClientDefaults } from "./client.js";
 
 let client = new SNSClient(awsClientDefaults);
 export const awsSNSSetClient = (snsClient) => {

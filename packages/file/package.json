@@ -58,7 +58,7 @@
 	"repository": {
 		"type": "git",
 		"url": "github:willfarrell/datastream",
-		"directory": "packages/digest"
+		"directory": "packages/file"
 	},
 	"bugs": {
 		"url": "https://github.com/willfarrell/datastream/issues"

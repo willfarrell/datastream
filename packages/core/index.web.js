@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 /* global ReadableStream, TransformStream, WritableStream */
 
 export const pipeline = async (streams, streamOptions = {}) => {
@@ -60,20 +62,6 @@ export const streamToString = async (stream) => {
 	}
 	return value;
 };
-
-/* export const streamToBuffer = async (stream) => {
-  let byteLength = 0
-  let value = []
-  for await (const chunk of stream) {
-    byteLength += chunk.length
-    value.push([new Uint8Array(chunk),byteLength])
-  }
-  return value.reduce((buffer, set) => {
-    if (!buffer) buffer = new Uint8Array(byteLength)
-    buffer.set(...set)
-    return buffer
-  })
-} */
 
 export const isReadable = (stream) => {
 	return typeof stream.pipeTo === "function" || !!stream.readable; // TODO find better solution
@@ -226,39 +214,6 @@ export const createWritableStream = (write, close, streamOptions) => {
 	);
 };
 
-/*
-export const createBranchStream = (
-	{ streams, resultKey } = {},
-	streamOptions = {},
-) => {
-	// TODO refactor, not good enough
-	// https://streams.spec.whatwg.org/#rs-model
-	const branchStream = createReadableStream(undefined, streamOptions);
-	const passThrough = (chunk) => {
-		branchStream.push(chunk);
-	};
-	const flush = () => {
-		branchStream.push(null);
-	};
-	const stream = createPassThroughStream(passThrough, flush, streamOptions);
-
-	streams.unshift(branchStream);
-	const value = pipeline(streams, streamOptions);
-	stream.result = async () => {
-		return {
-			key: resultKey ?? "branch",
-			value, // await causes: Promise resolution is still pending but the event loop has already resolved
-		};
-	};
-	return stream;
-};
-*/
-
-/* export const tee = (sourceStream) => {
-  return sourceStream.tee()
-} */
-
-// Polyfill for `import { setTimeout } from 'node:timers/promises'`
 export const timeout = (ms, { signal } = {}) => {
 	if (signal?.aborted) {
 		return Promise.reject(new Error("Aborted", "AbortError"));

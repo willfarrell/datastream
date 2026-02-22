@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 /* global CompressionStream, DecompressionStream */
 // CompressionStream
 // - https://caniuse.com/?search=CompressionStream

@@ -21,7 +21,7 @@
 				},
 				"__require": {
 					"types": "./index.d.ts",
-					"default": "./zstd.node.cjs"
+					"default": "./index.node.cjs"
 				}
 			},
 			"import": {

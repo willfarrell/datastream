@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 // CompressionStream
 // - https://caniuse.com/?search=CompressionStream
 // - doesn't support `br` - https://github.com/httptoolkit/brotli-wasm

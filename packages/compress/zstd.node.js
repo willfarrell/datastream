@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import { constants, createZstdCompress, createZstdDecompress } from "node:zlib";
 
 export const zstdCompressStream = (options = {}, _streamOptions = {}) => {

@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import { Readable, Transform, Writable } from "node:stream";
 import { pipeline as pipelinePromise } from "node:stream/promises";
 import { setTimeout } from "node:timers/promises";
@@ -272,34 +274,6 @@ export const createWritableStream = (write, final, streamOptions) => {
 		},
 	});
 };
-
-/*
-export const createBranchStream = (
-	{ streams, resultKey } = {},
-	streamOptions = {},
-) => {
-	// TODO refactor, not good enough
-	// https://streams.spec.whatwg.org/#rs-model
-	const branchStream = createReadableStream(undefined, streamOptions);
-	const passThrough = (chunk) => {
-		branchStream.push(chunk);
-	};
-	const flush = () => {
-		branchStream.push(null);
-	};
-	const stream = createPassThroughStream(passThrough, flush, streamOptions);
-
-	streams.unshift(branchStream);
-	const value = pipeline(streams, streamOptions);
-	stream.result = async () => {
-		return {
-			key: resultKey ?? "branch",
-			value, // await causes: Promise resolution is still pending but the event loop has already resolved
-		};
-	};
-	return stream;
-};
-*/
 
 export const timeout = (ms, { signal } = {}) => {
 	return setTimeout(ms, { signal });

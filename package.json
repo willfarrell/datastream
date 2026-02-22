@@ -19,9 +19,9 @@
 		"build": "bin/esbuild",
 		"test": "npm run test:lint && npm run test:unit && npm run test:sast && npm run test:perf && npm run test:dast",
 		"test:lint": "biome check --staged --no-errors-on-unmatched",
+		"test:unit": "npm run test:unit:node && npm run test:unit:web",
 		"test:unit:node": "node --test --conditions=node",
 		"test:unit:web": "node --test --conditions=webstream",
-		"test:unit": "npm run test:unit:node && npm run test:unit:web",
 		"test:sast": "npm run test:sast:license && npm run test:sast:lockfile && npm run test:sast:semgrep && npm run test:sast:trufflehog && npm run test:sast:trivy && npm run test:sast:ort",
 		"test:sast:license": "license-check-and-add check -f license.json",
 		"test:sast:lockfile": "lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https",
@@ -37,7 +37,8 @@
 		"test:packages:unit:node": "node --test --test-force-exit --experimental-test-coverage --test-coverage-lines=96 --test-coverage-branches=99 --test-coverage-functions=95",
 		"test:packages:unit:web": "node --test --test-force-exit --experimental-test-coverage --test-coverage-lines=96 --test-coverage-branches=99 --test-coverage-functions=95",
 		"test:packages:fuzz": "node --test ./packages/**/*.fuzz.js",
-		"rm": "npm run rm:coverage && npm run rm:node_modules && npm run rm:lock",
+		"rm": "npm run rm:macos && npm run rm:node_modules && npm run rm:lock",
+		"rm:macos": "find . -name '.DS_Store' -type d -prune -exec rm -rf '{}' +",
 		"rm:lock": "find . -name 'package-lock.json' -type d -prune -exec rm -rf '{}' +",
 		"rm:node_modules": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
 		"update": "npm update --workspaces && npm install --workspaces",
@@ -71,12 +72,11 @@
 		"@biomejs/biome": "^2.0.0",
 		"@commitlint/cli": "^20.0.0",
 		"@commitlint/config-conventional": "^20.0.0",
-		"@tsconfig/node22": "22.0.5",
+		"@tsconfig/node24": "^24.0.0",
 		"docsify-cli": "^4.0.0",
 		"esbuild": "^0.27.0",
 		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
-		"license-check-and-add": "^4.0.0",
 		"tinybench": "^6.0.0",
 		"tstyche": "^6.0.0"
 	},
@@ -89,6 +89,7 @@
 		}
 	},
 	"workspaces": [
-		"packages/*"
+		"packages/*",
+		".github"
 	]
 }

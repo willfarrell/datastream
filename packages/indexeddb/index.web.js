@@ -1,5 +1,7 @@
-import { createReadableStream, createWriteStream } from "@datastream/core";
-import { openDB } from "idb/with-async-ittr.js";
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
+import { createReadableStream, createWritableStream } from "@datastream/core";
+import { openDB } from "idb";
 
 export const indexedDBConnect = openDB;
 
@@ -25,7 +27,7 @@ export const indexedDBWriteStream = async (
 	const final = async () => {
 		await tx.done;
 	};
-	return createWriteStream(write, final, streamOptions);
+	return createWritableStream(write, final, streamOptions);
 };
 
 export default {

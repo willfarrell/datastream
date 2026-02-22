@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import {
 	createPassThroughStream,
 	createReadableStream,
@@ -81,11 +83,6 @@ export const stringSplitStream = (options, streamOptions = {}) => {
 				break;
 			}
 		}
-		// chunk = previousChunk + chunk
-		// const chunks = chunk.split(separator)
-		// previousChunk = chunks.pop()
-		// console.log(chunk)
-		// enqueue(chunk)
 	};
 	const flush = (enqueue) => {
 		enqueue(previousChunk);

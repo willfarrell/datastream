@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import { createPassThroughStream } from "@datastream/core";
 import {
 	createSHA3,

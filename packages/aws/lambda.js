@@ -1,19 +1,11 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import {
 	InvokeWithResponseStreamCommand,
 	LambdaClient,
 } from "@aws-sdk/client-lambda";
 import { createReadableStream } from "@datastream/core";
-
-const awsClientDefaults = {
-	// https://aws.amazon.com/compliance/fips/
-	useFipsEndpoint: [
-		"us-east-1",
-		"us-east-2",
-		"us-west-1",
-		"us-west-2",
-		// 'ca-central-1'
-	].includes(process.env.AWS_REGION),
-};
+import { awsClientDefaults } from "./client.js";
 
 let defaultClient = new LambdaClient(awsClientDefaults);
 export const awsLambdaSetClient = (lambdaClient) => {

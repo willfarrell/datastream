@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
 import { createGunzip, createGzip } from "node:zlib";
 
 // quality -1 - 9
