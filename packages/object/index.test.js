@@ -11,12 +11,17 @@ import {
 import {
 	objectBatchStream,
 	objectCountStream,
+	objectKeyJoinStream,
+	objectKeyMapStream,
 	objectKeyValueStream,
 	objectKeyValuesStream,
+	objectOmitStream,
+	objectPickStream,
 	objectPivotLongToWideStream,
 	objectPivotWideToLongStream,
 	objectReadableStream,
 	objectSkipConsecutiveDuplicatesStream,
+	objectValueMapStream,
 } from "@datastream/object";
 
 let variant = "unknown";
@@ -150,22 +155,15 @@ test(`${variant}: objectPivotLongToWideStream should pivot chunks to wide`, asyn
 });
 
 test(`${variant}: objectPivotLongToWideStream should catch invalid chunk type`, async (_t) => {
-	const input = [
-		{ a: "1", b: "l", v: 1, u: "m" },
-		{ a: "1", b: "w", v: 2, u: "m" },
-		{ a: "2", b: "w", v: 3, u: "m" },
-		{ a: "3", b: "l", v: 4, u: "m" },
-		{ a: "3", b: "w", v: 5, u: "m" },
-	];
+	const input = [{ a: "1", b: "l", v: 1, u: "m" }];
 
 	const streams = [
 		createReadableStream(input),
-		objectBatchStream({ keys: ["b", "u"] }),
 		objectPivotLongToWideStream({ keys: ["b", "u"], valueParam: "v" }),
 	];
 	try {
-		const stream = pipejoin(streams);
-		await streamToArray(stream);
+		await pipeline(streams);
+		throw new Error("Expected error was not thrown");
 	} catch (e) {
 		deepStrictEqual(
 			e.message,
@@ -255,4 +253,99 @@ test(`${variant}: objectSkipConsecutiveDuplicatesStream should skip consecutive 
 	const output = await streamToArray(stream);
 
 	deepStrictEqual(output, [{ a: 1 }, { b: 2 }, { c: 3 }]);
+});
+
+// *** objectPivotLongToWideStream with custom delimiter *** //
+test(`${variant}: objectPivotLongToWideStream should use custom delimiter`, async (_t) => {
+	const input = [
+		{ a: "1", b: "l", u: "m", v: 1 },
+		{ a: "1", b: "w", u: "m", v: 2 },
+	];
+	const streams = [
+		createReadableStream(input),
+		objectBatchStream({ keys: ["a"] }),
+		objectPivotLongToWideStream({
+			keys: ["b", "u"],
+			valueParam: "v",
+			delimiter: "-",
+		}),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ a: "1", "l-m": 1, "w-m": 2 }]);
+});
+
+// *** objectKeyJoinStream *** //
+test(`${variant}: objectKeyJoinStream should join keys into new key`, async (_t) => {
+	const input = [{ firstName: "John", lastName: "Doe", age: 30 }];
+	const streams = [
+		createReadableStream(input),
+		objectKeyJoinStream({
+			keys: { fullName: ["firstName", "lastName"] },
+			separator: " ",
+		}),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ age: 30, fullName: "John Doe" }]);
+});
+
+// *** objectKeyMapStream *** //
+test(`${variant}: objectKeyMapStream should map keys to new names`, async (_t) => {
+	const input = [{ a: 1, b: 2, c: 3 }];
+	const streams = [
+		createReadableStream(input),
+		objectKeyMapStream({ keys: { a: "x", b: "y" } }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ x: 1, y: 2, c: 3 }]);
+});
+
+// *** objectValueMapStream *** //
+test(`${variant}: objectValueMapStream should map values using lookup`, async (_t) => {
+	const input = [{ status: "active" }, { status: "inactive" }];
+	const streams = [
+		createReadableStream(input),
+		objectValueMapStream({ key: "status", values: { active: 1, inactive: 0 } }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ status: 1 }, { status: 0 }]);
+});
+
+// *** objectPickStream *** //
+test(`${variant}: objectPickStream should pick specified keys`, async (_t) => {
+	const input = [{ a: 1, b: 2, c: 3 }];
+	const streams = [
+		createReadableStream(input),
+		objectPickStream({ keys: ["a", "c"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ a: 1, c: 3 }]);
+});
+
+// *** objectOmitStream *** //
+test(`${variant}: objectOmitStream should omit specified keys`, async (_t) => {
+	const input = [{ a: 1, b: 2, c: 3 }];
+	const streams = [
+		createReadableStream(input),
+		objectOmitStream({ keys: ["b"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ a: 1, c: 3 }]);
 });

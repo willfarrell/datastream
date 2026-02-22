@@ -88,6 +88,26 @@ test(`${variant}: csvParseStream should return csv parsing errors`, async (_t) =
 	deepStrictEqual(value, csvErrors);
 });
 
+test(`${variant}: csvParseStream should handle error in last chunk without newline`, async (_t) => {
+	const streams = [
+		createReadableStream(["a,b,c,d\r\n1,2,3,4\r\n1,2,3"]), // incomplete last row
+		csvParseStream(),
+	];
+	const result = await pipeline(streams);
+
+	deepStrictEqual(result.csvErrors.MissingFields.idx, [3]);
+});
+
+test(`${variant}: csvParseStream should use custom resultKey`, async (_t) => {
+	const streams = [
+		createReadableStream("a,b\r\n1,2\r\n"),
+		csvParseStream({ resultKey: "parseErrors" }),
+	];
+	const result = await pipeline(streams);
+
+	deepStrictEqual(result.parseErrors, {});
+});
+
 // *** csvFormatStream *** //
 test(`${variant}: csvFormatStream should format csv from object[]`, async (_t) => {
 	const streams = [

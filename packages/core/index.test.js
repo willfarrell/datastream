@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
 import {
-	//createBranchStream,
+	backpressureGuage,
 	createPassThroughStream,
 	createReadableStream,
 	createTransformStream,
@@ -12,6 +12,7 @@ import {
 	pipejoin,
 	pipeline,
 	streamToArray,
+	streamToBuffer,
 	streamToObject,
 	streamToString,
 	timeout,
@@ -92,6 +93,79 @@ for (const type of Object.keys(types)) {
 		deepStrictEqual(output, input.join(""));
 	});
 }
+
+// *** streamToBuffer *** //
+test(`${variant}: streamToBuffer should collect buffers into single buffer`, async (_t) => {
+	const input = ["hello", " ", "world"];
+	const streams = [createReadableStream(input)];
+	const stream = pipejoin(streams);
+	const output = await streamToBuffer(stream);
+
+	deepStrictEqual(output.toString(), "hello world");
+});
+
+test(`${variant}: streamToBuffer should work with Uint8Array`, async (_t) => {
+	const input = [Uint8Array.from([104, 101, 108, 108, 111])]; // "hello"
+	const streams = [createReadableStream(input)];
+	const stream = pipejoin(streams);
+	const output = await streamToBuffer(stream);
+
+	deepStrictEqual(output.toString(), "hello");
+});
+
+// *** backpressureGuage *** //
+test(`${variant}: backpressureGuage should measure stream metrics`, async (_t) => {
+	const input = ["a", "b", "c"];
+	const streams = {
+		readable: createReadableStream(input),
+		transform: createTransformStream(),
+	};
+
+	const metrics = backpressureGuage(streams);
+
+	deepStrictEqual(typeof metrics, "object");
+	deepStrictEqual(typeof metrics.readable, "object");
+	deepStrictEqual(typeof metrics.transform, "object");
+	deepStrictEqual(metrics.readable.timeline, []);
+	deepStrictEqual(metrics.readable.total, {});
+});
+
+test(`${variant}: backpressureGuage should track pause and resume events`, async (_t) => {
+	const transform = createTransformStream();
+	const streams = { transform };
+
+	const metrics = backpressureGuage(streams);
+
+	// Simulate pause event
+	transform.emit("pause");
+	// Simulate resume event (with timestamp set)
+	transform.emit("resume");
+
+	// Check that timeline was updated
+	deepStrictEqual(metrics.transform.timeline.length, 1);
+	strictEqual(typeof metrics.transform.timeline[0].timestamp, "number");
+	strictEqual(typeof metrics.transform.timeline[0].duration, "number");
+});
+
+test(`${variant}: backpressureGuage should track resume without prior pause`, async (_t) => {
+	const transform = createTransformStream();
+	const streams = { transform };
+
+	const metrics = backpressureGuage(streams);
+
+	// Simulate resume event without prior pause
+	transform.emit("resume");
+
+	// startTimestamp should be set
+	strictEqual(typeof metrics.transform.total.timestamp, "undefined");
+
+	// Simulate end event
+	transform.emit("end");
+
+	// total should now have values
+	strictEqual(typeof metrics.transform.total.timestamp, "number");
+	strictEqual(typeof metrics.transform.total.duration, "number");
+});
 
 // *** createReadableStream *** //
 test(`${variant}: createReadableStream should create a readable stream from string`, async (_t) => {
@@ -467,28 +541,7 @@ test(`${variant}: pipejoin should throw error when promise passed in`, async (_t
 	}
 });
 
-// TODO update to catch error
-// test(`${variant}: pipejoin should throw error when a stream thrown an error`, async (_t) => {
-// 	const input = ["a", "b", "c"];
-
-// 	const transform = (chunk, enqueue) => {
-// 		if (chunk === "b") throw new Error("Error");
-// 		enqueue(chunk);
-// 	};
-
-// 	const streams = [
-// 		createReadableStream(input),
-// 		createTransformStream(transform),
-// 	];
-
-// 	try {
-// 	  for await (const item of pipejoin(streams)) {
-// 	    console.log(item)
-// 	  }
-// 	} catch (e) {
-// 	  strictEqual(e.message, 'Error')
-// 	}
-// });
+// Default error handler in pipejoin is tested through pipeline error tests
 
 // *** makeOptions *** //
 if (variant === "node") {

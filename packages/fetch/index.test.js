@@ -1,6 +1,6 @@
 /* global Headers, Response */
 
-import { deepStrictEqual } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
 // import sinon from 'sinon'
 import {
@@ -10,7 +10,11 @@ import {
 	streamToArray,
 } from "@datastream/core";
 
-import { fetchResponseStream, fetchSetDefaults } from "@datastream/fetch";
+import {
+	fetchResponseStream,
+	fetchSetDefaults,
+	fetchWritableStream,
+} from "@datastream/fetch";
 
 let variant = "unknown";
 for (const execArgv of process.execArgv) {
@@ -327,4 +331,64 @@ test(`${variant}: fetchResponseStream should throw on non-ok response`, async (_
 		deepStrictEqual(error.cause.request.url, "https://example.org/404");
 		deepStrictEqual(error.cause.response.status, 404);
 	}
+});
+
+// *** fetchWritableStream *** //
+test(`${variant}: fetchWritableStream should create writable stream for upload`, async (_t) => {
+	const originalFetch = global.fetch;
+
+	global.fetch = async (_url, _options) => {
+		return new Response(JSON.stringify({ uploaded: true }), {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/json" }),
+		});
+	};
+
+	const options = {
+		url: "https://example.org/upload",
+		method: "POST",
+	};
+
+	const stream = await fetchWritableStream(options);
+
+	deepStrictEqual(typeof stream.write, "function");
+	deepStrictEqual(typeof stream.end, "function");
+	deepStrictEqual(typeof stream.result, "function");
+
+	stream.write("test data");
+	stream.end();
+
+	const result = stream.result();
+	deepStrictEqual(result.key, "output");
+
+	global.fetch = originalFetch;
+});
+
+test(`${variant}: fetchRateLimit should handle rate limit delay`, async (_t) => {
+	const originalFetch = global.fetch;
+	const fetchCallTimes = [];
+
+	global.fetch = async (_url, _options) => {
+		fetchCallTimes.push(Date.now());
+		return new Response(JSON.stringify({ success: true }), {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/json" }),
+		});
+	};
+
+	fetchSetDefaults({ rateLimit: 0.1 }); // 100ms delay
+
+	const config1 = [{ url: "https://example.org/test1" }];
+	const stream1 = fetchResponseStream(config1);
+	await streamToArray(stream1);
+
+	const config2 = [{ url: "https://example.org/test2" }];
+	const stream2 = fetchResponseStream(config2);
+	await streamToArray(stream2);
+
+	global.fetch = originalFetch;
+	fetchSetDefaults({ rateLimit: 0.01 }); // Reset to default
+
+	// Second call should have been delayed
+	strictEqual(fetchCallTimes.length, 2);
 });

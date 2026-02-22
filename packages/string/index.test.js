@@ -9,8 +9,10 @@ import {
 } from "@datastream/core";
 
 import {
+	stringCountStream,
 	stringLengthStream,
 	stringReadableStream,
+	stringReplaceStream,
 	stringSkipConsecutiveDuplicates,
 	stringSplitStream,
 } from "@datastream/string";
@@ -100,4 +102,96 @@ test(`${variant}: stringSplitStream should split into empty strings`, async (_t)
 	const output = await streamToArray(stream);
 
 	deepStrictEqual(output, ["a", "bc", "d"]);
+});
+
+// *** stringCountStream *** //
+test(`${variant}: stringCountStream should count occurrences of substring`, async (_t) => {
+	const input = ["hello world", "hello universe"];
+	const streams = [
+		createReadableStream(input),
+		stringCountStream({ substr: "hello" }),
+	];
+
+	const result = await pipeline(streams);
+	const { key, value } = streams[1].result();
+
+	strictEqual(key, "count");
+	strictEqual(result.count, 2);
+	strictEqual(value, 2);
+});
+
+test(`${variant}: stringCountStream should count multiple occurrences in single chunk`, async (_t) => {
+	const input = ["aaa aaa aaa"];
+	const streams = [
+		createReadableStream(input),
+		stringCountStream({ substr: "a" }),
+	];
+
+	await pipeline(streams);
+	const { value } = streams[1].result();
+
+	strictEqual(value, 9);
+});
+
+test(`${variant}: stringCountStream should use custom result key`, async (_t) => {
+	const input = ["test test"];
+	const streams = [
+		createReadableStream(input),
+		stringCountStream({ substr: "test", resultKey: "matches" }),
+	];
+
+	const result = await pipeline(streams);
+	const { key } = streams[1].result();
+
+	strictEqual(key, "matches");
+	strictEqual(result.matches, 2);
+});
+
+// *** stringReplaceStream *** //
+test(`${variant}: stringReplaceStream should replace pattern across chunks`, async (_t) => {
+	const input = ["hello world", "hello universe"];
+	const streams = [
+		createReadableStream(input),
+		stringReplaceStream({ pattern: /hello/g, replacement: "hi" }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	// First chunk: previousChunk="", outputs "", previousChunk becomes "hi world"
+	// Second chunk: previousChunk="hi world", newChunk = "hi worldhello universe".replace() = "hi worldhi universe"
+	// outputs "hi world" (substring 0, 8), previousChunk becomes "hi universe"
+	// flush outputs "hi universe"
+	deepStrictEqual(output, ["", "hi world", "hi universe"]);
+});
+
+test(`${variant}: stringReplaceStream should handle pattern spanning chunks`, async (_t) => {
+	const input = ["hel", "lo world"];
+	const streams = [
+		createReadableStream(input),
+		stringReplaceStream({ pattern: /hello/g, replacement: "hi" }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	// Implementation buffers and matches across chunks:
+	// Chunk 1: "hel" -> enqueue "", previousChunk="hel"
+	// Chunk 2: "hel"+"lo world" = "hello world" -> replace = "hi world" -> enqueue "hi ", previousChunk="world"
+	// Flush: enqueue "world"
+	deepStrictEqual(output, ["", "hi ", "world"]);
+});
+
+test(`${variant}: stringReplaceStream should replace with string pattern`, async (_t) => {
+	const input = ["hello world"];
+	const streams = [
+		createReadableStream(input),
+		stringReplaceStream({ pattern: "hello", replacement: "hi" }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	// Output includes empty string from first chunk (previousChunk.length was 0)
+	deepStrictEqual(output, ["", "hi world"]);
 });

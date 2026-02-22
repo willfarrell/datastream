@@ -8,19 +8,18 @@ import {
 	UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import {
+	awsS3ChecksumStream,
+	awsS3GetObjectStream,
+	awsS3PutObjectStream,
+	awsS3SetClient,
+} from "@datastream/aws/s3";
+import {
 	createReadableStream,
 	pipeline,
 	streamToString,
 } from "@datastream/core";
 // import sinon from 'sinon'
 import { mockClient } from "aws-sdk-client-mock";
-
-import {
-	awsS3ChecksumStream,
-	awsS3GetObjectStream,
-	awsS3PutObjectStream,
-	awsS3SetClient,
-} from "./s3.js";
 
 let variant = "unknown";
 for (const execArgv of process.execArgv) {
@@ -131,6 +130,38 @@ if (variant === "node") {
 
 		deepStrictEqual(result, {});
 	});
+
+	test(`${variant}: awsS3PutObjectStream should put chunks with onProgress option`, async (_t) => {
+		const client = mockClient(S3Client);
+
+		// Hack to fix mock
+		const defaultClient = new S3Client();
+		client.config ??= {};
+		client.config.requestChecksumCalculation ??=
+			defaultClient.config.requestChecksumCalculation;
+
+		awsS3SetClient(client);
+		const input = "x".repeat(6 * 1024 * 1024);
+
+		const options = {
+			Bucket: "bucket",
+			Key: "file.ext",
+			onProgress: () => {},
+		};
+
+		client
+			.on(PutObjectCommand)
+			.rejects()
+			.on(CreateMultipartUploadCommand)
+			.resolves({ UploadId: "1" })
+			.on(UploadPartCommand)
+			.resolves({ ETag: "1" });
+
+		const stream = [createReadableStream(input), awsS3PutObjectStream(options)];
+		const result = await pipeline(stream);
+
+		deepStrictEqual(result, {});
+	});
 } else {
 	console.info(
 		"awsS3PutObjectStream doesn't work with webstreams at this time",
@@ -189,6 +220,49 @@ test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string with S
 			partSize: 17_179_870,
 		},
 	});
+});
+
+test(`${variant}: awsS3ChecksumStream should make multi-part checksum with small partSize`, async (_t) => {
+	const input = "x".repeat(100);
+	const options = {
+		ChecksumAlgorithm: "SHA256",
+		partSize: 50,
+	};
+
+	const stream = [createReadableStream(input), awsS3ChecksumStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result.s3.checksums.length, 2);
+	deepStrictEqual(result.s3.partSize, 50);
+});
+
+test(`${variant}: awsS3ChecksumStream should make checksum with custom resultKey`, async (_t) => {
+	const input = "x".repeat(16_384);
+	const options = {
+		ChecksumAlgorithm: "SHA256",
+		resultKey: "checksum",
+	};
+
+	const stream = [createReadableStream(input), awsS3ChecksumStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(
+		result.checksum.checksum,
+		"FTbEIsMcyYg0dZ1whc2jlKNRCgPXgYgkiYamsacgfQM=",
+	);
+});
+
+test(`${variant}: awsS3ChecksumStream should handle Uint8Array input`, async (_t) => {
+	const input = new TextEncoder().encode("x".repeat(100));
+	const options = {
+		ChecksumAlgorithm: "SHA256",
+		partSize: 50,
+	};
+
+	const stream = [createReadableStream(input), awsS3ChecksumStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result.s3.checksums.length, 2);
 });
 
 // test(`${variant}: awsS3ChecksumStream should make checksum of 8MB string (0.5 block)`, async (_t) => {

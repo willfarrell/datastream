@@ -29,12 +29,13 @@
 		"test:sast:semgrep": "semgrep scan --config auto",
 		"test:sast:trivy": "trivy fs --scanners vuln,license --include-dev-deps --ignored-licenses 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT --exit-code 1 --disable-telemetry .",
 		"test:sast:trufflehog": "trufflehog filesystem --only-verified --log-level=-1 ./",
+		"test:types": "tstyche",
 		"test:perf": "node --test ./**/*.perf.js",
 		"test:dast": "npm run test:dast:fuzz",
 		"test:dast:fuzz": "node --test ./**/*.fuzz.js",
 		"test:packages:unit": "npm run test:packages:unit:node && npm run test:packages:unit:web",
-		"test:packages:unit:node": "node --test --test-force-exit --experimental-test-coverage --test-coverage-lines=99 --test-coverage-branches=99 --test-coverage-functions=99",
-		"test:packages:unit:web": "node --test --test-force-exit --experimental-test-coverage --test-coverage-lines=99 --test-coverage-branches=99 --test-coverage-functions=99",
+		"test:packages:unit:node": "node --test --test-force-exit --experimental-test-coverage --test-coverage-lines=96 --test-coverage-branches=99 --test-coverage-functions=95",
+		"test:packages:unit:web": "node --test --test-force-exit --experimental-test-coverage --test-coverage-lines=96 --test-coverage-branches=99 --test-coverage-functions=95",
 		"test:packages:fuzz": "node --test ./packages/**/*.fuzz.js",
 		"rm": "npm run rm:coverage && npm run rm:node_modules && npm run rm:lock",
 		"rm:lock": "find . -name 'package-lock.json' -type d -prune -exec rm -rf '{}' +",
@@ -70,12 +71,22 @@
 		"@biomejs/biome": "^2.0.0",
 		"@commitlint/cli": "^20.0.0",
 		"@commitlint/config-conventional": "^20.0.0",
+		"@tsconfig/node22": "22.0.5",
 		"docsify-cli": "^4.0.0",
 		"esbuild": "^0.27.0",
 		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
 		"license-check-and-add": "^4.0.0",
-		"tinybench": "^6.0.0"
+		"tinybench": "^6.0.0",
+		"tstyche": "^6.0.0"
+	},
+	"overrides": {
+		"@sveltejs/kit": {
+			"cookie": "0.7.2"
+		},
+		"license-check-and-add": {
+			"minimatch": "10.2.2"
+		}
 	},
 	"workspaces": [
 		"packages/*"

@@ -11,11 +11,9 @@ export const charsetEncodeStream = ({ charset } = {}, streamOptions = {}) => {
 			enqueue(res);
 		}
 	};
-	const flush = (enqueue) => {
-		const res = conv.end();
-		if (res?.length) {
-			enqueue(res);
-		}
+	const flush = () => {
+		// iconv-lite encoder.end() always returns undefined, so no flush needed
+		conv.end();
 	};
 	return createTransformStream(transform, flush, streamOptions);
 };

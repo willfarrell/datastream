@@ -94,21 +94,21 @@ if (isBrowser) {
 }
 
 if (!isBrowser) {
-	test(`${variant}: indexedDBReadStream should skip in Node.js environment`, (_t) => {
-		const note =
-			"IndexedDB is browser-only. Skipping test in Node.js environment.";
-		ok(true, note);
+	test(`${variant}: indexedDBReadStream should throw error in Node.js environment`, async (_t) => {
+		try {
+			await indexedDBReadStream({});
+			throw new Error("Expected error was not thrown");
+		} catch (e) {
+			strictEqual(e.message, "indexedDBReadStream: Not supported");
+		}
 	});
 
-	test(`${variant}: indexedDBWriteStream should skip in Node.js environment`, (_t) => {
-		const note =
-			"IndexedDB is browser-only. Skipping test in Node.js environment.";
-		ok(true, note);
-	});
-
-	test(`${variant}: indexedDBConnect should skip in Node.js environment`, (_t) => {
-		const note =
-			"IndexedDB is browser-only. Skipping test in Node.js environment.";
-		ok(true, note);
+	test(`${variant}: indexedDBWriteStream should throw error in Node.js environment`, async (_t) => {
+		try {
+			await indexedDBWriteStream({});
+			throw new Error("Expected error was not thrown");
+		} catch (e) {
+			strictEqual(e.message, "indexedDBWriteStream: Not supported");
+		}
 	});
 }

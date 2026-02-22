@@ -23,7 +23,7 @@ export const stringCountStream = (
 ) => {
 	let value = 0;
 	const passThrough = (chunk) => {
-		let cursor = 0;
+		let cursor = -1;
 		while (cursor < chunk.length) {
 			cursor = chunk.indexOf(substr, cursor + 1);
 			if (cursor === -1) {

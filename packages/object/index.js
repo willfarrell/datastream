@@ -156,11 +156,11 @@ export const objectValueMapStream = ({ key, values }, streamOptions = {}) => {
 };
 
 export const objectPickStream = ({ keys }, streamOptions = {}) => {
-	keys = keys.map((k) => ({ [k]: true }));
+	const keySet = Object.fromEntries(keys.map((k) => [k, true]));
 	const transform = (chunk, enqueue) => {
 		const value = {};
 		for (const key in chunk) {
-			if (keys[key]) {
+			if (keySet[key]) {
 				value[key] = chunk[key];
 			}
 		}
@@ -170,11 +170,11 @@ export const objectPickStream = ({ keys }, streamOptions = {}) => {
 };
 
 export const objectOmitStream = ({ keys }, streamOptions = {}) => {
-	keys = keys.map((k) => ({ [k]: true }));
+	const keySet = Object.fromEntries(keys.map((k) => [k, true]));
 	const transform = (chunk, enqueue) => {
 		const value = {};
 		for (const key in chunk) {
-			if (!keys[key]) {
+			if (!keySet[key]) {
 				value[key] = chunk[key];
 			}
 		}

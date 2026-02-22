@@ -1,5 +1,5 @@
 import { createReadableStream, createWriteStream } from "@datastream/core";
-import { openDB } from "idb/with-async-ittr";
+import { openDB } from "idb/with-async-ittr.js";
 
 export const indexedDBConnect = openDB;
 

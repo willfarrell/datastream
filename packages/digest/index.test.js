@@ -51,3 +51,25 @@ test(`${variant}: digestStream should calculate digest`, async (_t) => {
 		"SHA2-256:37db36876b9ccaaa88394679f019c3435af9320dea117e867003840317870e25",
 	);
 });
+
+test(`${variant}: digestStream should use native algorithm name`, async (_t) => {
+	const streams = [
+		createReadableStream("test"),
+		await digestStream({ algorithm: "SHA256" }),
+	];
+	const result = await pipeline(streams);
+
+	strictEqual(result.digest.startsWith("SHA256:"), true);
+});
+
+test(`${variant}: digestStream should use custom resultKey`, async (_t) => {
+	const streams = [
+		createReadableStream("test"),
+		await digestStream({ algorithm: "SHA256", resultKey: "checksum" }),
+	];
+	const result = await pipeline(streams);
+
+	const { key } = streams[1].result();
+	strictEqual(key, "checksum");
+	strictEqual(typeof result.checksum, "string");
+});
