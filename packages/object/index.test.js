@@ -11,6 +11,7 @@ import {
 import {
 	objectBatchStream,
 	objectCountStream,
+	objectFromEntriesStream,
 	objectKeyJoinStream,
 	objectKeyMapStream,
 	objectKeyValueStream,
@@ -334,6 +335,39 @@ test(`${variant}: objectPickStream should pick specified keys`, async (_t) => {
 	const output = await streamToArray(stream);
 
 	deepStrictEqual(output, [{ a: 1, c: 3 }]);
+});
+
+// *** objectFromEntriesStream *** //
+test(`${variant}: objectFromEntriesStream should transform array to object with keys`, async (_t) => {
+	const input = [[1, 2, 3]];
+	const streams = [
+		createReadableStream(input),
+		objectFromEntriesStream({ keys: ["a", "b", "c"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ a: 1, b: 2, c: 3 }]);
+});
+
+test(`${variant}: objectFromEntriesStream should transform multiple arrays`, async (_t) => {
+	const input = [
+		[1, 2, 3],
+		[4, 5, 6],
+	];
+	const streams = [
+		createReadableStream(input),
+		objectFromEntriesStream({ keys: ["a", "b", "c"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		{ a: 1, b: 2, c: 3 },
+		{ a: 4, b: 5, c: 6 },
+	]);
 });
 
 // *** objectOmitStream *** //

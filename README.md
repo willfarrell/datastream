@@ -40,6 +40,14 @@ Warning: This library is in Alpha, and will contain breaking changes as modules 
 - Extend Modules
   - core
     - merge - connect multiple readable into one stream (see fetch)
+  - csv
+    - break into parts
+      - csvDetectDelimitors
+      - csvDetectHeaders
+      - csvParse w/ hooks for error checks
+      - csvSkipEmptyRows
+      - csvMapHeaders -> 
+      - csvCoerceValues -> validate w/ coerce
 - New Modules
   - json
     - parse - https://github.com/jimhigson/oboe.js / https://github.com/dscape/clarinet
