@@ -1,4 +1,4 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	createReadableStream,
@@ -7,7 +7,10 @@ import {
 	streamToArray,
 } from "@datastream/core";
 
-import validateDefault, { validateStream } from "@datastream/validate";
+import validateDefault, {
+	transpileSchema,
+	validateStream,
+} from "@datastream/validate";
 
 import Ajv from "ajv";
 
@@ -355,6 +358,72 @@ test(`${variant}: validateStream should handle missingProperty with empty instan
 		result.validate[Object.keys(result.validate)[0]].keys.length >= 1,
 		true,
 	);
+});
+
+test(`${variant}: validateStream should handle root-level type error`, async (_t) => {
+	const schema = { type: "object" };
+	const input = ["not-an-object"];
+	const streams = [createReadableStream(input), validateStream({ schema })];
+	const result = await pipeline(streams);
+
+	ok(Object.keys(result.validate).length > 0);
+	const errorKey = Object.keys(result.validate)[0];
+	// makeKeys returns "" for root-level errors (empty instancePath)
+	deepStrictEqual(result.validate[errorKey].keys, [""]);
+});
+
+test(`${variant}: validateStream should handle errorMessage with root-level error`, async (_t) => {
+	const schema = {
+		type: "object",
+		properties: {
+			a: { type: "string" },
+			b: { type: "string" },
+		},
+		required: ["a", "b"],
+		errorMessage: {
+			required: "Missing required fields",
+		},
+	};
+	const input = [{}];
+	const streams = [createReadableStream(input), validateStream({ schema })];
+	const result = await pipeline(streams);
+
+	ok(Object.keys(result.validate).length > 0);
+});
+
+test(`${variant}: validateStream should handle errorMessage with falsy makeKeys`, async (_t) => {
+	const schema = {
+		type: "object",
+		errorMessage: {
+			type: "Must be an object",
+		},
+	};
+	const input = ["not-an-object"];
+	const streams = [createReadableStream(input), validateStream({ schema })];
+	const result = await pipeline(streams);
+
+	ok(Object.keys(result.validate).length > 0);
+	const errorKey = Object.keys(result.validate)[0];
+	strictEqual(result.validate[errorKey].message, "Must be an object");
+});
+
+test(`${variant}: validateStream should handle pre-compiled schema with no messages`, async (_t) => {
+	const schema = transpileSchema(
+		{
+			type: "object",
+			properties: {
+				a: { type: "number" },
+			},
+		},
+		{ messages: false },
+	);
+	const input = [{ a: "not-a-number" }];
+	const streams = [createReadableStream(input), validateStream({ schema })];
+	const result = await pipeline(streams);
+
+	ok(Object.keys(result.validate).length > 0);
+	const errorKey = Object.keys(result.validate)[0];
+	strictEqual(result.validate[errorKey].message, "");
 });
 
 // *** default export *** //

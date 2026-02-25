@@ -7,7 +7,7 @@ import {
 	S3Client,
 	UploadPartCommand,
 } from "@aws-sdk/client-s3";
-import {
+import s3Default, {
 	awsS3ChecksumStream,
 	awsS3GetObjectStream,
 	awsS3PutObjectStream,
@@ -28,118 +28,175 @@ for (const execArgv of process.execArgv) {
 	}
 }
 
-if (variant === "node") {
-	test(`${variant}: awsS3GetObjectStream should return chunks`, async (_t) => {
-		const client = mockClient(S3Client);
-		awsS3SetClient(client);
-		client
-			.on(GetObjectCommand, {
-				Bucket: "bucket",
-				Key: "file.ext",
-			})
-			.resolves({
-				Body: createReadableStream("contents"),
-			});
-
-		const options = {
+test(`${variant}: awsS3GetObjectStream should return chunks`, async (_t) => {
+	const client = mockClient(S3Client);
+	awsS3SetClient(client);
+	client
+		.on(GetObjectCommand, {
 			Bucket: "bucket",
 			Key: "file.ext",
-		};
-		const stream = await awsS3GetObjectStream(options);
-		const output = await streamToString(stream);
+		})
+		.resolves({
+			Body: createReadableStream("contents"),
+		});
 
-		deepStrictEqual(output, "contents");
-	});
+	const options = {
+		Bucket: "bucket",
+		Key: "file.ext",
+	};
+	const stream = await awsS3GetObjectStream(options);
+	const output = await streamToString(stream);
 
-	test(`${variant}: awsS3GetObjectStream should throw error when Body is null`, async (_t) => {
-		const client = mockClient(S3Client);
-		awsS3SetClient(client);
-		client
-			.on(GetObjectCommand, {
-				Bucket: "bucket",
-				Key: "file.ext",
-			})
-			.resolves({});
+	deepStrictEqual(output, "contents");
+});
 
-		const options = {
+test(`${variant}: awsS3GetObjectStream should throw error when Body is null`, async (_t) => {
+	const client = mockClient(S3Client);
+	awsS3SetClient(client);
+	client
+		.on(GetObjectCommand, {
 			Bucket: "bucket",
 			Key: "file.ext",
-		};
+		})
+		.resolves({});
 
-		try {
-			await awsS3GetObjectStream(options);
-			throw new Error("Expected error was not thrown");
-		} catch (error) {
-			deepStrictEqual(error.message, "S3.GetObject not found");
-		}
-	});
+	const options = {
+		Bucket: "bucket",
+		Key: "file.ext",
+	};
 
-	test(`${variant}: awsS3PutObjectStream should put chunks`, async (_t) => {
-		const client = mockClient(S3Client);
+	try {
+		await awsS3GetObjectStream(options);
+		throw new Error("Expected error was not thrown");
+	} catch (error) {
+		deepStrictEqual(error.message, "S3.GetObject not found");
+	}
+});
 
-		// Hack to fix mock
-		const defaultClient = new S3Client();
-		client.config ??= {};
-		client.config.requestChecksumCalculation ??=
-			defaultClient.config.requestChecksumCalculation;
+test(`${variant}: awsS3PutObjectStream should put chunks`, async (_t) => {
+	const client = mockClient(S3Client);
 
-		awsS3SetClient(client);
-		const input = "x".repeat(6 * 1024 * 1024);
-		const options = {
-			Bucket: "bucket",
-			Key: "file.ext",
-		};
+	// Hack to fix mock
+	const defaultClient = new S3Client();
+	client.config ??= {};
+	client.config.requestChecksumCalculation ??=
+		defaultClient.config.requestChecksumCalculation;
 
-		client
-			.on(PutObjectCommand)
-			.rejects()
-			.on(CreateMultipartUploadCommand)
-			.resolves({ UploadId: "1" })
-			.on(UploadPartCommand)
-			.resolves({ ETag: "1" });
+	awsS3SetClient(client);
+	const input = "x".repeat(6 * 1024 * 1024);
+	const options = {
+		Bucket: "bucket",
+		Key: "file.ext",
+	};
 
-		const stream = [createReadableStream(input), awsS3PutObjectStream(options)];
-		const result = await pipeline(stream);
+	client
+		.on(PutObjectCommand)
+		.rejects()
+		.on(CreateMultipartUploadCommand)
+		.resolves({ UploadId: "1" })
+		.on(UploadPartCommand)
+		.resolves({ ETag: "1" });
 
-		deepStrictEqual(result, {});
-	});
+	const stream = [createReadableStream(input), awsS3PutObjectStream(options)];
+	const result = await pipeline(stream);
 
-	test(`${variant}: awsS3PutObjectStream should put chunks with onProgress option`, async (_t) => {
-		const client = mockClient(S3Client);
+	deepStrictEqual(result, {});
+});
 
-		// Hack to fix mock
-		const defaultClient = new S3Client();
-		client.config ??= {};
-		client.config.requestChecksumCalculation ??=
-			defaultClient.config.requestChecksumCalculation;
+test(`${variant}: awsS3PutObjectStream should put chunks with onProgress option`, async (_t) => {
+	const client = mockClient(S3Client);
 
-		awsS3SetClient(client);
-		const input = "x".repeat(6 * 1024 * 1024);
+	// Hack to fix mock
+	const defaultClient = new S3Client();
+	client.config ??= {};
+	client.config.requestChecksumCalculation ??=
+		defaultClient.config.requestChecksumCalculation;
 
-		const options = {
-			Bucket: "bucket",
-			Key: "file.ext",
-			onProgress: () => {},
-		};
+	awsS3SetClient(client);
+	const input = "x".repeat(6 * 1024 * 1024);
 
-		client
-			.on(PutObjectCommand)
-			.rejects()
-			.on(CreateMultipartUploadCommand)
-			.resolves({ UploadId: "1" })
-			.on(UploadPartCommand)
-			.resolves({ ETag: "1" });
+	const options = {
+		Bucket: "bucket",
+		Key: "file.ext",
+		onProgress: () => {},
+	};
 
-		const stream = [createReadableStream(input), awsS3PutObjectStream(options)];
-		const result = await pipeline(stream);
+	client
+		.on(PutObjectCommand)
+		.rejects()
+		.on(CreateMultipartUploadCommand)
+		.resolves({ UploadId: "1" })
+		.on(UploadPartCommand)
+		.resolves({ ETag: "1" });
 
-		deepStrictEqual(result, {});
-	});
-} else {
-	console.info(
-		"awsS3PutObjectStream doesn't work with webstreams at this time",
-	);
-}
+	const stream = [createReadableStream(input), awsS3PutObjectStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result, {});
+});
+
+test(`${variant}: awsS3PutObjectStream should put chunks with tags`, async (_t) => {
+	const client = mockClient(S3Client);
+
+	// Hack to fix mock
+	const defaultClient = new S3Client();
+	client.config ??= {};
+	client.config.requestChecksumCalculation ??=
+		defaultClient.config.requestChecksumCalculation;
+
+	awsS3SetClient(client);
+	const input = "x".repeat(6 * 1024 * 1024);
+
+	const options = {
+		Bucket: "bucket",
+		Key: "file.ext",
+		tags: [{ Key: "env", Value: "test" }],
+	};
+
+	client
+		.on(PutObjectCommand)
+		.rejects()
+		.on(CreateMultipartUploadCommand)
+		.resolves({ UploadId: "1" })
+		.on(UploadPartCommand)
+		.resolves({ ETag: "1" });
+
+	const stream = [createReadableStream(input), awsS3PutObjectStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result, {});
+});
+
+test(`${variant}: awsS3PutObjectStream should use custom client option`, async (_t) => {
+	const client = mockClient(S3Client);
+
+	// Hack to fix mock
+	const defaultClient = new S3Client();
+	client.config ??= {};
+	client.config.requestChecksumCalculation ??=
+		defaultClient.config.requestChecksumCalculation;
+
+	const input = "x".repeat(6 * 1024 * 1024);
+
+	const options = {
+		Bucket: "bucket",
+		Key: "file.ext",
+		client,
+	};
+
+	client
+		.on(PutObjectCommand)
+		.rejects()
+		.on(CreateMultipartUploadCommand)
+		.resolves({ UploadId: "1" })
+		.on(UploadPartCommand)
+		.resolves({ ETag: "1" });
+
+	const stream = [createReadableStream(input), awsS3PutObjectStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result, {});
+});
 
 test(`${variant}: awsS3ChecksumStream should make checksum of 16KB string (1 chunk)`, async (_t) => {
 	const input = "x".repeat(1 * 16_384);
@@ -238,187 +295,59 @@ test(`${variant}: awsS3ChecksumStream should handle Uint8Array input`, async (_t
 	deepStrictEqual(result.s3.checksums.length, 2);
 });
 
-// test(`${variant}: awsS3ChecksumStream should make checksum of 8MB string (0.5 block)`, async (_t) => {
-//   const input = 'x'.repeat(8 * 1024 * 1024)
-//   const options = {
-//     ChecksumAlgorithm: 'SHA256'
-//   }
+test(`${variant}: awsS3GetObjectStream should use custom client option`, async (_t) => {
+	const client = mockClient(S3Client);
+	client
+		.on(GetObjectCommand, {
+			Bucket: "bucket",
+			Key: "file.ext",
+		})
+		.resolves({
+			Body: createReadableStream("custom-client"),
+		});
 
-//   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//   const result = await pipeline(stream)
+	const options = {
+		Bucket: "bucket",
+		Key: "file.ext",
+		client,
+	};
+	const stream = await awsS3GetObjectStream(options);
+	const output = await streamToString(stream);
 
-//   deepStrictEqual(result, {
-//     s3: {
-//       checksum: 'DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg=',
-//       checksums:['DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg='],
-//       partSize: 17_179_870
-//     }
-//   })
-// })
-// test(`${variant}: awsS3ChecksumStream should make checksum of 16 MB string (1 block)`, async (_t) => {
-//   const input = 'x'.repeat(17_179_870)
-//   const options = {
-//     ChecksumAlgorithm: 'SHA256'
-//   }
+	deepStrictEqual(output, "custom-client");
+});
 
-//   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//   const result = await pipeline(stream)
+test(`${variant}: awsS3ChecksumStream should use default options`, async (_t) => {
+	const input = "x".repeat(100);
 
-//   deepStrictEqual(result, {
-//     s3: {
-//       checksum: 'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o=',
-//       checksums:['WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o='],
-//       partSize: 17_179_870
-//     }
-//   })
-// })
-// test(`${variant}: awsS3ChecksumStream should make checksum of 24MB string (1.5 blocks)`, async (_t) => {
-//   const input = 'x'.repeat(24 * 1024 * 1024)
-//   const options = {
-//     ChecksumAlgorithm: 'SHA256'
-//   }
+	const stream = [createReadableStream(input), awsS3ChecksumStream()];
+	const result = await pipeline(stream);
 
-//   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//   const result = await pipeline(stream)
+	deepStrictEqual(result.s3.partSize, 17_179_870);
+	deepStrictEqual(result.s3.checksums.length, 1);
+});
 
-//   deepStrictEqual(result, {
-//     s3: {
-//       checksum: 'eWQzGj3USSV0NvWbhxtpmbkHgNReYxUzwVBXAU86X/4=-2',
-//       checksums:[
+test(`${variant}: awsS3ChecksumStream should cache result on second call`, async (_t) => {
+	const input = "x".repeat(100);
+	const options = {
+		ChecksumAlgorithm: "SHA256",
+	};
 
-//               'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o=',
-//               'HLZQKZLvENstyfk2WtaEZGcol2s/v4xvkPX30aqd0XY='],
-//       partSize: 17_179_870
-//     }
-//   })
-// })
-// test(`${variant}: awsS3ChecksumStream should make checksum of file 32 MB string (2 blocks)`, async (_t) => {
-//   const input = 'x'.repeat(17179870 * 2)
-//   const options = {
-//     ChecksumAlgorithm: 'SHA256'
-//   }
+	const checksumStream = awsS3ChecksumStream(options);
+	const stream = [createReadableStream(input), checksumStream];
+	await pipeline(stream);
 
-//   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//   const result = await pipeline(stream)
+	const result1 = await checksumStream.result();
+	const result2 = await checksumStream.result();
 
-//   deepStrictEqual(result, {
-//     s3: {
-//       checksum: '65/QvEoh9MiBIPeSgTqKTptI3Vnf+vaJ1om/MYYMpBU=-2',
-//       checksums:[
-//               'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o=',
-//               'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o='],
-//       partSize: 17_179_870
-//     }
-//   })
-// })
+	deepStrictEqual(result1, result2);
+});
 
-// BUG? createReadableStream not chunking Uint8Array properly?
-// test(`${variant}: awsS3ChecksumStream should make checksum of 16KB ArrayBuffer (1 chunk)`, async (_t) => {
-//   const input = new TextEncoder('utf-8').encode('x'.repeat(1*16_384))
-//   const options = {
-//     ChecksumAlgorithm: 'SHA256'
-//   }
-
-//   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//   const result = await pipeline(stream)
-
-//   deepStrictEqual(result, {
-//     s3: {
-//       checksum: 'FTbEIsMcyYg0dZ1whc2jlKNRCgPXgYgkiYamsacgfQM=',
-//       checksums:['FTbEIsMcyYg0dZ1whc2jlKNRCgPXgYgkiYamsacgfQM='],
-//       partSize: 17_179_870
-//     }
-//   })
-// })
-
-// test(`${variant}: awsS3ChecksumStream should make checksum of 16KB ArrayBuffer (2 chunk)`, async (_t) => {
-//   const input = new TextEncoder('utf-8').encode('x'.repeat(2*16_384))
-//   const options = {
-//     ChecksumAlgorithm: 'SHA256'
-//   }
-
-//   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//   const result = await pipeline(stream)
-
-//   deepStrictEqual(result, {
-//     s3: {
-//       checksum: 'Qnll9JqFcXTjCGWCJzJdvSP/Tsy+OZ1a1IF92j7Hn4c=',
-//       checksums:['Qnll9JqFcXTjCGWCJzJdvSP/Tsy+OZ1a1IF92j7Hn4c='],
-//       partSize: 17_179_870
-//     }
-//   })
-// })
-
-//   test(`${variant}: awsS3ChecksumStream should make checksum of 8MB ArrayBuffer (0.5 block)`, async (_t) => {
-//   const input = new TextEncoder('utf-8').encode('x'.repeat(8 * 1024 * 1024))
-//   const options = {
-//     ChecksumAlgorithm: 'SHA256'
-//   }
-
-//   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//   const result = await pipeline(stream)
-
-//   deepStrictEqual(result, {
-//     s3: {
-//       checksum: 'DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg=',
-//       checksums:['DHe8CgeVqTYS1FJWiXRW0PyyTxUcRMFQ0H7NA/TvUWg='],
-//       partSize: 17_179_870
-//     }
-//   })
-// })
-// test(`${variant}: awsS3ChecksumStream should make checksum of 16 MB ArrayBuffer (1 block)`, async (_t) => {
-//   const input = new TextEncoder('utf-8').encode('x'.repeat(17179870))
-//   const options = {
-//     ChecksumAlgorithm: 'SHA256'
-//   }
-
-//   const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//   const result = await pipeline(stream)
-
-//   deepStrictEqual(result, {
-//     s3: {
-//       checksum: 'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o=',
-//       checksums:['WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o='],
-//       partSize: 17_179_870
-//     }
-//   })
-// })
-//   test(`${variant}: awsS3ChecksumStream should make checksum of 24MB ArrayBuffer (1.5 blocks)`, async (_t) => {
-//     const input = new TextEncoder('utf-8').encode('x'.repeat(24 * 1024 * 1024))
-//     const options = {
-//       ChecksumAlgorithm: 'SHA256'
-//     }
-//
-//     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//     const result = await pipeline(stream)
-//
-//     deepStrictEqual(result, {
-//   s3: {
-//     checksum: 'eWQzGj3USSV0NvWbhxtpmbkHgNReYxUzwVBXAU86X/4=-2',
-//     checksums:[
-
-//             'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o=',
-//             'HLZQKZLvENstyfk2WtaEZGcol2s/v4xvkPX30aqd0XY='],
-//     partSize: 17_179_870
-//   }
-// })
-//   })
-//   test(`${variant}: awsS3ChecksumStream should make checksum of file 32 MB ArrayBuffer (2 blocks)`, async (_t) => {
-//     const input = new TextEncoder('utf-8').encode('x'.repeat(17179870 * 2))
-//     const options = {
-//       ChecksumAlgorithm: 'SHA256'
-//     }
-//
-//     const stream = [createReadableStream(input), awsS3ChecksumStream(options)]
-//     const result = await pipeline(stream)
-//
-//     deepStrictEqual(result, {
-//   s3: {
-//     checksum: '65/QvEoh9MiBIPeSgTqKTptI3Vnf+vaJ1om/MYYMpBU=-2',
-//     checksums:[
-//             'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o=',
-//             'WN4WZJbH8owC673D8TAJBGXF4n7cIY7lDhbZmvIOX5o='],
-//     partSize: 17_179_870
-//   }
-// })
-//   })
+test(`${variant}: default export should include all stream functions`, (_t) => {
+	deepStrictEqual(Object.keys(s3Default).sort(), [
+		"checksumStream",
+		"getObjectStream",
+		"putObjectStream",
+		"setClient",
+	]);
+});

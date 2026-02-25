@@ -1,4 +1,4 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	backpressureGuage,
@@ -11,6 +11,7 @@ import {
 	makeOptions,
 	pipejoin,
 	pipeline,
+	result,
 	streamToArray,
 	streamToBuffer,
 	streamToObject,
@@ -541,7 +542,29 @@ test(`${variant}: pipejoin should throw error when promise passed in`, async (_t
 	}
 });
 
-// Default error handler in pipejoin is tested through pipeline error tests
+// *** timeout *** //
+test(`${variant}: timeout should resolve after delay`, async (_t) => {
+	const start = Date.now();
+	await timeout(10);
+	const elapsed = Date.now() - start;
+	ok(elapsed >= 9);
+});
+
+// *** result *** //
+test(`${variant}: result should collect stream results`, async (_t) => {
+	const stream1 = createPassThroughStream(() => {});
+	stream1.result = () => ({ key: "a", value: 1 });
+	const stream2 = createPassThroughStream(() => {});
+	const output = await result([stream1, stream2]);
+	deepStrictEqual(output, { a: 1 });
+});
+
+test(`${variant}: result should skip streams with falsy key`, async (_t) => {
+	const stream1 = createPassThroughStream(() => {});
+	stream1.result = () => ({ key: undefined, value: 1 });
+	const output = await result([stream1]);
+	deepStrictEqual(output, {});
+});
 
 // *** makeOptions *** //
 if (variant === "node") {

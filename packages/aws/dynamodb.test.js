@@ -14,7 +14,7 @@ import {
 	awsDynamoDBQueryStream,
 	awsDynamoDBScanStream,
 	awsDynamoDBSetClient,
-} from "@datastream/aws";
+} from "@datastream/aws/dynamodb";
 
 import {
 	createReadableStream,

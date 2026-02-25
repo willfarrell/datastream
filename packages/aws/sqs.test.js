@@ -11,7 +11,7 @@ import {
 	awsSQSReceiveMessageStream,
 	awsSQSSendMessageStream,
 	awsSQSSetClient,
-} from "@datastream/aws";
+} from "@datastream/aws/sqs";
 
 import {
 	createReadableStream,

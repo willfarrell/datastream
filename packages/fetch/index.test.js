@@ -392,6 +392,46 @@ test(`${variant}: fetchRateLimit should handle rate limit delay`, async (_t) => 
 	strictEqual(fetchCallTimes.length, 2);
 });
 
+test(`${variant}: fetchResponseStream should handle content-type with suffix`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (_url, _options) => {
+		return new Response(JSON.stringify({ ok: true }), {
+			status: 200,
+			headers: new Headers({
+				"Content-Type": "application/vnd.api+json",
+			}),
+		});
+	};
+
+	fetchSetDefaults({ dataPath: "" });
+	const config = [{ url: "https://example.org/api-json" }];
+	const stream = fetchResponseStream(config);
+	const output = await streamToArray(stream);
+
+	global.fetch = originalFetch;
+	deepStrictEqual(output, [{ ok: true }]);
+});
+
+test(`${variant}: fetchResponseStream should handle offsetParam without offsetAmount`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async () => {
+		return new Response(JSON.stringify({ data: [{ id: 1 }] }), {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/json" }),
+		});
+	};
+	fetchSetDefaults({ dataPath: "data" });
+	const config = {
+		url: "https://example.org/partial-offset",
+		offsetParam: "$offset",
+		// offsetAmount intentionally omitted → paginateUsingQuery returns undefined
+	};
+	const stream = fetchResponseStream(config);
+	const output = await streamToArray(stream);
+	global.fetch = originalFetch;
+	deepStrictEqual(output, [{ id: 1 }]);
+});
+
 // *** default export *** //
 test(`${variant}: default export should include all stream functions`, (_t) => {
 	deepStrictEqual(Object.keys(fetchDefault).sort(), [

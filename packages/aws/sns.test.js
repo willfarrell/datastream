@@ -1,7 +1,10 @@
 import { deepStrictEqual } from "node:assert";
 import test from "node:test";
 import { PublishBatchCommand, SNSClient } from "@aws-sdk/client-sns";
-import { awsSNSPublishMessageStream, awsSNSSetClient } from "@datastream/aws";
+import {
+	awsSNSPublishMessageStream,
+	awsSNSSetClient,
+} from "@datastream/aws/sns";
 
 import { createReadableStream, pipeline } from "@datastream/core";
 import { mockClient } from "aws-sdk-client-mock";

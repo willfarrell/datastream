@@ -200,6 +200,22 @@ test(`${variant}: objectPivotWideToLongStream should pivot chunks to wide`, asyn
 	]);
 });
 
+test(`${variant}: objectPivotWideToLongStream should use default keyParam and valueParam`, async (_t) => {
+	const input = [{ id: 1, a: 10, b: 20 }];
+	const streams = [
+		createReadableStream(input),
+		objectPivotWideToLongStream({ keys: ["a", "b"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		{ id: 1, keyParam: "a", valueParam: 10 },
+		{ id: 1, keyParam: "b", valueParam: 20 },
+	]);
+});
+
 // *** objectKeyValueStream *** //
 test(`${variant}: objectKeyValueStream should transform to {chunk[key]:chunk[value]}`, async (_t) => {
 	const input = [{ a: "1", b: "2", c: "3" }];
@@ -342,6 +358,19 @@ test(`${variant}: objectFromEntriesStream should transform array to object with 
 	const streams = [
 		createReadableStream(input),
 		objectFromEntriesStream({ keys: ["a", "b", "c"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ a: 1, b: 2, c: 3 }]);
+});
+
+test(`${variant}: objectFromEntriesStream should support lazy keys function`, async (_t) => {
+	const input = [[1, 2, 3]];
+	const streams = [
+		createReadableStream(input),
+		objectFromEntriesStream({ keys: () => ["a", "b", "c"] }),
 	];
 
 	const stream = pipejoin(streams);

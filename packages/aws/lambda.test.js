@@ -1,13 +1,5 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
-import {
-	InvokeWithResponseStreamCommand,
-	LambdaClient,
-} from "@aws-sdk/client-lambda";
-import { awsLambdaReadableStream, awsLambdaSetClient } from "@datastream/aws";
-
-import { createReadableStream, pipeline } from "@datastream/core";
-import { mockClient } from "aws-sdk-client-mock";
 
 let variant = "unknown";
 for (const execArgv of process.execArgv) {
@@ -18,6 +10,15 @@ for (const execArgv of process.execArgv) {
 }
 
 if (variant === "node") {
+	const { InvokeWithResponseStreamCommand, LambdaClient } = await import(
+		"@aws-sdk/client-lambda"
+	);
+	const { awsLambdaReadableStream, awsLambdaSetClient } = await import(
+		"@datastream/aws/lambda"
+	);
+	const { createReadableStream, pipeline } = await import("@datastream/core");
+	const { mockClient } = await import("aws-sdk-client-mock");
+
 	test(`${variant}: awsLambdaReadableStream should return chunk`, async (_t) => {
 		const client = mockClient(LambdaClient);
 		awsLambdaSetClient(client);
