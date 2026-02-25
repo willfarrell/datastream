@@ -1,7 +1,7 @@
 # charset
 
-## charsetDetect (PassThrough)
+## charsetDetectStream (PassThrough)
 
-## charsetDecode (Transform)
+## charsetDecodeStream (Transform)
 
-## charsetEncode (Transform)
+## charsetEncodeStream (Transform)

@@ -8,7 +8,7 @@ export const gzipCompressStream = ({ quality } = {}, streamOptions = {}) => {
 	options.level = quality;
 	return createGzip(options);
 };
-export const gzipDecompressStream = (_options, streamOptions = {}) => {
+export const gzipDecompressStream = (_options = {}, streamOptions = {}) => {
 	return createGunzip(streamOptions);
 };
 

@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/fetch",
 	"version": "0.0.42",
-	"description": "",
+	"description": "HTTP fetch-based readable and writable streams with pagination and rate limiting",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

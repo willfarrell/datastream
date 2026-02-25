@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/ipfs",
 	"version": "0.0.42",
-	"description": "",
+	"description": "IPFS get and add streaming operations",
 	"type": "module",
 	"engines": {
 		"node": ">=24"
@@ -48,9 +48,7 @@
 	},
 	"license": "MIT",
 	"keywords": [
-		"csv",
-		"json",
-		"transform",
+		"IPFS",
 		"Web Stream API",
 		"Node Stream API"
 	],

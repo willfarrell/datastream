@@ -1,7 +1,7 @@
 # core
 
 ## Functions
-- `pipeline(stream[], steamOptions)`: Connects streams and awaits until completion. Returns results from stream taps. Will add in a terminating Writable if missing.
+- `pipeline(stream[], streamOptions)`: Connects streams and awaits until completion. Returns results from stream taps. Will add in a terminating Writable if missing.
 - `pipejoin(stream[])`: Connects streams and returns resulting stream for use with async iterators
 - `result(stream)`: Run and combine streams result responses
 
@@ -11,14 +11,14 @@
 - `isReadable(stream)`: Return bool is stream is Readable
 - `isWritable(stream)`: Return bool is stream is Writable
 - `makeOptions(options)`: Make options interoperable between Readable/Writable and Transform
-- `creatReadableStream(input = '', steamOptions)`: Create a Readable stream from input (string, array, iterable) with options.
-- `creatPassThroughStream((chunk)=>{}, steamOptions)`: Create a Pass Through stream that allows observation of chunk while being passed through.
-- `creatTransformStream((chunk, enqueue)=>{}, steamOptions)`: Create a Transform stream that allows mutation of chunk before being passed.
-- `creatWritableStream((chunk)=>{}, steamOptions)`: Create a Writable stream that allows mutation of chunk before being passed.
+- `createReadableStream(input = '', streamOptions)`: Create a Readable stream from input (string, array, iterable) with options.
+- `createPassThroughStream((chunk)=>{}, streamOptions)`: Create a Pass Through stream that allows observation of chunk while being passed through.
+- `createTransformStream((chunk, enqueue)=>{}, streamOptions)`: Create a Transform stream that allows mutation of chunk before being passed.
+- `createWritableStream((chunk)=>{}, streamOptions)`: Create a Writable stream that allows mutation of chunk before being passed.
 - `tee(stream)`: 
 - `timeout(ms, {signal})`: setTimeout promise that can be aborted.
 
-- `steamOptions`:
+- `streamOptions`:
   - `highWaterMark`
   - `chunkSize`
   - `signal`

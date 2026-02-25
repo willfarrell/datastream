@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/string",
 	"version": "0.0.42",
-	"description": "",
+	"description": "String transform streams for splitting, replacing, counting, and deduplication",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

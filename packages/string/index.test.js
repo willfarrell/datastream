@@ -8,7 +8,7 @@ import {
 	streamToArray,
 } from "@datastream/core";
 
-import {
+import stringDefault, {
 	stringCountStream,
 	stringLengthStream,
 	stringReadableStream,
@@ -91,7 +91,7 @@ test(`${variant}: stringSplitStream should split into empty strings`, async (_t)
 	deepStrictEqual(output, ["", "", "", "", ""]);
 });
 
-test(`${variant}: stringSplitStream should split into empty strings`, async (_t) => {
+test(`${variant}: stringSplitStream should split across chunk boundaries`, async (_t) => {
 	const input = ["a,b", "c,d"];
 	const streams = [
 		createReadableStream(input),
@@ -194,4 +194,16 @@ test(`${variant}: stringReplaceStream should replace with string pattern`, async
 
 	// Output includes empty string from first chunk (previousChunk.length was 0)
 	deepStrictEqual(output, ["", "hi world"]);
+});
+
+// *** default export *** //
+test(`${variant}: default export should include all stream functions`, (_t) => {
+	deepStrictEqual(Object.keys(stringDefault).sort(), [
+		"countStream",
+		"lengthStream",
+		"readableStream",
+		"replaceStream",
+		"skipConsecutiveDuplicates",
+		"splitStream",
+	]);
 });

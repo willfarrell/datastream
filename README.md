@@ -42,12 +42,13 @@ Warning: This library is in Alpha, and will contain breaking changes as modules 
     - merge - connect multiple readable into one stream (see fetch)
   - csv
     - break into parts
-      - csvDetectDelimitors
-      - csvDetectHeaders
+      - csvDetectDelimitors({chunkSize}) then pass into csvParse as option
+      - csvDetectHeaders({chunkSize}) then pass into csvArrayToObject
       - csvParse w/ hooks for error checks
-      - csvSkipEmptyRows
-      - csvMapHeaders -> 
-      - csvCoerceValues -> validate w/ coerce
+      - csvRemoveMissizedRows - remove or error when note exact columns
+      - csvRemoveEmptyRows - remove or error blank rows
+      - csvArrayToObject -> objectFromEntriesStream
+      - csvCoerceValues -> validate w/ coerce or auto cast?
 - New Modules
   - json
     - parse - https://github.com/jimhigson/oboe.js / https://github.com/dscape/clarinet

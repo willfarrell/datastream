@@ -15,18 +15,18 @@ export const awsS3SetClient = (s3Client) => {
 	defaultClient = s3Client;
 };
 
-export const awsS3GetObjectStream = async (options, streamOptions) => {
+export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 	const { client, ...params } = options;
 	const { Body } = await (client ?? defaultClient).send(
 		new GetObjectCommand(params),
 	);
 	if (!Body) {
-		throw new Error("S3.GetObject not Found", { cause: params });
+		throw new Error("S3.GetObject not found", { cause: params });
 	}
 	return createReadableStream(Body, streamOptions);
 };
 
-export const awsS3PutObjectStream = (options, streamOptions) => {
+export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 	const { onProgress, client, tags, ...params } = options;
 	const stream = createPassThroughStream(() => {}, streamOptions);
 	const upload = new Upload({

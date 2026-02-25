@@ -7,7 +7,7 @@ export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
 	const transform = (chunk, enqueue) => {
 		if (extra) {
 			chunk = extra + chunk;
-			extra = null;
+			extra = "";
 		}
 
 		// 3 bytes == 4 char

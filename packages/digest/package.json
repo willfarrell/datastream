@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/digest",
 	"version": "0.0.42",
-	"description": "",
+	"description": "Cryptographic hash digest pass-through streams",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

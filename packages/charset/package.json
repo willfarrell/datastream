@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/charset",
 	"version": "0.0.42",
-	"description": "",
+	"description": "Character encoding detection, decoding, and conversion streams",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

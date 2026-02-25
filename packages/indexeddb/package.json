@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/indexeddb",
 	"version": "0.0.42",
-	"description": "",
+	"description": "IndexedDB readable and writable streams for browser storage",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

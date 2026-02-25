@@ -71,7 +71,7 @@ if (variant === "node") {
 			await awsS3GetObjectStream(options);
 			throw new Error("Expected error was not thrown");
 		} catch (error) {
-			deepStrictEqual(error.message, "S3.GetObject not Found");
+			deepStrictEqual(error.message, "S3.GetObject not found");
 		}
 	});
 

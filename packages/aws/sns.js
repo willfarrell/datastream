@@ -9,7 +9,7 @@ export const awsSNSSetClient = (snsClient) => {
 	client = snsClient;
 };
 
-export const awsSNSPublishMessageStream = (options, streamOptions) => {
+export const awsSNSPublishMessageStream = (options, streamOptions = {}) => {
 	let batch = [];
 	const send = () => {
 		options.PublishBatchRequestEntries = batch;

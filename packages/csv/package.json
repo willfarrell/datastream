@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/csv",
 	"version": "0.0.42",
-	"description": "",
+	"description": "CSV parsing and formatting transform streams",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

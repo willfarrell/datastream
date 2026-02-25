@@ -18,7 +18,7 @@ export const brotliCompressStream = ({ quality } = {}, streamOptions = {}) => {
 export const brotliDecompressStream = (params, streamOptions = {}) => {
 	const options = streamOptions;
 	options.params = params;
-	return createBrotliDecompress(streamOptions);
+	return createBrotliDecompress(options);
 };
 
 export default {

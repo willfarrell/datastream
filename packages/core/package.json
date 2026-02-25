@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/core",
 	"version": "0.0.42",
-	"description": "",
+	"description": "Stream creation utilities and pipeline functions for Web Streams API and Node.js streams",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

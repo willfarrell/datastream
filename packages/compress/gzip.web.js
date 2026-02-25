@@ -6,10 +6,10 @@
 // - not supported on firefox - https://bugzilla.mozilla.org/show_bug.cgi?id=1586639
 // - not supported in safari
 
-export const gzipCompressStream = (_options, _streamOptions = {}) => {
+export const gzipCompressStream = (_options = {}, _streamOptions = {}) => {
 	return new CompressionStream("gzip");
 };
-export const gzipDecompressStream = (_options, _streamOptions = {}) => {
+export const gzipDecompressStream = (_options = {}, _streamOptions = {}) => {
 	return new DecompressionStream("gzip");
 };
 

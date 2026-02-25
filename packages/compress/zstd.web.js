@@ -3,7 +3,7 @@
 export const zstdCompressStream = (_options = {}, _streamOptions = {}) => {
 	throw new Error("Not supported");
 };
-export const zstdDecompressStream = (_options, _streamOptions = {}) => {
+export const zstdDecompressStream = (_options = {}, _streamOptions = {}) => {
 	throw new Error("Not supported");
 };
 

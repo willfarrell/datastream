@@ -4,7 +4,7 @@ import { createPassThroughStream } from "@datastream/core";
 
 export const ipfsGetStream = async (
 	{ node, _repo, cid },
-	_streamoptions = {},
+	_streamOptions = {},
 ) => {
 	// node ??= await create({ repo })
 	return node.get(cid);

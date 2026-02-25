@@ -9,7 +9,7 @@ export const deflateCompressStream = (options = {}, _streamOptions = {}) => {
 	options.level ??= quality;
 	return createDeflate(options);
 };
-export const deflateDecompressStream = (_options, streamOptions = {}) => {
+export const deflateDecompressStream = (_options = {}, streamOptions = {}) => {
 	return createInflate(streamOptions);
 };
 

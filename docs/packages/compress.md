@@ -1,11 +1,14 @@
 # compress
 
 
-## brotliCompressionStream (Transform)
-## brotliDecompressionStream (Transform)
+## brotliCompressStream (Transform)
+## brotliDecompressStream (Transform)
 
-## gzipCompressionStream (Transform)
-## gzipDecompressionStream (Transform)
+## gzipCompressStream (Transform)
+## gzipDecompressStream (Transform)
 
-## deflateCompressionStream (Transform)
-## deflateDecompressionStream (Transform)
+## deflateCompressStream (Transform)
+## deflateDecompressStream (Transform)
+
+## zstdCompressStream (Transform)
+## zstdDecompressStream (Transform)

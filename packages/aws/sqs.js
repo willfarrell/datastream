@@ -33,7 +33,7 @@ export const awsSQSReceiveMessageStream = async (
 	return command(options);
 };
 
-export const awsSQSDeleteMessageStream = (options, streamOptions) => {
+export const awsSQSDeleteMessageStream = (options, streamOptions = {}) => {
 	let batch = [];
 	const send = () => {
 		options.Entries = batch;
@@ -50,7 +50,7 @@ export const awsSQSDeleteMessageStream = (options, streamOptions) => {
 	return createWritableStream(write, final, streamOptions);
 };
 
-export const awsSQSSendMessageStream = (options, streamOptions) => {
+export const awsSQSSendMessageStream = (options, streamOptions = {}) => {
 	let batch = [];
 	const send = () => {
 		options.Entries = batch;

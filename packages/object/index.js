@@ -48,7 +48,6 @@ export const objectPivotLongToWideStream = (
 ) => {
 	delimiter ??= " ";
 
-	// if (!Array.isArray(keys)) keys = [keys]
 	const transform = (chunks, enqueue) => {
 		if (!Array.isArray(chunks)) {
 			throw new Error("Expected chunk to be array, use with objectBatchStream");
@@ -198,7 +197,7 @@ export const objectFromEntriesStream = ({ keys }, streamOptions = {}) => {
 };
 
 export const objectSkipConsecutiveDuplicatesStream = (
-	_options,
+	_options = {},
 	streamOptions = {},
 ) => {
 	let previousChunk;

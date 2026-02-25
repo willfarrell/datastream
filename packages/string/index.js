@@ -40,7 +40,7 @@ export const stringCountStream = (
 };
 
 export const stringSkipConsecutiveDuplicates = (
-	_options,
+	_options = {},
 	streamOptions = {},
 ) => {
 	let previousChunk;
@@ -93,6 +93,8 @@ export const stringSplitStream = (options, streamOptions = {}) => {
 export default {
 	readableStream: stringReadableStream,
 	lengthStream: stringLengthStream,
+	countStream: stringCountStream,
 	skipConsecutiveDuplicates: stringSkipConsecutiveDuplicates,
 	replaceStream: stringReplaceStream,
+	splitStream: stringSplitStream,
 };

@@ -26,7 +26,7 @@ const enforceType = (path, types = []) => {
 		}
 	}
 	if (types.length) {
-		throw new Error("invalid extension");
+		throw new Error("Invalid extension");
 	}
 };
 

@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/validate",
 	"version": "0.0.42",
-	"description": "",
+	"description": "JSON Schema validation transform streams using Ajv",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

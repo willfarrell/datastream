@@ -40,7 +40,7 @@ export const fetchSetDefaults = (options) => {
 // Note: requires EncodeStream to ensure it's Uint8Array
 // Poor browser support - https://github.com/Fyrd/caniuse/issues/6375
 // TODO needs testing
-// TODO mulit-part upload
+// TODO multi-part upload
 export const fetchWritableStream = async (options, streamOptions = {}) => {
 	const body = createReadableStream();
 	// Duplex: half - For browser compatibility - https://developer.chrome.com/articles/fetch-streaming-requests/#half-duplex

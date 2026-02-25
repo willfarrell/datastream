@@ -3,12 +3,12 @@
 import { createTransformStream } from "@datastream/core";
 
 // TODO replace with web version
-export const base64EncodeStream = (_options, streamOptions = {}) => {
-	let extra;
+export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
+	let extra = "";
 	const transform = (chunk, enqueue) => {
 		if (extra) {
 			chunk = Buffer.concat([extra, chunk]);
-			extra = null;
+			extra = "";
 		}
 
 		// 3 bytes == 4 char
@@ -28,7 +28,7 @@ export const base64EncodeStream = (_options, streamOptions = {}) => {
 	return createTransformStream(transform, flush, streamOptions);
 };
 
-export const base64DecodeStream = (_options, streamOptions = {}) => {
+export const base64DecodeStream = (_options = {}, streamOptions = {}) => {
 	let extra = "";
 	const transform = (chunk, enqueue) => {
 		chunk = extra + chunk;

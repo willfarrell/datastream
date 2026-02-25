@@ -12,7 +12,7 @@ export const awsLambdaSetClient = (lambdaClient) => {
 	defaultClient = lambdaClient;
 };
 
-export const awsLambdaReadableStream = (lambdaOptions, streamOptions) => {
+export const awsLambdaReadableStream = (lambdaOptions, streamOptions = {}) => {
 	return createReadableStream(awsLambdaGenerator(lambdaOptions), streamOptions);
 };
 export const awsLambdaResponseStream = awsLambdaReadableStream;

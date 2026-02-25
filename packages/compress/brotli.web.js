@@ -25,7 +25,7 @@ export const brotliCompressStream = (options = {}, streamOptions = {}) => {
 	};
 	return createTransformStream(transform, flush, streamOptions);
 };
-export const brotliDecompressStream = (_options, streamOptions = {}) => {
+export const brotliDecompressStream = (_options = {}, streamOptions = {}) => {
 	const engine = new DecompressStream();
 	const transform = (chunk, enqueue) => {
 		enqueue(engine.decompress(chunk));

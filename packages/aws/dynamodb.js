@@ -92,7 +92,7 @@ export const awsDynamoDBGetItemStream = async (
 	return command(options);
 };
 
-export const awsDynamoDBPutItemStream = (options, streamOptions) => {
+export const awsDynamoDBPutItemStream = (options, streamOptions = {}) => {
 	let batch = [];
 	const write = async (chunk) => {
 		if (batch.length === 25) {
@@ -109,7 +109,7 @@ export const awsDynamoDBPutItemStream = (options, streamOptions) => {
 	return createWritableStream(write, final, streamOptions);
 };
 
-export const awsDynamoDBDeleteItemStream = (options, streamOptions) => {
+export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) => {
 	let batch = [];
 	const write = async (chunk) => {
 		if (batch.length === 25) {
