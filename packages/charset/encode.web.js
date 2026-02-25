@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 /* global TextEncoderStream */
 
-export const charsetDecodeStream = ({ charset } = {}, _streamOptions = {}) => {
+export const charsetEncodeStream = ({ charset } = {}, _streamOptions = {}) => {
 	// doesn't support signal?
 	return new TextEncoderStream(charset);
 };
 
-export default charsetDecodeStream;
+export default charsetEncodeStream;

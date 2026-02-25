@@ -52,4 +52,9 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 	return stream;
 };
 
+export const getSupportedEncoding = (charset) => {
+	if (charset === "ISO-8859-8-I") charset = "ISO-8859-8";
+	return charset;
+};
+
 export default charsetDetectStream;

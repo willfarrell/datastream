@@ -22,7 +22,7 @@ export const awsSNSPublishMessageStream = (options, streamOptions = {}) => {
 		}
 		batch.push(chunk);
 	};
-	const final = send;
+	const final = () => (batch.length ? send() : undefined);
 	return createWritableStream(write, final, streamOptions);
 };
 

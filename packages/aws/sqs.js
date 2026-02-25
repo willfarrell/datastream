@@ -46,7 +46,7 @@ export const awsSQSDeleteMessageStream = (options, streamOptions = {}) => {
 		}
 		batch.push(chunk);
 	};
-	const final = send;
+	const final = () => (batch.length ? send() : undefined);
 	return createWritableStream(write, final, streamOptions);
 };
 
@@ -63,7 +63,7 @@ export const awsSQSSendMessageStream = (options, streamOptions = {}) => {
 		}
 		batch.push(chunk);
 	};
-	const final = send;
+	const final = () => (batch.length ? send() : undefined);
 	return createWritableStream(write, final, streamOptions);
 };
 

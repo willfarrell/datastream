@@ -27,7 +27,7 @@ export const awsDynamoDBQueryStream = async (options, _streamOptions = {}) => {
 				yield item;
 			}
 			options.ExclusiveStartKey = response.LastEvaluatedKey;
-			expectMore = Object.keys(options.ExclusiveStartKey).length;
+			expectMore = !!response.LastEvaluatedKey;
 		}
 	}
 	return command(options);
@@ -42,7 +42,7 @@ export const awsDynamoDBScanStream = async (options, _streamOptions = {}) => {
 				yield item;
 			}
 			options.ExclusiveStartKey = response.LastEvaluatedKey;
-			expectMore = Object.keys(options.ExclusiveStartKey).length;
+			expectMore = !!response.LastEvaluatedKey;
 		}
 	}
 	return command(options);
@@ -105,7 +105,10 @@ export const awsDynamoDBPutItemStream = (options, streamOptions = {}) => {
 			},
 		});
 	};
-	const final = () => dynamodbBatchWrite(options, batch, streamOptions);
+	const final = () =>
+		batch.length
+			? dynamodbBatchWrite(options, batch, streamOptions)
+			: undefined;
 	return createWritableStream(write, final, streamOptions);
 };
 
@@ -122,7 +125,10 @@ export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) => {
 			},
 		});
 	};
-	const final = () => dynamodbBatchWrite(options, batch, streamOptions);
+	const final = () =>
+		batch.length
+			? dynamodbBatchWrite(options, batch, streamOptions)
+			: undefined;
 	return createWritableStream(write, final, streamOptions);
 };
 

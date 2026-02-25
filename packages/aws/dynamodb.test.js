@@ -1,4 +1,4 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, rejects } from "node:assert";
 import test from "node:test";
 import {
 	BatchGetItemCommand,
@@ -131,11 +131,9 @@ test(`${variant}: awsDynamoDBGetStream should throw error`, async (_t) => {
 		retryMaxCount: 0, // force
 	};
 	const stream = await awsDynamoDBGetItemStream(options);
-	try {
-		await streamToArray(stream);
-	} catch (e) {
-		strictEqual(e.message, "awsDynamoDBBatchGetItem has UnprocessedKeys");
-	}
+	await rejects(() => streamToArray(stream), {
+		message: "awsDynamoDBBatchGetItem has UnprocessedKeys",
+	});
 });
 
 test(`${variant}: awsDynamoDBQueryStream should return items`, async (_t) => {
@@ -160,7 +158,6 @@ test(`${variant}: awsDynamoDBQueryStream should return items`, async (_t) => {
 		})
 		.resolves({
 			Items: [{ key: "c", value: 3 }],
-			LastEvaluatedKey: {},
 		});
 
 	const options = {
@@ -198,7 +195,6 @@ test(`${variant}: awsDynamoDBScanStream should return items`, async (_t) => {
 		})
 		.resolves({
 			Items: [{ key: "c", value: 3 }],
-			LastEvaluatedKey: {},
 		});
 
 	const options = {
@@ -362,11 +358,9 @@ test(`${variant}: awsDynamoDBPutItemStream should throw error`, async (_t) => {
 		createReadableStream(input),
 		awsDynamoDBPutItemStream(options),
 	];
-	try {
-		await pipeline(stream);
-	} catch (e) {
-		strictEqual(e.message, "awsDynamoDBBatchWriteItem has UnprocessedItems");
-	}
+	await rejects(() => pipeline(stream), {
+		message: "awsDynamoDBBatchWriteItem has UnprocessedItems",
+	});
 });
 
 test(`${variant}: awsDynamoDBDeleteItemStream should delete items`, async (_t) => {
@@ -494,9 +488,7 @@ test(`${variant}: awsDynamoDBDeleteItemStream should throw error`, async (_t) =>
 		createReadableStream(input),
 		awsDynamoDBDeleteItemStream(options),
 	];
-	try {
-		await pipeline(stream);
-	} catch (e) {
-		strictEqual(e.message, "awsDynamoDBBatchWriteItem has UnprocessedItems");
-	}
+	await rejects(() => pipeline(stream), {
+		message: "awsDynamoDBBatchWriteItem has UnprocessedItems",
+	});
 });
