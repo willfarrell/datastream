@@ -21,7 +21,6 @@ import {
 	pipeline,
 	streamToArray,
 } from "@datastream/core";
-// import sinon from 'sinon'
 import { mockClient } from "aws-sdk-client-mock";
 
 let variant = "unknown";
@@ -370,7 +369,7 @@ test(`${variant}: awsDynamoDBPutItemStream should throw error`, async (_t) => {
 	}
 });
 
-test(`${variant}: awsDynamoDBDeleteItemStream should store items`, async (_t) => {
+test(`${variant}: awsDynamoDBDeleteItemStream should delete items`, async (_t) => {
 	const client = mockClient(DynamoDBClient);
 	awsDynamoDBSetClient(client);
 	client

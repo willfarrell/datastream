@@ -10,7 +10,7 @@ export const zstdCompressStream = (options = {}, _streamOptions = {}) => {
 	};
 	return createZstdCompress(options);
 };
-export const zstdDecompressStream = (options, _streamOptions = {}) => {
+export const zstdDecompressStream = (options = {}, _streamOptions = {}) => {
 	return createZstdDecompress(options);
 };
 

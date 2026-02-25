@@ -1,7 +1,9 @@
 import { deepStrictEqual } from "node:assert";
 import test from "node:test";
-import { base64DecodeStream, base64EncodeStream } from "@datastream/base64";
-// import sinon from 'sinon'
+import base64Default, {
+	base64DecodeStream,
+	base64EncodeStream,
+} from "@datastream/base64";
 import {
 	createReadableStream,
 	pipejoin,
@@ -114,4 +116,12 @@ test(`${variant}: base64DecodeStream should flush remaining characters`, async (
 	// Then flush is called with extra = "YW"
 	// Buffer.from("YW", "base64") decodes to "a" (partial decode)
 	deepStrictEqual(output.length, 1);
+});
+
+// *** default export *** //
+test(`${variant}: default export should include all stream functions`, (_t) => {
+	deepStrictEqual(Object.keys(base64Default).sort(), [
+		"decodeStream",
+		"encodeStream",
+	]);
 });

@@ -183,7 +183,7 @@ const streams = [
 await pipeline(streams)
 ```
 
-### awsDynamoDBPuItemStream (Writable)
+### awsDynamoDBPutItemStream (Writable)
 <a id="awsDynamoDBPutItemStream"></a>
 
 Writable stream that sends items to DynamoDB BatchWriteItems.
@@ -224,11 +224,11 @@ See AWS documentation [DynamoDB/BatchWriteItem.PutRequest.Item](https://docs.aws
 
 ```javascript
 import { pipeline } from '@datastream/core'
-import { awsDynamoDBPuItemStream } from '@datastream/aws/dynamodb'
+import { awsDynamoDBPutItemStream } from '@datastream/aws/dynamodb'
 
 const streams = [
   ...
-  await awsDynamoDBPuItemStream(options)
+  await awsDynamoDBPutItemStream(options)
 ]
 
 await pipeline(streams)
@@ -354,7 +354,7 @@ await pipeline(streams)
 
 ```javascript
 import { pipeline } from '@datastream/core'
-import { awsS3GetObjectStream } from '@datastream/aws/s3'
+import { awsS3PutObjectStream } from '@datastream/aws/s3'
 
 const streams = [
   ...

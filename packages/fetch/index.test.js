@@ -2,7 +2,6 @@
 
 import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
-// import sinon from 'sinon'
 import {
 	createPassThroughStream,
 	pipejoin,
@@ -10,7 +9,7 @@ import {
 	streamToArray,
 } from "@datastream/core";
 
-import {
+import fetchDefault, {
 	fetchResponseStream,
 	fetchSetDefaults,
 	fetchWritableStream,
@@ -391,4 +390,13 @@ test(`${variant}: fetchRateLimit should handle rate limit delay`, async (_t) => 
 
 	// Second call should have been delayed
 	strictEqual(fetchCallTimes.length, 2);
+});
+
+// *** default export *** //
+test(`${variant}: default export should include all stream functions`, (_t) => {
+	deepStrictEqual(Object.keys(fetchDefault).sort(), [
+		"readableStream",
+		"responseStream",
+		"setDefaults",
+	]);
 });

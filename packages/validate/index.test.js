@@ -1,6 +1,5 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
-// import sinon from 'sinon'
 import {
 	createReadableStream,
 	pipejoin,
@@ -8,7 +7,7 @@ import {
 	streamToArray,
 } from "@datastream/core";
 
-import { validateStream } from "@datastream/validate";
+import validateDefault, { validateStream } from "@datastream/validate";
 
 import Ajv from "ajv";
 
@@ -356,4 +355,9 @@ test(`${variant}: validateStream should handle missingProperty with empty instan
 		result.validate[Object.keys(result.validate)[0]].keys.length >= 1,
 		true,
 	);
+});
+
+// *** default export *** //
+test(`${variant}: default export should be validateStream`, (_t) => {
+	strictEqual(validateDefault, validateStream);
 });

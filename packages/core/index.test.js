@@ -246,7 +246,7 @@ if (variant === "node") {
 }
 
 // *** createPassThroughStream *** //
-test(`${variant}: createPassThroughStream should create a passs through stream`, async (_t) => {
+test(`${variant}: createPassThroughStream should create a pass through stream`, async (_t) => {
 	const input = ["a", "b", "c"];
 	const transform = sinon.spy();
 	const streams = [
@@ -262,7 +262,7 @@ test(`${variant}: createPassThroughStream should create a passs through stream`,
 	deepStrictEqual(output, input);
 });
 
-test(`${variant}: createPassThroughStream should create a passs through stream with flush`, async (_t) => {
+test(`${variant}: createPassThroughStream should create a pass through stream with flush`, async (_t) => {
 	const input = ["a", "b", "c"];
 	const transform = sinon.spy();
 	const flush = sinon.spy();

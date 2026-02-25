@@ -4,7 +4,6 @@ import { PublishBatchCommand, SNSClient } from "@aws-sdk/client-sns";
 import { awsSNSPublishMessageStream, awsSNSSetClient } from "@datastream/aws";
 
 import { createReadableStream, pipeline } from "@datastream/core";
-// import sinon from 'sinon'
 import { mockClient } from "aws-sdk-client-mock";
 
 let variant = "unknown";

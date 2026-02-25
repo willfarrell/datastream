@@ -186,10 +186,12 @@ export const objectOmitStream = ({ keys }, streamOptions = {}) => {
 // objectKeySplit = ({keys: { oldKey: /^(?<newKey>.*)$/ }) => { }
 
 export const objectFromEntriesStream = ({ keys }, streamOptions = {}) => {
+	let resolvedKeys;
 	const transform = (chunk, enqueue) => {
+		resolvedKeys ??= typeof keys === "function" ? keys() : keys;
 		const value = {};
-		for (let i = 0; i < keys.length; i++) {
-			value[keys[i]] = chunk[i];
+		for (let i = 0; i < resolvedKeys.length; i++) {
+			value[resolvedKeys[i]] = chunk[i];
 		}
 		enqueue(value);
 	};

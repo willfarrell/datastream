@@ -18,7 +18,6 @@ import {
 	pipeline,
 	streamToArray,
 } from "@datastream/core";
-// import sinon from 'sinon'
 import { mockClient } from "aws-sdk-client-mock";
 
 let variant = "unknown";

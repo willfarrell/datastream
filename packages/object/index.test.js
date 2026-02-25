@@ -1,6 +1,5 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import test from "node:test";
-// import sinon from 'sinon'
 import {
 	createReadableStream,
 	pipejoin,

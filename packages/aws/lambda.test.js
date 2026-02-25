@@ -7,7 +7,6 @@ import {
 import { awsLambdaReadableStream, awsLambdaSetClient } from "@datastream/aws";
 
 import { createReadableStream, pipeline } from "@datastream/core";
-// import sinon from 'sinon'
 import { mockClient } from "aws-sdk-client-mock";
 
 let variant = "unknown";
