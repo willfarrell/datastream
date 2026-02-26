@@ -5,9 +5,8 @@ import { createDeflate, createInflate } from "node:zlib";
 // TODO benchmark against `fflate`
 // quality -1 - 9
 export const deflateCompressStream = (options = {}, _streamOptions = {}) => {
-	const { quality } = options;
-	options.level ??= quality;
-	return createDeflate(options);
+	const { quality, ...rest } = options;
+	return createDeflate({ ...rest, level: rest.level ?? quality });
 };
 export const deflateDecompressStream = (_options = {}, streamOptions = {}) => {
 	return createInflate(streamOptions);

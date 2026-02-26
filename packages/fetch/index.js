@@ -182,16 +182,11 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 const pickPath = (obj, path = "") => {
 	if (path === "") return obj;
 	if (!Array.isArray(path)) path = path.split(".");
-	return path
-		.slice(0) // clone
-		.reduce((a, b) => {
-			return a[b];
-		}, obj);
+	return path.reduce((a, b) => a?.[b], obj);
 };
 
 export default {
 	setDefaults: fetchSetDefaults,
 	readableStream: fetchReadableStream,
 	responseStream: fetchReadableStream,
-	// writableStream: fetchRequestStream,
 };

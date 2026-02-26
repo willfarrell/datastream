@@ -2,11 +2,8 @@ import { strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	brotliCompressSync,
-	// brotliDecompressSync,
 	deflateSync,
-	// inflateSync
 	gzipSync,
-	// gunzipSync,
 	zstdCompressSync,
 	zstdDecompressSync,
 } from "node:zlib";
@@ -67,7 +64,6 @@ test(`${variant}: brotliCompressStream should compress`, async (_t) => {
 	const streams = [createReadableStream(input), brotliCompressStream()];
 	const output = await streamToString(pipejoin(streams));
 	strictEqual(output, brotliCompressSync(compressibleBody).toString());
-	// strictEqual(brotliDecompressSync(output), compressibleBody)
 });
 
 test(`${variant}: brotliDecompressStream should decompress`, async (_t) => {
@@ -83,7 +79,6 @@ test(`${variant}: gzipCompressStream should compress`, async (_t) => {
 	const streams = [createReadableStream(input), gzipCompressStream()];
 	const output = await streamToString(pipejoin(streams));
 	strictEqual(output, gzipSync(compressibleBody).toString());
-	// strictEqual(gunzipSync(output), compressibleBody)
 });
 
 test(`${variant}: gzipDecompressStream should decompress`, async (_t) => {
@@ -99,7 +94,6 @@ test(`${variant}: deflateCompressStream should compress`, async (_t) => {
 	const streams = [createReadableStream(input), deflateCompressStream()];
 	const output = await streamToString(pipejoin(streams));
 	strictEqual(output, deflateSync(compressibleBody).toString());
-	// strictEqual(inflateSync(output), compressibleBody)
 });
 
 test(`${variant}: deflateDecompressStream should decompress`, async (_t) => {

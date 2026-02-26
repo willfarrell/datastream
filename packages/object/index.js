@@ -122,7 +122,7 @@ export const objectKeyJoinStream = (
 ) => {
 	const transform = (chunk, enqueue) => {
 		const value = structuredClone(chunk);
-		for (const newKey in keys) {
+		for (const newKey of Object.keys(keys)) {
 			// perf opportunity
 			value[newKey] = keys[newKey]
 				.map((oldKey) => {
@@ -139,7 +139,7 @@ export const objectKeyJoinStream = (
 export const objectKeyMapStream = ({ keys }, streamOptions = {}) => {
 	const transform = (chunk, enqueue) => {
 		const value = {};
-		for (const key in chunk) {
+		for (const key of Object.keys(chunk)) {
 			const newKey = keys[key] ?? key;
 			value[newKey] = chunk[key];
 		}
@@ -160,7 +160,7 @@ export const objectPickStream = ({ keys }, streamOptions = {}) => {
 	const keySet = Object.fromEntries(keys.map((k) => [k, true]));
 	const transform = (chunk, enqueue) => {
 		const value = {};
-		for (const key in chunk) {
+		for (const key of Object.keys(chunk)) {
 			if (keySet[key]) {
 				value[key] = chunk[key];
 			}
@@ -174,7 +174,7 @@ export const objectOmitStream = ({ keys }, streamOptions = {}) => {
 	const keySet = Object.fromEntries(keys.map((k) => [k, true]));
 	const transform = (chunk, enqueue) => {
 		const value = {};
-		for (const key in chunk) {
+		for (const key of Object.keys(chunk)) {
 			if (!keySet[key]) {
 				value[key] = chunk[key];
 			}

@@ -25,39 +25,4 @@ export const charsetDecodeStream = ({ charset } = {}, streamOptions = {}) => {
 	return createTransformStream(transform, flush, streamOptions);
 };
 
-// TODO to peek ahead and determin charset from that
-/*
-export const charsetDetectDecodeStream = (
-  { charset, peekAhead } = { peekAhead: 0 },
-  streamOptions
-) => {
-  charset = getSupportedEncoding(charset)
-
-  let conv,
-    peekAheadChunk = ''
-
-  const transform = (chunk, enqueue) => {
-    if (!conv && peekahead && peekahead < peekAheadChunk.length) {
-      peekAheadChunk += chunk
-      return
-    }
-    if (!conv) {
-      conv = iconv.getDecoder(charset)
-      chunk = peekAheadChunk + chunk
-    }
-
-    const res = conv.write(chunk)
-    if (res?.length) {
-      enqueue(res, 'utf8')
-    }
-  }
-  const flush = (enqueue) => {
-    const res = conv.end()
-    if (res?.length) {
-      enqueue(res, 'utf8')
-    }
-  }
-  return createTransformStream(transform, flush, streamOptions)
-} */
-
 export default charsetDecodeStream;

@@ -3,12 +3,14 @@
 import { constants, createZstdCompress, createZstdDecompress } from "node:zlib";
 
 export const zstdCompressStream = (options = {}, _streamOptions = {}) => {
-	const { quality } = options;
-	options.params ??= {
-		[constants.ZSTD_c_compressionLevel]:
-			quality ?? constants.ZSTD_CLEVEL_DEFAULT,
-	};
-	return createZstdCompress(options);
+	const { quality, ...rest } = options;
+	return createZstdCompress({
+		...rest,
+		params: rest.params ?? {
+			[constants.ZSTD_c_compressionLevel]:
+				quality ?? constants.ZSTD_CLEVEL_DEFAULT,
+		},
+	});
 };
 export const zstdDecompressStream = (options = {}, _streamOptions = {}) => {
 	return createZstdDecompress(options);
