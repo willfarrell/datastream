@@ -50,11 +50,15 @@ export const awsDynamoDBScanStream = async (options, _streamOptions = {}) => {
 
 // TODO awsDynamoDBExecuteStatementStream
 
-// TODO max Keys.length = 100
 export const awsDynamoDBGetItemStream = async (
 	options,
 	_streamOptions = {},
 ) => {
+	if (options.Keys?.length > 100) {
+		throw new Error(
+			`awsDynamoDBGetItemStream Keys.length (${options.Keys.length}) exceeds BatchGetItem limit of 100`,
+		);
+	}
 	options.retryCount ??= 0;
 	options.retryMaxCount ??= 10;
 	async function* command(options) {

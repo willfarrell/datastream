@@ -432,6 +432,43 @@ test(`${variant}: fetchResponseStream should handle offsetParam without offsetAm
 	deepStrictEqual(output, [{ id: 1 }]);
 });
 
+test(`${variant}: fetchResponseStream should stop pagination when offset param is empty`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async () => {
+		return new Response(JSON.stringify({ data: [{ id: 1 }] }), {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/json" }),
+		});
+	};
+	fetchSetDefaults({ dataPath: "data" });
+	const config = {
+		url: "https://example.org/empty-offset",
+		qs: { $offset: "" },
+		offsetParam: "$offset",
+		offsetAmount: 3,
+	};
+	const stream = fetchResponseStream(config);
+	const output = await streamToArray(stream);
+	global.fetch = originalFetch;
+	deepStrictEqual(output, [{ id: 1 }]);
+});
+
+test(`${variant}: fetchResponseStream should handle dataPath as array`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async () => {
+		return new Response(JSON.stringify({ a: { b: [{ id: 1 }] } }), {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/json" }),
+		});
+	};
+	fetchSetDefaults({});
+	const config = { url: "https://example.org/nested", dataPath: ["a", "b"] };
+	const stream = fetchResponseStream(config);
+	const output = await streamToArray(stream);
+	global.fetch = originalFetch;
+	deepStrictEqual(output, [{ id: 1 }]);
+});
+
 // *** default export *** //
 test(`${variant}: default export should include all stream functions`, (_t) => {
 	deepStrictEqual(Object.keys(fetchDefault).sort(), [

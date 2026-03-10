@@ -430,6 +430,36 @@ test(`${variant}: awsDynamoDBDeleteItemStream should delete items`, async (_t) =
 	deepStrictEqual(output, {});
 });
 
+test(`${variant}: awsDynamoDBPutItemStream should handle empty input`, async (_t) => {
+	const client = mockClient(DynamoDBClient);
+	awsDynamoDBSetClient(client);
+
+	const input = [];
+	const options = { TableName: "TableName" };
+	const stream = [
+		createReadableStream(input),
+		awsDynamoDBPutItemStream(options),
+	];
+	const output = await pipeline(stream);
+
+	deepStrictEqual(output, {});
+});
+
+test(`${variant}: awsDynamoDBDeleteItemStream should handle empty input`, async (_t) => {
+	const client = mockClient(DynamoDBClient);
+	awsDynamoDBSetClient(client);
+
+	const input = [];
+	const options = { TableName: "TableName" };
+	const stream = [
+		createReadableStream(input),
+		awsDynamoDBDeleteItemStream(options),
+	];
+	const output = await pipeline(stream);
+
+	deepStrictEqual(output, {});
+});
+
 test(`${variant}: awsDynamoDBDeleteItemStream should throw error`, async (_t) => {
 	const client = mockClient(DynamoDBClient);
 	awsDynamoDBSetClient(client);

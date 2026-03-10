@@ -5,6 +5,7 @@ import {
 	charsetDetectStream,
 	charsetEncodeStream,
 } from "@datastream/charset";
+import { getSupportedEncoding } from "@datastream/charset/detect";
 import {
 	createReadableStream,
 	pipejoin,
@@ -287,6 +288,15 @@ test(`${variant}: charsetDecodeStream should handle ISO-8859-8-I charset`, async
 
 	// Should convert ISO-8859-8-I to ISO-8859-8
 	deepStrictEqual(typeof output, "string");
+});
+
+// *** getSupportedEncoding *** //
+test(`${variant}: getSupportedEncoding should convert ISO-8859-8-I to ISO-8859-8`, (_t) => {
+	strictEqual(getSupportedEncoding("ISO-8859-8-I"), "ISO-8859-8");
+});
+
+test(`${variant}: getSupportedEncoding should pass through other charsets unchanged`, (_t) => {
+	strictEqual(getSupportedEncoding("UTF-8"), "UTF-8");
 });
 
 test(`${variant}: charsetDecodeStream should handle empty chunks`, async (_t) => {

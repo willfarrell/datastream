@@ -10,7 +10,7 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"main": "./index.web.mjs",
+	"main": "./index.node.mjs",
 	"module": "./index.web.mjs",
 	"exports": {
 		".": {
@@ -18,10 +18,6 @@
 				"import": {
 					"types": "./index.d.ts",
 					"default": "./index.node.mjs"
-				},
-				"__require": {
-					"types": "./index.d.ts",
-					"default": "./index.node.cjs"
 				}
 			},
 			"import": {
@@ -38,10 +34,6 @@
 				"import": {
 					"types": "./zstd.d.ts",
 					"default": "./zstd.node.mjs"
-				},
-				"__require": {
-					"types": "./zstd.d.ts",
-					"default": "./zstd.node.cjs"
 				}
 			},
 			"import": {
@@ -58,10 +50,6 @@
 				"import": {
 					"types": "./brotli.d.ts",
 					"default": "./brotli.node.mjs"
-				},
-				"__require": {
-					"types": "./brotli.d.ts",
-					"default": "./brotli.node.cjs"
 				}
 			},
 			"import": {
@@ -78,10 +66,6 @@
 				"import": {
 					"types": "./gzip.d.ts",
 					"default": "./gzip.node.mjs"
-				},
-				"__require": {
-					"types": "./gzip.d.ts",
-					"default": "./gzip.node.cjs"
 				}
 			},
 			"import": {
@@ -98,10 +82,6 @@
 				"import": {
 					"types": "./deflate.d.ts",
 					"default": "./deflate.node.mjs"
-				},
-				"__require": {
-					"types": "./deflate.d.ts",
-					"default": "./deflate.node.cjs"
 				}
 			},
 			"import": {
@@ -118,10 +98,6 @@
 				"import": {
 					"types": "./protobuf.d.ts",
 					"default": "./protobuf.node.mjs"
-				},
-				"__require": {
-					"types": "./protobuf.d.ts",
-					"default": "./protobuf.node.cjs"
 				}
 			},
 			"import": {
@@ -137,7 +113,6 @@
 	"types": "index.d.ts",
 	"files": [
 		"*.mjs",
-		"*.cjs",
 		"*.map",
 		"*.d.ts"
 	],
@@ -165,9 +140,22 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.0.42",
+		"@datastream/core": "0.0.42"
+	},
+	"peerDependencies": {
 		"brotli-wasm": "3.0.1",
+		"protobufjs": "8.0.0",
 		"zstd-codec": "0.1.5"
 	},
-	"gitHead": "6ddc0fadabf5f3702a51aebae1fc6b252c6ae8d4"
+	"peerDependenciesMeta": {
+		"brotli-wasm": {
+			"optional": true
+		},
+		"protobufjs": {
+			"optional": true
+		},
+		"zstd-codec": {
+			"optional": true
+		}
+	}
 }

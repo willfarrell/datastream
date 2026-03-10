@@ -1,6 +1,6 @@
 <div align="center">
-  <h1>datastream.js `compress`</h1>
-  <img alt="datastream.js logo" src="https://raw.githubusercontent.com/willfarrell/datastream/main/docs/img/datastream-logo.svg"/>
+  <h1>&lt;datastream&gt; `compress`</h1>
+  <img alt="datastream logo" src="https://raw.githubusercontent.com/willfarrell/datastream/main/docs/img/datastream-logo.svg"/>
   <p><strong>Compression streams for gzip, brotli, zstd, and deflate.</strong></p>
 <p>
 	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
@@ -42,7 +42,7 @@ npm install --save @datastream/compress
 
 ## Documentation and examples
 
-For documentation and examples, refers to the main [datastream monorepo on GitHub](https://github.com/willfarrell/datastream) or [datastream official website](https://datastream.js.org).
+For documentation and examples, refer to the main [datastream monorepo on GitHub](https://github.com/willfarrell/datastream) or [datastream official website](https://datastream.js.org).
 
 
 ## Contributing

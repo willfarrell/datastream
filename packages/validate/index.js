@@ -32,7 +32,8 @@ export const validateStream = (
 	let idx = idxStart - 1;
 	const transform = (chunk, enqueue) => {
 		idx += 1;
-		const data = structuredClone(chunk);
+		const data =
+			allowCoerceTypes === false ? structuredClone(chunk) : undefined;
 		const chunkValid = schema(chunk);
 		if (!chunkValid) {
 			for (const error of schema.errors) {
@@ -45,8 +46,7 @@ export const validateStream = (
 			}
 		}
 		if (chunkValid || onErrorEnqueue) {
-			chunk = allowCoerceTypes !== false ? chunk : data;
-			enqueue(chunk);
+			enqueue(data ?? chunk);
 		}
 	};
 	const stream = createTransformStream(transform, streamOptions);

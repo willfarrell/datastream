@@ -23,7 +23,7 @@ test(`${variant}: awsSNSPublishMessageStream should put chunk`, async (_t) => {
 
 	const input = "abcdefghijk".split("").map((id) => ({ id }));
 	const options = {
-		// TODO
+		TopicArn: "arn:aws:sns:us-east-1:000000000000:test",
 	};
 
 	client
@@ -35,6 +35,24 @@ test(`${variant}: awsSNSPublishMessageStream should put chunk`, async (_t) => {
 			PublishBatchRequestEntries: "k".split("").map((id) => ({ id })),
 		})
 		.resolves({});
+
+	const stream = [
+		createReadableStream(input),
+		awsSNSPublishMessageStream(options),
+	];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result, {});
+});
+
+test(`${variant}: awsSNSPublishMessageStream should handle empty input`, async (_t) => {
+	const client = mockClient(SNSClient);
+	awsSNSSetClient(client);
+
+	const input = [];
+	const options = {
+		TopicArn: "arn:aws:sns:us-east-1:000000000000:test",
+	};
 
 	const stream = [
 		createReadableStream(input),

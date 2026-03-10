@@ -32,49 +32,269 @@
 </p>
 </div>
 
-Warning: This library is in Alpha, and will contain breaking changes as modules mature to have consistent usage patterns.
+- [`@datastream/core`](#core)
+  - pipeline
+  - pipejoin
+  - streamToArray
+  - streamToString
+  - isReadable
+  - isWritable
+  - makeOptions
+  - createReadableStream
+  - createTransformStream
+  - createWritableStream
 
-## Roadmap
+## Streams
 
-- Documentation
-- Extend Modules
-  - core
-    - merge - connect multiple readable into one stream (see fetch)
-  - csv
-    - break into parts
-      - csvDetectDelimitors({chunkSize}) then pass into csvParse as option
-      - csvDetectHeaders({chunkSize}) then pass into csvArrayToObject
-      - csvParse w/ hooks for error checks
-      - csvRemoveMissizedRows - remove or error when note exact columns
-      - csvRemoveEmptyRows - remove or error blank rows
-      - csvArrayToObject -> objectFromEntriesStream
-      - csvCoerceValues -> validate w/ coerce or auto cast?
-- New Modules
-  - json
-    - parse - https://github.com/jimhigson/oboe.js / https://github.com/dscape/clarinet
-    - parseChunk (json-stream notation) - fastify/secure-json-parse
-    - format
-    - formatChunk (json-stream notation) - fastify/fast-json-stringify
-    - https://github.com/uhop/stream-json
-    - https://github.com/creationix/jsonparse
-    - https://github.com/dominictarr/JSONStream
-    - https://www.npmjs.com/package/json-stream - string chunk -> look for \n -> JSON.parse
-- Maybe Future
+- Readable: The start of a pipeline of streams that injects data into a stream.
+- PassThrough: Does not modify the data, but listens to the data and prepares a result that can be retrieved.
+- Transform: Modifies data as it passes through.
+- Writable: The end of a pipeline of streams that stores data from the stream.
 
-  - compression
-    - protobuf - protobufjs / pbf - https://buf.build/blog/protobuf-es-the-protocol-buffers-typescript-javascript-runtime-we-all-deserve
+### Basics
 
-  - encryption
-    - encrypt [transform]
-    - decrypt [transform]
-  - ipfs
-    - readable - get
-    - writable - add https://github.com/ipfs/js-ipfs/blob/master/docs/core-api/FILES.md#ipfsadddata-options
-      https://github.com/ipfs/js-datastore-s3/blob/master/examples/full-s3-repo/index.js
-      // https://github.com/ipfs-examples/js-ipfs-examples/blob/master/examples/browser-add-readable-stream/src/index.js
-  - xml
-    - parse - https://github.com/isaacs/sax-js / KeeeX/sax-js
-    - format
-  - type
-    - pg - obj to db types
-  - benchmark using `node file.js | pv > /dev/null`
+- [`@datastream/string`](#string)
+  - stringReadableStream [Readable]
+  - stringLengthStream [PassThrough]
+  - stringOutputStream [PassThrough]
+- [`@datastream/object`](#object)
+  - objectReadableStream [Readable]
+  - objectCountStream [PassThrough]
+  - objectBatchStream [Transform]
+  - objectOutputStream [PassThrough]
+
+### Common
+
+- [`@datastream/fetch`](#fetch)
+  - fetchResponseStream [Readable]
+- [`@datastream/charset[/{detect,decode,encode}]`](#charset)
+  - charsetDetectStream [PassThrough]
+  - charsetDecodeStream [Transform]
+  - charsetEncodeStream [Transform]
+- [`@datastream/compression[/{gzip,deflate}]`](#compression)
+  - gzipCompressionStream [Transform]
+  - gzipDecompressionStream [Transform]
+  - deflateCompressionStream [Transform]
+  - deflateDecompressionStream [Transform]
+- [`@datastream/digest`](#digest)
+  - digestStream [PassThrough]
+
+### Advanced
+
+- [`@datastream/csv[/{parse,format}]`](#csv)
+  - csvParseStream [Transform]
+  - csvFormatStream [Transform]
+- [`@datastream/validate`](#validate)
+  - validateStream [Transform]
+
+## Setup
+
+```bash
+npm install @datastream/core @datastream/{module}
+```
+
+## Flows
+
+```mermaid
+stateDiagram-v2
+
+    [*] --> fileRead*: path
+    [*] --> fetchResponse: URL
+    [*] --> sqlCopyTo*: SQL
+    [*] --> stringReadable: string
+    [*] --> stringReadable: string[]
+    [*] --> objectReadable: object[]
+    [*] --> createReadable: blob
+
+    readable --> charsetDetect: binary
+    charsetDetect --> [*]
+
+    readable --> decryption
+    decryption --> passThroughBuffer: buffer
+
+    readable --> decompression
+    decompression --> passThroughBuffer: buffer
+    passThroughBuffer --> charsetDecode: buffer
+    charsetDecode --> passThroughString: string
+    passThroughString --> parse: string
+    parse --> validate: object
+    validate --> passThroughObject: object
+    passThroughObject --> transform: object
+
+    transform --> format: object
+    format --> charsetEncode: string
+    charsetEncode --> compression: buffer
+    compression --> writable: buffer
+
+    charsetEncode --> encryption: buffer
+    encryption --> writable: buffer
+
+    state readable {
+        fileRead*
+        fetchResponse
+        sqlCopyTo*
+        createReadable
+        stringReadable
+        objectReadable
+        awsS3Get
+        awsDynamoDBQuery
+        awsDynamoDBScan
+        awsDynamoDBGet
+    }
+
+    state decompression {
+        brotliDeompression
+        gzipDeompression
+        deflateDeompression
+        zstdDecompression*
+        protobufDecompression*
+    }
+
+    state decryption {
+      decryption*
+    }
+
+    state parse {
+      csvParse
+      jsonParse*
+      xmlParse*
+    }
+
+    state passThroughBuffer {
+      digest
+    }
+
+    state passThroughString {
+      stringLength
+      stringOutput
+    }
+
+    state passThroughObject {
+      objectCount
+      objectOutput
+    }
+
+    state transform {
+      objectBatch
+      objectPivotLongToWide
+      objectPivotWideToLong
+      objectKeyValue
+      objectKeyValue
+    }
+
+    state format {
+      csvFormat
+      jsonFormat*
+      xmlFormat*
+    }
+
+    state compression {
+        brotliCompression
+        gzipCompression
+        deflateCompression
+        zstdCompression*
+        protobufCompression*
+    }
+
+    state encryption {
+      encryption*
+    }
+
+    state writable {
+        fileWrite*
+        fetchRequest*
+        sqlCopyFrom*
+        awsS3Put
+        awsDynamoDBPut
+        awsDynamoDBDelete
+    }
+    writable --> [*]
+```
+
+\* possible future package
+
+## Write your own
+
+### Readable
+
+#### NodeJS Streams
+
+- [NodeJS](https://nodejs.org/api/stream.html#class-streamreadable)
+
+#### Web Streams API
+
+- [MDN](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream)
+- [NodeJS](https://nodejs.org/api/webstreams.html#class-readablestream)
+
+### Transform
+
+#### NodeJS Streams
+
+- [NodeJS](https://nodejs.org/api/stream.html#class-streamtransform)
+
+#### Web Streams API
+
+- [MDN](https://developer.mozilla.org/en-US/docs/Web/API/TransformStream)
+- [NodeJS](https://nodejs.org/api/webstreams.html#class-transformstream)
+
+### Writeable
+
+#### NodeJS Streams
+
+- [NodeJS](https://nodejs.org/api/stream.html#class-streamwritable)
+
+#### Web Streams API
+
+- [MDN](https://developer.mozilla.org/en-US/docs/Web/API/WritableStream)
+- [NodeJS](https://nodejs.org/api/webstreams.html#class-writablestream)
+
+## End-to-End Examples
+
+### NodeJS: Import CSV into SQL database
+
+Read a CSV file, validate the structure, pivot data, then save compressed.
+
+- fs.creatReadStream
+- gzip
+- cryptoDigest
+- charsetDecode
+- csvParse
+- countChunks
+- validate
+- changeCase (pascal to snake)
+- parquet?
+- csvFormat
+- postgesCopyFrom
+
+### WebWorker: Validate and collect metadata about file prior to upload
+
+- <input type="file">
+- cryptoDigest
+- charsetDetect
+- jsonParse?
+- validate
+
+### WebWorker: Upload file compressed
+
+Upload file with brotli compression?
+
+### WebWorker: Decompress protobuf compressed JSON requests
+
+Fetch protobuf file, decompress, parse JSON
+
+### streams
+
+- filter
+
+- file (docs only?)
+
+### examples
+
+- fetch
+- node:fs
+- input type=file
+- readable string/array/etc
+
+## License
+
+Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell) and [contributors](https://github.com/middyjs/middy/graphs/contributors).

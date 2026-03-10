@@ -36,6 +36,7 @@
 		"test:packages:unit": "npm run test:packages:unit:node && npm run test:packages:unit:web",
 		"test:packages:unit:node": "node --test --test-force-exit --experimental-test-coverage --test-coverage-lines=96 --test-coverage-branches=99 --test-coverage-functions=95",
 		"test:packages:unit:web": "node --test --test-force-exit --experimental-test-coverage --test-coverage-lines=96 --test-coverage-branches=99 --test-coverage-functions=95",
+		"test:packages:perf": "node --test ./packages/**/*.perf.js",
 		"test:packages:fuzz": "node --test ./packages/**/*.fuzz.js",
 		"rm": "npm run rm:macos && npm run rm:node_modules && npm run rm:lock",
 		"rm:macos": "find . -name '.DS_Store' -type d -prune -exec rm -rf '{}' +",
@@ -73,7 +74,6 @@
 		"@commitlint/cli": "^20.0.0",
 		"@commitlint/config-conventional": "^20.0.0",
 		"@tsconfig/node24": "^24.0.0",
-		"docsify-cli": "^4.0.0",
 		"esbuild": "^0.27.0",
 		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
@@ -90,6 +90,7 @@
 	},
 	"workspaces": [
 		"packages/*",
+		"websites/*",
 		".github"
 	]
 }

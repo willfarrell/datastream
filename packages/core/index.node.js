@@ -78,36 +78,92 @@ export const backpressureGuage = (streams) => {
 	return metrics;
 };
 
-export const streamToArray = async (stream) => {
-	const value = [];
-	for await (const chunk of stream) {
-		value.push(chunk);
+export const streamToArray = (stream) => {
+	if (typeof stream.on === "function") {
+		return new Promise((resolve, reject) => {
+			const value = [];
+			stream.on("data", (chunk) => {
+				value.push(chunk);
+			});
+			stream.on("end", () => {
+				resolve(value);
+			});
+			stream.on("error", reject);
+		});
 	}
-	return value;
+	return (async () => {
+		const value = [];
+		for await (const chunk of stream) {
+			value.push(chunk);
+		}
+		return value;
+	})();
 };
 
-export const streamToObject = async (stream) => {
-	const value = {};
-	for await (const chunk of stream) {
-		Object.assign(value, chunk);
+export const streamToObject = (stream) => {
+	if (typeof stream.on === "function") {
+		return new Promise((resolve, reject) => {
+			const value = {};
+			stream.on("data", (chunk) => {
+				Object.assign(value, chunk);
+			});
+			stream.on("end", () => {
+				resolve(value);
+			});
+			stream.on("error", reject);
+		});
 	}
-	return value;
+	return (async () => {
+		const value = {};
+		for await (const chunk of stream) {
+			Object.assign(value, chunk);
+		}
+		return value;
+	})();
 };
 
-export const streamToString = async (stream) => {
-	let value = "";
-	for await (const chunk of stream) {
-		value += chunk;
+export const streamToString = (stream) => {
+	if (typeof stream.on === "function") {
+		return new Promise((resolve, reject) => {
+			let value = "";
+			stream.on("data", (chunk) => {
+				value += chunk;
+			});
+			stream.on("end", () => {
+				resolve(value);
+			});
+			stream.on("error", reject);
+		});
 	}
-	return value;
+	return (async () => {
+		let value = "";
+		for await (const chunk of stream) {
+			value += chunk;
+		}
+		return value;
+	})();
 };
 
-export const streamToBuffer = async (stream) => {
-	const value = [];
-	for await (const chunk of stream) {
-		value.push(Buffer.from(chunk));
+export const streamToBuffer = (stream) => {
+	if (typeof stream.on === "function") {
+		return new Promise((resolve, reject) => {
+			const value = [];
+			stream.on("data", (chunk) => {
+				value.push(Buffer.from(chunk));
+			});
+			stream.on("end", () => {
+				resolve(Buffer.concat(value));
+			});
+			stream.on("error", reject);
+		});
 	}
-	return Buffer.concat(value);
+	return (async () => {
+		const value = [];
+		for await (const chunk of stream) {
+			value.push(Buffer.from(chunk));
+		}
+		return Buffer.concat(value);
+	})();
 };
 
 export const isReadable = (stream) => {
@@ -189,21 +245,34 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 	}
 	return new Transform({
 		...makeOptions(streamOptions),
-		async transform(chunk, _encoding, callback) {
+		transform(chunk, _encoding, callback) {
 			try {
-				await passThrough(chunk);
-				this.push(chunk);
-				callback();
+				const result = passThrough(chunk);
+				if (result != null && typeof result.then === "function") {
+					result.then(() => {
+						this.push(chunk);
+						callback();
+					}, callback);
+				} else {
+					this.push(chunk);
+					callback();
+				}
 			} catch (e) {
 				callback(e);
 			}
 		},
-		async flush(callback) {
+		flush(callback) {
 			try {
 				if (flush) {
-					await flush();
+					const result = flush();
+					if (result != null && typeof result.then === "function") {
+						result.then(() => callback(), callback);
+					} else {
+						callback();
+					}
+				} else {
+					callback();
 				}
-				callback();
 			} catch (e) {
 				callback(e);
 			}
@@ -217,33 +286,41 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		streamOptions = flush;
 		flush = undefined;
 	}
-	return new Transform({
+	const stream = new Transform({
 		...makeOptions(streamOptions),
-		async transform(chunk, _encoding, callback) {
-			const enqueue = (chunk, encoding) => {
-				this.push(chunk, encoding);
-			};
+		transform(chunk, _encoding, callback) {
 			try {
-				await transform(chunk, enqueue);
-				callback();
+				const result = transform(chunk, enqueue);
+				if (result != null && typeof result.then === "function") {
+					result.then(() => callback(), callback);
+				} else {
+					callback();
+				}
 			} catch (e) {
 				callback(e);
 			}
 		},
-		async flush(callback) {
+		flush(callback) {
 			try {
 				if (flush) {
-					const enqueue = (chunk, encoding) => {
-						this.push(chunk, encoding);
-					};
-					await flush(enqueue);
+					const result = flush(enqueue);
+					if (result != null && typeof result.then === "function") {
+						result.then(() => callback(), callback);
+					} else {
+						callback();
+					}
+				} else {
+					callback();
 				}
-				callback();
 			} catch (e) {
 				callback(e);
 			}
 		},
 	});
+	const enqueue = (chunk, encoding) => {
+		stream.push(chunk, encoding);
+	};
+	return stream;
 };
 
 export const createWritableStream = (write, final, streamOptions) => {
@@ -254,20 +331,30 @@ export const createWritableStream = (write, final, streamOptions) => {
 	}
 	return new Writable({
 		...makeOptions(streamOptions),
-		async write(chunk, _encoding, callback) {
+		write(chunk, _encoding, callback) {
 			try {
-				await write(chunk);
-				callback();
+				const result = write(chunk);
+				if (result != null && typeof result.then === "function") {
+					result.then(() => callback(), callback);
+				} else {
+					callback();
+				}
 			} catch (e) {
 				callback(e);
 			}
 		},
-		async final(callback) {
+		final(callback) {
 			try {
 				if (final) {
-					await final();
+					const result = final();
+					if (result != null && typeof result.then === "function") {
+						result.then(() => callback(), callback);
+					} else {
+						callback();
+					}
+				} else {
+					callback();
 				}
-				callback();
 			} catch (e) {
 				callback(e);
 			}

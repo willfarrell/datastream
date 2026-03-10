@@ -64,11 +64,11 @@ export const streamToString = async (stream) => {
 };
 
 export const isReadable = (stream) => {
-	return typeof stream.pipeTo === "function" || !!stream.readable; // TODO find better solution
+	return stream instanceof ReadableStream || !!stream.readable;
 };
 
 export const isWritable = (stream) => {
-	return typeof stream.pipeTo === "undefined" || !!stream.writable; // TODO find better solution
+	return stream instanceof WritableStream || !!stream.writable;
 };
 
 export const makeOptions = ({

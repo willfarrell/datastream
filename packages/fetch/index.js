@@ -39,8 +39,6 @@ export const fetchSetDefaults = (options) => {
 
 // Note: requires EncodeStream to ensure it's Uint8Array
 // Poor browser support - https://github.com/Fyrd/caniuse/issues/6375
-// TODO needs testing
-// TODO multi-part upload
 export const fetchWritableStream = async (options, streamOptions = {}) => {
 	const body = createReadableStream();
 	// Duplex: half - For browser compatibility - https://developer.chrome.com/articles/fetch-streaming-requests/#half-duplex
@@ -163,18 +161,51 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 	options.rateLimitTimestamp = Date.now() + 1000 * options.rateLimit;
 	options = mergeOptions(options); // for when called directly
 
-	const response = await fetch(options.url, {
-		...options,
+	const {
+		method,
+		headers,
+		body,
+		mode,
+		credentials,
+		cache,
+		redirect,
+		referrer,
+		referrerPolicy,
+		integrity,
+		keepalive,
+		duplex,
+	} = options;
+	const fetchInit = {
+		method,
+		headers,
+		body,
+		mode,
+		credentials,
+		cache,
+		redirect,
+		referrer,
+		referrerPolicy,
+		integrity,
+		keepalive,
+		duplex,
 		signal: streamOptions.signal,
-	});
+	};
+	const response = await fetch(options.url, fetchInit);
 	if (!response.ok) {
 		// 429 Too Many Requests
 		if (response.status === 429) {
 			return fetchRateLimit(options, streamOptions);
 		}
-		throw new Error("fetch", {
-			cause: { request: options, response },
-		});
+		throw new Error(
+			`fetch ${response.status} ${options.method} ${options.url}`,
+			{
+				cause: {
+					status: response.status,
+					url: options.url,
+					method: options.method,
+				},
+			},
+		);
 	}
 	return response;
 };

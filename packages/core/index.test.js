@@ -95,6 +95,43 @@ for (const type of Object.keys(types)) {
 	});
 }
 
+// *** streamTo{Array,String,Object} with async iterable (non-Node stream) *** //
+test(`${variant}: streamToArray should work with async iterable`, async (_t) => {
+	async function* gen() {
+		yield "a";
+		yield "b";
+	}
+	const output = await streamToArray(gen());
+	deepStrictEqual(output, ["a", "b"]);
+});
+
+test(`${variant}: streamToObject should work with async iterable`, async (_t) => {
+	async function* gen() {
+		yield { x: 1 };
+		yield { y: 2 };
+	}
+	const output = await streamToObject(gen());
+	deepStrictEqual(output, { x: 1, y: 2 });
+});
+
+test(`${variant}: streamToString should work with async iterable`, async (_t) => {
+	async function* gen() {
+		yield "hello";
+		yield " world";
+	}
+	const output = await streamToString(gen());
+	strictEqual(output, "hello world");
+});
+
+test(`${variant}: streamToBuffer should work with async iterable`, async (_t) => {
+	async function* gen() {
+		yield "hello";
+		yield " world";
+	}
+	const output = await streamToBuffer(gen());
+	strictEqual(output.toString(), "hello world");
+});
+
 // *** streamToBuffer *** //
 test(`${variant}: streamToBuffer should collect buffers into single buffer`, async (_t) => {
 	const input = ["hello", " ", "world"];
@@ -215,6 +252,16 @@ test(`${variant}: createReadableStream should create a readable stream from iter
 	deepStrictEqual(output, ["a", "b", "c"]);
 });
 
+test(`${variant}: createReadableStream should create a readable stream from ArrayBuffer`, async (_t) => {
+	const input = new Uint8Array([1, 2, 3, 4, 5]).buffer;
+	const streams = [createReadableStream(input)];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	strictEqual(output.length, 1);
+	deepStrictEqual(Array.from(output[0]), [1, 2, 3, 4, 5]);
+});
+
 test(`${variant}: createReadableStream should allow pushing values onto it`, async (_t) => {
 	const streams = [createReadableStream()];
 	const stream = pipejoin(streams);
@@ -297,6 +344,33 @@ test(`${variant}: createPassThroughStream should catch transform error`, async (
 	}
 });
 
+test(`${variant}: createPassThroughStream should handle async passThrough`, async (_t) => {
+	const input = ["a", "b", "c"];
+	const streams = [
+		createReadableStream(input),
+		createPassThroughStream(async () => {}),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, input);
+});
+
+test(`${variant}: createPassThroughStream should handle async flush`, async (_t) => {
+	const input = ["a", "b", "c"];
+	const streams = [
+		createReadableStream(input),
+		createPassThroughStream(
+			() => {},
+			async () => {},
+		),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, input);
+});
+
 test(`${variant}: createPassThroughStream should catch flush error`, async (_t) => {
 	const input = ["a", "b", "c"];
 	const flush = () => {
@@ -362,6 +436,35 @@ test(`${variant}: createTransformStream should catch transform error`, async (_t
 	} catch (e) {
 		strictEqual(e.message, "error");
 	}
+});
+
+test(`${variant}: createTransformStream should handle async transform`, async (_t) => {
+	const input = ["a", "b", "c"];
+	const streams = [
+		createReadableStream(input),
+		createTransformStream(async (chunk, enqueue) => {
+			enqueue(chunk);
+		}),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, input);
+});
+
+test(`${variant}: createTransformStream should handle async flush`, async (_t) => {
+	const input = ["a", "b", "c"];
+	const streams = [
+		createReadableStream(input),
+		createTransformStream(
+			(chunk, enqueue) => enqueue(chunk),
+			async () => {},
+		),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, input);
 });
 
 test(`${variant}: createTransformStream should catch flush error`, async (_t) => {
@@ -431,6 +534,37 @@ test(`${variant}: createWritableStream should catch transform error`, async (_t)
 	} catch (e) {
 		strictEqual(e.message, "error");
 	}
+});
+
+test(`${variant}: createWritableStream should handle async write`, async (_t) => {
+	const input = ["a", "b", "c"];
+	const collected = [];
+	const streams = [
+		createReadableStream(input),
+		createWritableStream(async (chunk) => {
+			collected.push(chunk);
+		}),
+	];
+	await pipeline(streams);
+
+	deepStrictEqual(collected, input);
+});
+
+test(`${variant}: createWritableStream should handle async final`, async (_t) => {
+	const input = ["a", "b", "c"];
+	let finalized = false;
+	const streams = [
+		createReadableStream(input),
+		createWritableStream(
+			() => {},
+			async () => {
+				finalized = true;
+			},
+		),
+	];
+	await pipeline(streams);
+
+	strictEqual(finalized, true);
 });
 
 test(`${variant}: createWritableStream should catch final error`, async (_t) => {

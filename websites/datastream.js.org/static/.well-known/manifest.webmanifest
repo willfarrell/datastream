@@ -1,0 +1,16 @@
+{
+	"name": "datastream",
+	"short_name": "datastream",
+	"icons": [
+		{
+			"src": "/favicon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml"
+		}
+	],
+	"theme_color": "#1e88e5",
+	"background_color": "#000000",
+	"display": "standalone",
+	"start_url": "/",
+	"prefer_related_applications": false
+}

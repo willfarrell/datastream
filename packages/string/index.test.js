@@ -10,6 +10,8 @@ import {
 import stringDefault, {
 	stringCountStream,
 	stringLengthStream,
+	stringMinimumChunkSize,
+	stringMinimumFirstChunkSize,
 	stringReadableStream,
 	stringReplaceStream,
 	stringSkipConsecutiveDuplicates,
@@ -193,6 +195,80 @@ test(`${variant}: stringReplaceStream should replace with string pattern`, async
 
 	// Output includes empty string from first chunk (previousChunk.length was 0)
 	deepStrictEqual(output, ["", "hi world"]);
+});
+
+// *** stringMinimumFirstChunkSize *** //
+test(`${variant}: stringMinimumFirstChunkSize should buffer until chunkSize reached`, async (_t) => {
+	const input = ["ab", "cd", "ef"];
+	const streams = [
+		createReadableStream(input),
+		stringMinimumFirstChunkSize({ chunkSize: 4 }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, ["abcd", "ef"]);
+});
+
+test(`${variant}: stringMinimumFirstChunkSize should flush small input`, async (_t) => {
+	const input = ["ab"];
+	const streams = [
+		createReadableStream(input),
+		stringMinimumFirstChunkSize({ chunkSize: 100 }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, ["ab"]);
+});
+
+test(`${variant}: stringMinimumFirstChunkSize should pass through after first chunk met`, async (_t) => {
+	const input = ["abcdef", "gh", "ij"];
+	const streams = [
+		createReadableStream(input),
+		stringMinimumFirstChunkSize({ chunkSize: 4 }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, ["abcdef", "gh", "ij"]);
+});
+
+// *** stringMinimumChunkSize *** //
+test(`${variant}: stringMinimumChunkSize should buffer until chunkSize reached`, async (_t) => {
+	const input = ["ab", "cd", "ef"];
+	const streams = [
+		createReadableStream(input),
+		stringMinimumChunkSize({ chunkSize: 4 }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, ["abcd", "ef"]);
+});
+
+test(`${variant}: stringMinimumChunkSize should flush small input`, async (_t) => {
+	const input = ["ab"];
+	const streams = [
+		createReadableStream(input),
+		stringMinimumChunkSize({ chunkSize: 100 }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, ["ab"]);
+});
+
+test(`${variant}: stringMinimumChunkSize should pass through after first chunk met`, async (_t) => {
+	const input = ["abcdef", "gh", "ij"];
+	const streams = [
+		createReadableStream(input),
+		stringMinimumChunkSize({ chunkSize: 4 }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, ["abcdef", "gh", "ij"]);
 });
 
 // *** default export *** //

@@ -3,7 +3,7 @@ import test from "node:test";
 import {
 	DeleteMessageBatchCommand,
 	ReceiveMessageCommand,
-	SendMessageCommand,
+	SendMessageBatchCommand,
 	SQSClient,
 } from "@aws-sdk/client-sqs";
 import {
@@ -67,7 +67,7 @@ test(`${variant}: awsSQSDeleteMessageStream should delete chunk`, async (_t) => 
 
 	const input = "abcdefghijk".split("").map((Id) => ({ Id }));
 	const options = {
-		// TODO
+		QueueUrl: "https://sqs.us-east-1.amazonaws.com/000000000000/test",
 	};
 
 	client
@@ -95,18 +95,54 @@ test(`${variant}: awsSQSSendMessageStream should put chunk`, async (_t) => {
 
 	const input = "abcdefghijk".split("").map((id) => ({ id }));
 	const options = {
-		// TODO
+		QueueUrl: "https://sqs.us-east-1.amazonaws.com/000000000000/test",
 	};
 
 	client
-		.on(SendMessageCommand, {
+		.on(SendMessageBatchCommand, {
 			Entries: "abcdefghij".split("").map((id) => ({ id })),
 		})
 		.resolves({})
-		.on(SendMessageCommand, {
+		.on(SendMessageBatchCommand, {
 			Entries: "k".split("").map((id) => ({ id })),
 		})
 		.resolves({});
+
+	const stream = [
+		createReadableStream(input),
+		awsSQSSendMessageStream(options),
+	];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result, {});
+});
+
+test(`${variant}: awsSQSDeleteMessageStream should handle empty input`, async (_t) => {
+	const client = mockClient(SQSClient);
+	awsSQSSetClient(client);
+
+	const input = [];
+	const options = {
+		QueueUrl: "https://sqs.us-east-1.amazonaws.com/000000000000/test",
+	};
+
+	const stream = [
+		createReadableStream(input),
+		awsSQSDeleteMessageStream(options),
+	];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result, {});
+});
+
+test(`${variant}: awsSQSSendMessageStream should handle empty input`, async (_t) => {
+	const client = mockClient(SQSClient);
+	awsSQSSetClient(client);
+
+	const input = [];
+	const options = {
+		QueueUrl: "https://sqs.us-east-1.amazonaws.com/000000000000/test",
+	};
 
 	const stream = [
 		createReadableStream(input),

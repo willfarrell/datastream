@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: MIT
 import { createTransformStream } from "@datastream/core";
 
-// TODO replace with web version
 export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
 	let extra = "";
 	const transform = (chunk, enqueue) => {
 		if (extra) {
-			chunk = Buffer.concat([extra, chunk]);
+			chunk = extra + chunk;
 			extra = "";
 		}
 
@@ -18,11 +17,11 @@ export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
 			chunk = chunk.slice(0, chunk.length - remaining);
 		}
 
-		enqueue(Buffer.from(chunk).toString("base64"));
+		enqueue(btoa(chunk));
 	};
 	const flush = (enqueue) => {
 		if (extra) {
-			enqueue(Buffer.from(extra).toString("base64"));
+			enqueue(btoa(extra));
 		}
 	};
 	return createTransformStream(transform, flush, streamOptions);
@@ -39,11 +38,11 @@ export const base64DecodeStream = (_options = {}, streamOptions = {}) => {
 		extra = chunk.slice(chunk.length - remaining);
 		chunk = chunk.slice(0, chunk.length - remaining);
 
-		enqueue(Buffer.from(chunk, "base64"));
+		enqueue(atob(chunk));
 	};
 	const flush = (enqueue) => {
 		if (extra) {
-			enqueue(Buffer.from(extra, "base64"));
+			enqueue(atob(extra));
 		}
 	};
 	streamOptions.decodeStrings = false;
