@@ -158,35 +158,35 @@ await pipeline(streams)`;
             <P>Explore the available stream packages.</P>
         </Div>
         <Ul class="grid">
-            <Card href="/docs/packages/core" class="package" id="core">
+            <Card class="package" id="core">
                 <H3><A href="/docs/packages/core">core</A></H3>
                 <P>Pipeline, stream utilities, and factory functions.</P>
             </Card>
-            <Card href="/docs/packages/aws" class="package" id="aws">
+            <Card class="package" id="aws">
                 <H3><A href="/docs/packages/aws">aws</A></H3>
                 <P>DynamoDB, S3, SQS, SNS, and Lambda streams.</P>
             </Card>
-            <Card href="/docs/packages/csv" class="package" id="csv">
+            <Card class="package" id="csv">
                 <H3><A href="/docs/packages/csv">csv</A></H3>
                 <P>Parse and format CSV data.</P>
             </Card>
-            <Card href="/docs/packages/compress" class="package" id="compress">
+            <Card class="package" id="compress">
                 <H3><A href="/docs/packages/compress">compress</A></H3>
                 <P>Brotli, gzip, deflate, and zstd compression.</P>
             </Card>
-            <Card href="/docs/packages/charset" class="package" id="charset">
+            <Card class="package" id="charset">
                 <H3><A href="/docs/packages/charset">charset</A></H3>
                 <P>Character encoding detection, decoding, and encoding.</P>
             </Card>
-            <Card href="/docs/packages/validate" class="package" id="validate">
+            <Card class="package" id="validate">
                 <H3><A href="/docs/packages/validate">validate</A></H3>
                 <P>Schema validation for stream data.</P>
             </Card>
-            <Card href="/docs/packages/object" class="package" id="object">
+            <Card class="package" id="object">
                 <H3><A href="/docs/packages/object">object</A></H3>
                 <P>Object manipulation, batching, pivoting, and filtering.</P>
             </Card>
-            <Card href="/docs/packages/string" class="package" id="string">
+            <Card class="package" id="string">
                 <H3><A href="/docs/packages/string">string</A></H3>
                 <P>String streams, splitting, replacing, and counting.</P>
             </Card>
