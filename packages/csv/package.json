@@ -28,22 +28,6 @@
 		"./webstream": {
 			"types": "./index.d.ts",
 			"default": "./index.web.mjs"
-		},
-		"./format": {
-			"node": {
-				"import": {
-					"types": "./format.d.ts",
-					"default": "./format.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./format.d.ts",
-				"default": "./format.web.mjs"
-			}
-		},
-		"./format/webstream": {
-			"types": "./format.d.ts",
-			"default": "./format.web.mjs"
 		}
 	},
 	"types": "index.d.ts",
@@ -80,6 +64,6 @@
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
 		"@datastream/core": "0.0.42",
-		"csv-rex": "0.7.0"
+		"@datastream/object": "0.0.42"
 	}
 }

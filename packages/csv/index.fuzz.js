@@ -9,6 +9,8 @@ import {
 	csvDetectDelimitersStream,
 	csvDetectHeaderStream,
 	csvFormatStream,
+	csvInjectHeaderStream,
+	csvObjectToArray,
 	csvParseStream,
 	csvQuotedParser,
 	csvRemoveEmptyRowsStream,
@@ -256,18 +258,47 @@ test("fuzz csvCoerceValuesStream w/ input", async () => {
 });
 
 // *** csvFormatStream *** //
-test("fuzz csvFormatStream w/ object input", async () => {
+test("fuzz csvFormatStream w/ array input", async () => {
+	const rowArb = fc.array(fc.string(), { minLength: 1, maxLength: 10 });
+	await fc.assert(
+		fc.asyncProperty(
+			fc.array(rowArb, { minLength: 1, maxLength: 20 }),
+			async (input) => {
+				try {
+					const streams = [createReadableStream(input), csvFormatStream()];
+					const stream = pipejoin(streams);
+					await streamToArray(stream);
+				} catch (e) {
+					catchError(input, e);
+				}
+			},
+		),
+		{
+			numRuns: 1_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+test("fuzz csvFormatStream w/ object input via compose", async () => {
 	const objArb = fc.record({
 		a: fc.string(),
 		b: fc.string(),
 		c: fc.string(),
 	});
+	const headers = ["a", "b", "c"];
 	await fc.assert(
 		fc.asyncProperty(
 			fc.array(objArb, { minLength: 1, maxLength: 20 }),
 			async (input) => {
 				try {
-					const streams = [createReadableStream(input), csvFormatStream()];
+					const streams = [
+						createReadableStream(input),
+						csvObjectToArray({ headers }),
+						csvInjectHeaderStream({ header: headers }),
+						csvFormatStream(),
+					];
 					const stream = pipejoin(streams);
 					await streamToArray(stream);
 				} catch (e) {

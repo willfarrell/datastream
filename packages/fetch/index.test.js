@@ -326,9 +326,10 @@ test(`${variant}: fetchResponseStream should throw on non-ok response`, async (_
 		await streamToArray(stream);
 		throw new Error("Should have thrown");
 	} catch (error) {
-		deepStrictEqual(error.message, "fetch");
-		deepStrictEqual(error.cause.request.url, "https://example.org/404");
-		deepStrictEqual(error.cause.response.status, 404);
+		deepStrictEqual(error.message, "fetch 404 GET https://example.org/404");
+		deepStrictEqual(error.cause.url, "https://example.org/404");
+		deepStrictEqual(error.cause.status, 404);
+		deepStrictEqual(error.cause.method, "GET");
 	}
 });
 

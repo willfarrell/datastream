@@ -198,6 +198,19 @@ export const objectFromEntriesStream = ({ keys }, streamOptions = {}) => {
 	return createTransformStream(transform, streamOptions);
 };
 
+export const objectToEntriesStream = ({ keys }, streamOptions = {}) => {
+	let resolvedKeys;
+	const transform = (chunk, enqueue) => {
+		resolvedKeys ??= typeof keys === "function" ? keys() : keys;
+		const value = [];
+		for (let i = 0; i < resolvedKeys.length; i++) {
+			value[i] = chunk[resolvedKeys[i]];
+		}
+		enqueue(value);
+	};
+	return createTransformStream(transform, streamOptions);
+};
+
 export const objectSkipConsecutiveDuplicatesStream = (
 	_options = {},
 	streamOptions = {},
@@ -227,5 +240,6 @@ export default {
 	keyMapStream: objectKeyMapStream,
 	valueMapStream: objectValueMapStream,
 	fromEntriesStream: objectFromEntriesStream,
+	toEntriesStream: objectToEntriesStream,
 	skipConsecutiveDuplicatesStream: objectSkipConsecutiveDuplicatesStream,
 };

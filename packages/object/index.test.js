@@ -21,6 +21,7 @@ import {
 	objectPivotWideToLongStream,
 	objectReadableStream,
 	objectSkipConsecutiveDuplicatesStream,
+	objectToEntriesStream,
 	objectValueMapStream,
 } from "@datastream/object";
 
@@ -410,4 +411,63 @@ test(`${variant}: objectOmitStream should omit specified keys`, async (_t) => {
 	const output = await streamToArray(stream);
 
 	deepStrictEqual(output, [{ a: 1, c: 3 }]);
+});
+
+// *** objectToEntriesStream *** //
+test(`${variant}: objectToEntriesStream should transform object to array with keys`, async (_t) => {
+	const input = [{ a: 1, b: 2, c: 3 }];
+	const streams = [
+		createReadableStream(input),
+		objectToEntriesStream({ keys: ["a", "b", "c"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [[1, 2, 3]]);
+});
+
+test(`${variant}: objectToEntriesStream should support lazy keys function`, async (_t) => {
+	const input = [{ a: 1, b: 2, c: 3 }];
+	const streams = [
+		createReadableStream(input),
+		objectToEntriesStream({ keys: () => ["a", "b", "c"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [[1, 2, 3]]);
+});
+
+test(`${variant}: objectToEntriesStream should transform multiple objects`, async (_t) => {
+	const input = [
+		{ a: 1, b: 2, c: 3 },
+		{ a: 4, b: 5, c: 6 },
+	];
+	const streams = [
+		createReadableStream(input),
+		objectToEntriesStream({ keys: ["a", "b", "c"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		[1, 2, 3],
+		[4, 5, 6],
+	]);
+});
+
+test(`${variant}: objectToEntriesStream should return undefined for missing keys`, async (_t) => {
+	const input = [{ a: 1, c: 3 }];
+	const streams = [
+		createReadableStream(input),
+		objectToEntriesStream({ keys: ["a", "b", "c"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [[1, undefined, 3]]);
 });
