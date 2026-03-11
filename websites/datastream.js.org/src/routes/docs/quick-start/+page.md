@@ -1,5 +1,6 @@
 ---
 title: Quick Start
+description: Install datastream and build your first stream pipeline in minutes.
 ---
 
 ## Install

@@ -1,5 +1,6 @@
 ---
 title: validate
+description: JSON Schema validation for object streams using Ajv.
 ---
 
 JSON Schema validation for object streams using Ajv.

@@ -1,5 +1,6 @@
 ---
 title: Core Concepts
+description: Learn about stream types, pipeline orchestration, and naming conventions in datastream.
 ---
 
 ## Stream types

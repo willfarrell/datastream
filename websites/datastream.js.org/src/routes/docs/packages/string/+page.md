@@ -1,5 +1,6 @@
 ---
 title: string
+description: String manipulation streams for splitting, replacing, counting, and measuring text.
 ---
 
 String manipulation streams — split, replace, count, and measure text data.

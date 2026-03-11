@@ -1,5 +1,6 @@
 ---
 title: Browser file processing
+description: Process files in the browser using the File System Access API and datastream.
 ---
 
 Use the File System Access API to process files in the browser:

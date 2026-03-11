@@ -1,5 +1,6 @@
 ---
 title: charset
+description: Character set detection, decoding, and encoding streams.
 ---
 
 Character set detection, decoding, and encoding streams.

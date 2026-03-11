@@ -1,5 +1,6 @@
 ---
 title: core
+description: Pipeline orchestration, stream factories, and utility functions for datastream.
 ---
 
 Foundation package providing pipeline orchestration, stream factories, and utility functions.

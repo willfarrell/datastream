@@ -1,5 +1,6 @@
 ---
 title: Introduction
+description: A collection of commonly used stream patterns for the Web Streams API and Node.js Streams.
 slug: /
 ---
 

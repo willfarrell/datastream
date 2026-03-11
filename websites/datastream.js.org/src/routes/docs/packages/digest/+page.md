@@ -1,5 +1,6 @@
 ---
 title: digest
+description: Compute cryptographic hash digests while streaming data.
 ---
 
 Compute cryptographic hash digests while streaming data.

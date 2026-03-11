@@ -1,5 +1,6 @@
 ---
 title: Checksum and compress
+description: Calculate a digest while compressing and writing a file with datastream.
 ---
 
 Calculate a digest while compressing and writing a file:

@@ -1,5 +1,6 @@
 ---
 title: API pagination to DynamoDB
+description: Fetch paginated API data and write to DynamoDB with datastream.
 ---
 
 Fetch paginated API data and write to DynamoDB:

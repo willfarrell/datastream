@@ -1,5 +1,6 @@
 ---
 title: aws
+description: AWS service streams for S3, DynamoDB, Lambda, SNS, and SQS.
 ---
 
 AWS service streams for S3, DynamoDB, Lambda, SNS, and SQS. Node.js only.

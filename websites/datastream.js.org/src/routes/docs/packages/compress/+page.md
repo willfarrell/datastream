@@ -1,5 +1,6 @@
 ---
 title: compress
+description: Compression and decompression streams for gzip, deflate, brotli, and zstd.
 ---
 
 Compression and decompression streams for gzip, deflate, brotli, and zstd.

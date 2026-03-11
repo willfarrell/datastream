@@ -1,5 +1,6 @@
 ---
 title: csv
+description: Parse, format, detect, clean, and coerce CSV data streams.
 ---
 
 Parse, format, detect, clean, and coerce CSV data.

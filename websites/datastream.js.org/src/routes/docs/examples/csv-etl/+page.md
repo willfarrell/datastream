@@ -1,5 +1,6 @@
 ---
 title: CSV ETL — validate and compress
+description: Read, detect, parse, validate, re-format, compress, and write CSV files with datastream.
 ---
 
 Read a CSV file, detect format, parse, validate, re-format, compress, and write:

@@ -1,5 +1,6 @@
 ---
 title: file
+description: File read and write streams for Node.js and the browser.
 ---
 
 File read and write streams for Node.js and the browser.

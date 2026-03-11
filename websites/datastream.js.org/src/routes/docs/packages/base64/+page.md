@@ -1,5 +1,6 @@
 ---
 title: base64
+description: Base64 encoding and decoding streams.
 ---
 
 Base64 encoding and decoding streams.

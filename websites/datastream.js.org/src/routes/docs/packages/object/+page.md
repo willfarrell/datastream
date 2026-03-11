@@ -1,5 +1,6 @@
 ---
 title: object
+description: Transform, reshape, filter, and aggregate object streams.
 ---
 
 Transform, reshape, filter, and aggregate object streams.

@@ -1,5 +1,6 @@
 ---
 title: indexeddb
+description: IndexedDB read and write streams for the browser.
 ---
 
 IndexedDB read and write streams for the browser.

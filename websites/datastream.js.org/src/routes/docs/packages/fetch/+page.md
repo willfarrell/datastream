@@ -1,5 +1,6 @@
 ---
 title: fetch
+description: HTTP client streams with automatic pagination, rate limiting, and retry.
 ---
 
 HTTP client streams with automatic pagination, rate limiting, and 429 retry.

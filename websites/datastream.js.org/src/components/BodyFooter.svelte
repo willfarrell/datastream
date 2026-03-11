@@ -2,6 +2,7 @@
 import BodyFooter from "@design-system/components/BodyFooter.svelte";
 import Image from "@design-system/components/Image.svelte";
 import A from "@design-system/elements/a.svelte";
+import Abbr from "@design-system/elements/abbr.svelte";
 import { page } from "$app/state";
 
 const { children } = $props();
@@ -11,7 +12,6 @@ const navLinks = {
 	Docs: {
 		Documentation: "/docs",
 		Packages: "/docs/packages/core",
-		LLMs: "/llms.txt",
 	},
 	"Community & support": {
 		GitHub: "https://github.com/willfarrell/datastream",

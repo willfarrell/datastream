@@ -5,7 +5,7 @@ import mkcert from "vite-plugin-mkcert";
 import sitemap from "vite-plugin-sitemap";
 import sriPrerendered from "vite-plugin-sri";
 
-const sitemapOutDir = "build/assets/";
+const sitemapOutDir = ".svelte-kit/cloudflare/";
 mkdirSync(sitemapOutDir, { recursive: true });
 
 // TODO remove after vite 8 — https://github.com/vitejs/vite/issues/19498

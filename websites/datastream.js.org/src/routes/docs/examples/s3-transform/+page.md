@@ -1,5 +1,6 @@
 ---
 title: S3 to S3 — transform and re-upload
+description: Read from S3, transform CSV data, and write back with datastream.
 ---
 
 Read from S3, parse CSV, validate, re-format, and write back:
