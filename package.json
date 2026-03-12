@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/monorepo",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Streams made easy.",
 	"private": true,
 	"type": "module",
@@ -46,7 +46,7 @@
 		"audit": "npm audit fix --workspaces",
 		"release:license:add": "license-check-and-add add -f license.json",
 		"release:license:remove": "license-check-and-add remove -f license.json",
-		"release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@datastream/(.*)\\\": ([^,]*)|\\\"@datastream/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm && npm install",
+		"release:sync": "npm version $npm_package_version --workspaces; find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@datastream/(.*)\\\": ([^,]*)|\\\"@datastream/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm && npm install",
 		"release:tag": "git tag $npm_package_version"
 	},
 	"repository": {

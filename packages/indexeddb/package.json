@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/indexeddb",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "IndexedDB readable and writable streams for browser storage",
 	"type": "module",
 	"engines": {
@@ -60,7 +60,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.1.0",
+		"@datastream/core": "0.1.1",
 		"idb": "8.0.3"
 	}
 }
