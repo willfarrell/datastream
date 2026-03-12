@@ -4,8 +4,10 @@ for package in packages/*; do
   modules=$(jq -r '.exports | keys[] as $k | "\($k)"' ${package}/package.json)
   #length=${#modules[@]}
   for module in $modules; do
-    if [ "${module}" == "." ]; then
+    if [ "${module}" = "." ]; then
       module=index
+    else
+      module="${module#./}"
     fi
     if [ -f ${package}/${module}.js ]; then
       #node_modules/.bin/esbuild --platform=node    --target=node18 --format=cjs ${package}/${module}.js      --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.cjs

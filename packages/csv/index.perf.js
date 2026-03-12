@@ -10,6 +10,8 @@ import {
 	csvDetectDelimitersStream,
 	csvDetectHeaderStream,
 	csvFormatStream,
+	csvInjectHeaderStream,
+	csvObjectToArray,
 	csvParseStream,
 	csvRemoveEmptyRowsStream,
 	csvRemoveMalformedRowsStream,
@@ -81,15 +83,24 @@ test("perf: csvParseStream", async () => {
 
 test("perf: csvFormatStream", async () => {
 	const bench = new Bench({ name: "csvFormatStream", time });
+	const header = Array.from({ length: COLS }, (_, i) => `col${i}`);
 
 	bench.add(`${ROWS} rows, ${COLS} cols, from objects`, async () => {
-		const streams = [createReadableStream(objects), csvFormatStream()];
+		const streams = [
+			createReadableStream(objects),
+			csvObjectToArray({ headers: header }),
+			csvInjectHeaderStream({ header }),
+			csvFormatStream(),
+		];
 		await pipeline(streams);
 	});
 
 	bench.add(`${ROWS} rows, ${COLS} cols, from arrays`, async () => {
-		const header = Array.from({ length: COLS }, (_, i) => `col${i}`);
-		const streams = [createReadableStream(arrays), csvFormatStream({ header })];
+		const streams = [
+			createReadableStream(arrays),
+			csvInjectHeaderStream({ header }),
+			csvFormatStream(),
+		];
 		await pipeline(streams);
 	});
 

@@ -4,8 +4,10 @@ import {
 	// createPassThroughStream,
 	createTransformStream,
 } from "@datastream/core";
-
-export * from "@datastream/csv/format";
+import {
+	objectFromEntriesStream,
+	objectToEntriesStream,
+} from "@datastream/object";
 
 const comma = ",";
 const quote = "'";
@@ -938,3 +940,159 @@ export const csvCoerceValuesStream = (options = {}, streamOptions = {}) => {
 	stream.result = () => ({ key: resultKey ?? "csvCoerceValues", value });
 	return stream;
 };
+
+// --- Formatting ---
+
+export const csvInjectHeaderStream = ({ header }, streamOptions = {}) => {
+	let injected = false;
+	const transform = (chunk, enqueue) => {
+		if (!injected) {
+			injected = true;
+			enqueue(header);
+		}
+		enqueue(chunk);
+	};
+	return createTransformStream(transform, streamOptions);
+};
+
+export const csvFormatStream = (options = {}, streamOptions = {}) => {
+	const delimiterChar = options.delimiterChar ?? defaultDelimiterChar;
+	const newlineChar = options.newlineChar ?? defaultNewlineChar;
+	const quoteChar = options.quoteChar ?? defaultQuoteChar;
+	const escapeChar = options.escapeChar ?? quoteChar;
+
+	// Pre-compute char codes and flags once at stream creation
+	const delimiterCode = delimiterChar.charCodeAt(0);
+	const delimiterSingle = delimiterChar.length === 1;
+	const quoteCode = quoteChar.charCodeAt(0);
+	const escapeIsQuote = escapeChar === quoteChar;
+	const escapedQuote = escapeChar + quoteChar;
+	const escapedEscape = escapeChar + escapeChar;
+
+	// Single-pass charCode scan for single-char delimiter (common case),
+	// includes fallback for multi-char
+	const scanNeedsQuote = delimiterSingle
+		? (value) => {
+				const len = value.length;
+				const first = value.charCodeAt(0);
+				// = (61) + (43) - (45) @ (64) space (32) BOM (FEFF)
+				if (
+					first === 61 ||
+					first === 43 ||
+					first === 45 ||
+					first === 64 ||
+					first === 32 ||
+					first === 0xfeff
+				)
+					return true;
+				if (value.charCodeAt(len - 1) === 32) return true;
+				for (let i = 0; i < len; i++) {
+					const c = value.charCodeAt(i);
+					if (c === delimiterCode || c === quoteCode || c === 13 || c === 10)
+						return true;
+				}
+				return false;
+			}
+		: (value) => {
+				const len = value.length;
+				const first = value.charCodeAt(0);
+				if (
+					first === 61 ||
+					first === 43 ||
+					first === 45 ||
+					first === 64 ||
+					first === 32 ||
+					first === 0xfeff
+				)
+					return true;
+				if (value.charCodeAt(len - 1) === 32) return true;
+				if (value.includes(delimiterChar)) return true;
+				for (let i = 0; i < len; i++) {
+					const c = value.charCodeAt(i);
+					if (c === quoteCode || c === 13 || c === 10) return true;
+				}
+				return false;
+			};
+
+	// Skip replaceAll when value has no chars that need escaping (common:
+	// field quoted because of delimiter/newline, but contains no quote chars)
+	const wrapQuote = escapeIsQuote
+		? (value) =>
+				value.includes(quoteChar)
+					? quoteChar + value.replaceAll(quoteChar, escapedQuote) + quoteChar
+					: quoteChar + value + quoteChar
+		: (value) => {
+				const v = value.includes(escapeChar)
+					? value.replaceAll(escapeChar, escapedEscape)
+					: value;
+				return v.includes(quoteChar)
+					? quoteChar + v.replaceAll(quoteChar, escapedQuote) + quoteChar
+					: quoteChar + v + quoteChar;
+			};
+
+	// Fast path: all fields are strings (or null/undefined) and none need
+	// quoting → use Array.join (single native allocation + memcpy) instead
+	// of per-field ConsString concatenation. join converts null/undefined
+	// to "" which matches empty-field CSV semantics.
+	const isSimpleRow = (chunk) => {
+		for (let i = 0; i < chunk.length; i++) {
+			const val = chunk[i];
+			if (val == null) continue;
+			if (typeof val !== "string") return false;
+			if (val.length > 0 && scanNeedsQuote(val)) return false;
+		}
+		return true;
+	};
+
+	// Slow path: pre-allocated parts array + join (produces flat string
+	// directly, avoids ~2n ConsString nodes from per-field concatenation)
+	const formatRowSlow = (chunk) => {
+		const len = chunk.length;
+		const parts = new Array(len);
+		for (let i = 0; i < len; i++) {
+			let val = chunk[i];
+			if (val == null) {
+				parts[i] = "";
+				continue;
+			}
+			if (typeof val !== "string") {
+				val = val instanceof Date ? val.toISOString() : String(val);
+			}
+			if (val.length === 0) {
+				parts[i] = "";
+				continue;
+			}
+			parts[i] = scanNeedsQuote(val) ? wrapQuote(val) : val;
+		}
+		return parts.join(delimiterChar);
+	};
+
+	// Array batch: collect row strings, then join with newlineChar as
+	// separator → one flat string per batch (vs ~128-node ConsString tree
+	// from repeated buffer += concatenation)
+	const batch = [];
+
+	const transform = (chunk, enqueue) => {
+		batch.push(
+			isSimpleRow(chunk) ? chunk.join(delimiterChar) : formatRowSlow(chunk),
+		);
+		if (batch.length >= 64) {
+			enqueue(batch.join(newlineChar) + newlineChar);
+			batch.length = 0;
+		}
+	};
+
+	const flush = (enqueue) => {
+		if (batch.length > 0) {
+			enqueue(batch.join(newlineChar) + newlineChar);
+			batch.length = 0;
+		}
+	};
+
+	return createTransformStream(transform, flush, streamOptions);
+};
+
+export const csvArrayToObject = ({ headers }, streamOptions) =>
+	objectFromEntriesStream({ keys: headers }, streamOptions);
+export const csvObjectToArray = ({ headers }, streamOptions) =>
+	objectToEntriesStream({ keys: headers }, streamOptions);

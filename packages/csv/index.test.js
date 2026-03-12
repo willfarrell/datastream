@@ -10,10 +10,13 @@ import {
 } from "@datastream/core";
 
 import {
+	csvArrayToObject,
 	csvCoerceValuesStream,
 	csvDetectDelimitersStream,
 	csvDetectHeaderStream,
 	csvFormatStream,
+	csvInjectHeaderStream,
+	csvObjectToArray,
 	csvParseStream,
 	csvQuotedParser,
 	csvRemoveEmptyRowsStream,
@@ -378,13 +381,46 @@ test(`${variant}: csvParseStream should handle escaped quoted field as last fiel
 	]);
 });
 
+// *** csvInjectHeaderStream *** //
+test(`${variant}: csvInjectHeaderStream should inject header before first chunk`, async (_t) => {
+	const streams = [
+		createReadableStream([
+			["1", "2"],
+			["3", "4"],
+		]),
+		csvInjectHeaderStream({ header: ["a", "b"] }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		["a", "b"],
+		["1", "2"],
+		["3", "4"],
+	]);
+});
+
+test(`${variant}: csvInjectHeaderStream should pass through when no data`, async (_t) => {
+	const streams = [
+		createReadableStream([]),
+		csvInjectHeaderStream({ header: ["a", "b"] }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, []);
+});
+
 // *** csvFormatStream *** //
-test(`${variant}: csvFormatStream should format csv from object[]`, async (_t) => {
+test(`${variant}: csvFormatStream should format csv from object[] using compose`, async (_t) => {
+	const headers = ["a", "b", "c", "d"];
 	const streams = [
 		createReadableStream([
 			{ a: "1", b: "2", c: "3", d: "4" },
 			{ a: "1", b: "2", c: "3", d: "4" },
 		]),
+		csvObjectToArray({ headers }),
+		csvInjectHeaderStream({ header: headers }),
 		csvFormatStream(),
 	];
 	const stream = pipejoin(streams);
@@ -393,13 +429,16 @@ test(`${variant}: csvFormatStream should format csv from object[]`, async (_t) =
 	deepStrictEqual(output, "a,b,c,d\r\n1,2,3,4\r\n1,2,3,4\r\n");
 });
 
-test(`${variant}: csvFormatStream should format csv from object[] with columns`, async (_t) => {
+test(`${variant}: csvFormatStream should format csv from object[] with column order`, async (_t) => {
+	const headers = ["d", "c", "b", "a"];
 	const streams = [
 		createReadableStream([
 			{ a: "1", b: "2", c: "3", d: "4" },
 			{ a: "1", b: "2", c: "3", d: "4" },
 		]),
-		csvFormatStream({ header: ["d", "c", "b", "a"] }),
+		csvObjectToArray({ headers }),
+		csvInjectHeaderStream({ header: headers }),
+		csvFormatStream(),
 	];
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
@@ -407,13 +446,14 @@ test(`${variant}: csvFormatStream should format csv from object[] with columns`,
 	deepStrictEqual(output, "d,c,b,a\r\n4,3,2,1\r\n4,3,2,1\r\n");
 });
 
-test(`${variant}: csvFormatStream should format csv from string[]`, async (_t) => {
+test(`${variant}: csvFormatStream should format csv from string[] with header`, async (_t) => {
 	const streams = [
 		createReadableStream([
 			["1", "2", "3", "4"],
 			["1", "2", "3", "4"],
 		]),
-		csvFormatStream({ header: ["a", "b", "c", "d"] }),
+		csvInjectHeaderStream({ header: ["a", "b", "c", "d"] }),
+		csvFormatStream(),
 	];
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
@@ -423,73 +463,52 @@ test(`${variant}: csvFormatStream should format csv from string[]`, async (_t) =
 
 test(`${variant}: csvFormatStream should quote values containing delimiter`, async (_t) => {
 	const streams = [
-		createReadableStream([{ a: "hello, world", b: "plain" }]),
+		createReadableStream([["hello, world", "plain"]]),
 		csvFormatStream(),
 	];
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
 
-	deepStrictEqual(output, 'a,b\r\n"hello, world",plain\r\n');
+	deepStrictEqual(output, '"hello, world",plain\r\n');
 });
 
 test(`${variant}: csvFormatStream should escape values containing quote char`, async (_t) => {
 	const streams = [
-		createReadableStream([{ a: 'say "hi"', b: "plain" }]),
+		createReadableStream([['say "hi"', "plain"]]),
 		csvFormatStream(),
 	];
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
 
-	deepStrictEqual(output, 'a,b\r\n"say ""hi""",plain\r\n');
+	deepStrictEqual(output, '"say ""hi""",plain\r\n');
 });
 
-test(`${variant}: csvFormatStream should handle values containing newlines`, async (_t) => {
-	// Note: csv-rex does not auto-quote embedded newlines in values
+test(`${variant}: csvFormatStream should quote values containing newlines`, async (_t) => {
 	const streams = [
-		createReadableStream([{ a: "line1\nline2", b: "plain" }]),
+		createReadableStream([["line1\nline2", "plain"]]),
 		csvFormatStream(),
 	];
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
 
-	deepStrictEqual(output, "a,b\r\nline1\nline2,plain\r\n");
+	deepStrictEqual(output, '"line1\nline2",plain\r\n');
 });
 
-test(`${variant}: csvFormatStream should skip header when header is false`, async (_t) => {
-	const streams = [
-		createReadableStream([{ a: "1", b: "2" }]),
-		csvFormatStream({ header: false }),
-	];
+test(`${variant}: csvFormatStream should format arrays without header`, async (_t) => {
+	const streams = [createReadableStream([["1", "2"]]), csvFormatStream()];
 	const stream = pipejoin(streams);
 	const output = await streamToString(stream);
 
 	deepStrictEqual(output, "1,2\r\n");
 });
 
-test(`${variant}: csvFormatStream should auto-detect header from object keys`, async (_t) => {
+test(`${variant}: csvFormatStream should auto-quote CSV injection formula triggers`, async (_t) => {
 	const streams = [
 		createReadableStream([
-			{ x: "1", y: "2" },
-			{ x: "3", y: "4" },
-		]),
-		csvFormatStream({ header: true }),
-	];
-	const stream = pipejoin(streams);
-	const output = await streamToString(stream);
-
-	deepStrictEqual(output, "x,y\r\n1,2\r\n3,4\r\n");
-});
-
-test(`${variant}: csvFormatStream does not auto-quote CSV injection formula triggers`, async (_t) => {
-	// WARNING: csv-rex does not quote formula-trigger characters (=, +, -, @).
-	// Downstream consumers opening CSV in spreadsheet apps must sanitize separately.
-	// See: https://owasp.org/www-community/attacks/CSV_Injection
-	const streams = [
-		createReadableStream([
-			{ name: "=1+2", val: "safe" },
-			{ name: "+1", val: "safe" },
-			{ name: "-1", val: "safe" },
-			{ name: "@SUM(1)", val: "safe" },
+			["=1+2", "safe"],
+			["+1", "safe"],
+			["-1", "safe"],
+			["@SUM(1)", "safe"],
 		]),
 		csvFormatStream(),
 	];
@@ -497,11 +516,10 @@ test(`${variant}: csvFormatStream does not auto-quote CSV injection formula trig
 	const output = await streamToString(stream);
 	const lines = output.split("\r\n");
 
-	// Formula triggers are NOT quoted — this is a known limitation of csv-rex
-	strictEqual(lines[1], "=1+2,safe");
-	strictEqual(lines[2], "+1,safe");
-	strictEqual(lines[3], "-1,safe");
-	strictEqual(lines[4], "@SUM(1),safe");
+	strictEqual(lines[0], '"=1+2",safe');
+	strictEqual(lines[1], '"+1",safe');
+	strictEqual(lines[2], '"-1",safe');
+	strictEqual(lines[3], '"@SUM(1)",safe');
 });
 
 test(`${variant}: csvFormatStream roundtrip should preserve CSV injection payloads`, async (_t) => {
@@ -512,8 +530,12 @@ test(`${variant}: csvFormatStream roundtrip should preserve CSV injection payloa
 		"@SUM(1+1)",
 		'=HYPERLINK("http://evil.com","Click")',
 	];
-	const objects = payloads.map((p) => ({ val: p }));
-	const formatStreams = [createReadableStream(objects), csvFormatStream()];
+	const arrays = payloads.map((p) => [p]);
+	const formatStreams = [
+		createReadableStream(arrays),
+		csvInjectHeaderStream({ header: ["val"] }),
+		csvFormatStream(),
+	];
 	const formatted = await streamToString(pipejoin(formatStreams));
 
 	const detect = csvDetectDelimitersStream();
@@ -533,6 +555,29 @@ test(`${variant}: csvFormatStream roundtrip should preserve CSV injection payloa
 	for (let i = 0; i < payloads.length; i++) {
 		strictEqual(parsed[i][0], payloads[i]);
 	}
+});
+
+// *** csvArrayToObject / csvObjectToArray *** //
+test(`${variant}: csvArrayToObject should convert array to object`, async (_t) => {
+	const streams = [
+		createReadableStream([["1", "2", "3"]]),
+		csvArrayToObject({ headers: ["a", "b", "c"] }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ a: "1", b: "2", c: "3" }]);
+});
+
+test(`${variant}: csvObjectToArray should convert object to array`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "1", b: "2", c: "3" }]),
+		csvObjectToArray({ headers: ["a", "b", "c"] }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [["1", "2", "3"]]);
 });
 
 // *** csvDetectDelimitersStream *** //

@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/file",
-	"version": "0.0.42",
+	"version": "0.1.0",
 	"description": "File system readable and writable streams with extension type enforcement",
 	"type": "module",
 	"engines": {
@@ -60,6 +60,6 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.0.42"
+		"@datastream/core": "0.1.0"
 	}
 }
