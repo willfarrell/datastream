@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/validate",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "JSON Schema validation transform streams using Ajv",
 	"type": "module",
 	"engines": {
@@ -60,7 +60,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.1.1",
+		"@datastream/core": "0.1.2",
 		"ajv-cmd": "0.8.2"
 	}
 }
