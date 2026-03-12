@@ -1,7 +1,7 @@
 import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import test from "node:test";
 import {
-	backpressureGuage,
+	backpressureGauge,
 	createPassThroughStream,
 	createReadableStream,
 	createTransformStream,
@@ -151,15 +151,15 @@ test(`${variant}: streamToBuffer should work with Uint8Array`, async (_t) => {
 	deepStrictEqual(output.toString(), "hello");
 });
 
-// *** backpressureGuage *** //
-test(`${variant}: backpressureGuage should measure stream metrics`, async (_t) => {
+// *** backpressureGauge *** //
+test(`${variant}: backpressureGauge should measure stream metrics`, async (_t) => {
 	const input = ["a", "b", "c"];
 	const streams = {
 		readable: createReadableStream(input),
 		transform: createTransformStream(),
 	};
 
-	const metrics = backpressureGuage(streams);
+	const metrics = backpressureGauge(streams);
 
 	deepStrictEqual(typeof metrics, "object");
 	deepStrictEqual(typeof metrics.readable, "object");
@@ -168,11 +168,11 @@ test(`${variant}: backpressureGuage should measure stream metrics`, async (_t) =
 	deepStrictEqual(metrics.readable.total, {});
 });
 
-test(`${variant}: backpressureGuage should track pause and resume events`, async (_t) => {
+test(`${variant}: backpressureGauge should track pause and resume events`, async (_t) => {
 	const transform = createTransformStream();
 	const streams = { transform };
 
-	const metrics = backpressureGuage(streams);
+	const metrics = backpressureGauge(streams);
 
 	// Simulate pause event
 	transform.emit("pause");
@@ -185,11 +185,11 @@ test(`${variant}: backpressureGuage should track pause and resume events`, async
 	strictEqual(typeof metrics.transform.timeline[0].duration, "number");
 });
 
-test(`${variant}: backpressureGuage should track resume without prior pause`, async (_t) => {
+test(`${variant}: backpressureGauge should track resume without prior pause`, async (_t) => {
 	const transform = createTransformStream();
 	const streams = { transform };
 
-	const metrics = backpressureGuage(streams);
+	const metrics = backpressureGauge(streams);
 
 	// Simulate resume event without prior pause
 	transform.emit("resume");
@@ -273,8 +273,8 @@ test(`${variant}: createReadableStream should allow pushing values onto it`, asy
 });
 
 if (variant === "node") {
-	const { backpressureGuage } = await import("@datastream/core");
-	test(`${variant}: backpressureGuage should chunk really long strings`, async (_t) => {
+	const { backpressureGauge } = await import("@datastream/core");
+	test(`${variant}: backpressureGauge should chunk really long strings`, async (_t) => {
 		const input = "x".repeat(1024 * 1024); // where 16*1024 is the default chunkSize/highWaterMark
 		const streams = [
 			createReadableStream(input),
@@ -283,7 +283,7 @@ if (variant === "node") {
 			}),
 			createWritableStream(),
 		];
-		const metrics = backpressureGuage(streams);
+		const metrics = backpressureGauge(streams);
 
 		await pipeline(streams);
 		// console.log(JSON.stringify(metrics))

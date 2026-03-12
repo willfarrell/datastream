@@ -83,7 +83,7 @@ export function createWritableStream<T = unknown>(
 ): unknown;
 
 // Backpressure (Node.js only)
-export function backpressureGuage(streams: Record<string, unknown>): Record<
+export function backpressureGauge(streams: Record<string, unknown>): Record<
 	string,
 	{
 		timeline: Array<{ timestamp: number; duration: number }>;
