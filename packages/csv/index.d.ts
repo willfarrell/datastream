@@ -16,7 +16,7 @@ export interface CsvParserOptions extends CsvDelimiters {
 	delimiterCharLength?: number;
 	delimiterCharSingle?: boolean;
 	newlineCharCode?: number;
-	newlineCharSingle?: number;
+	newlineCharSingle?: boolean;
 	newlineCharLength?: number;
 	quoteCharCode?: number;
 	escapeCharCode?: number;
