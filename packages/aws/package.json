@@ -125,12 +125,12 @@
 		"@datastream/core": "0.0.42"
 	},
 	"peerDependencies": {
-		"@aws-sdk/client-dynamodb": "^3.0.0",
-		"@aws-sdk/client-lambda": "^3.0.0",
-		"@aws-sdk/client-s3": "^3.0.0",
-		"@aws-sdk/client-sns": "^3.0.0",
-		"@aws-sdk/client-sqs": "^3.0.0",
-		"@aws-sdk/client-ssm": "^3.0.0",
+		"@aws-sdk/client-dynamodb": "^3.1007.0",
+		"@aws-sdk/client-lambda": "^3.1007.0",
+		"@aws-sdk/client-s3": "^3.1007.0",
+		"@aws-sdk/client-sns": "^3.1007.0",
+		"@aws-sdk/client-sqs": "^3.1007.0",
+		"@aws-sdk/client-ssm": "^3.1007.0",
 		"@aws-sdk/lib-storage": "^3.0.0"
 	},
 	"peerDependenciesMeta": {
@@ -157,12 +157,12 @@
 		}
 	},
 	"devDependencies": {
-		"@aws-sdk/client-dynamodb": "^3.0.0",
-		"@aws-sdk/client-lambda": "^3.0.0",
-		"@aws-sdk/client-s3": "^3.0.0",
-		"@aws-sdk/client-sns": "^3.0.0",
-		"@aws-sdk/client-sqs": "^3.0.0",
-		"@aws-sdk/client-ssm": "^3.0.0",
+		"@aws-sdk/client-dynamodb": "^3.1007.0",
+		"@aws-sdk/client-lambda": "^3.1007.0",
+		"@aws-sdk/client-s3": "^3.1007.0",
+		"@aws-sdk/client-sns": "^3.1007.0",
+		"@aws-sdk/client-sqs": "^3.1007.0",
+		"@aws-sdk/client-ssm": "^3.1007.0",
 		"@aws-sdk/lib-storage": "^3.0.0",
 		"aws-sdk-client-mock": "^4.0.0"
 	}
