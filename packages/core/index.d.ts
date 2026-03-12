@@ -37,8 +37,8 @@ export function streamToString(stream: unknown): Promise<string>;
 export function streamToBuffer(stream: unknown): Promise<Buffer>;
 
 // Type guards
-export function isReadable(stream: unknown): boolean;
-export function isWritable(stream: unknown): boolean;
+export function isReadable(stream: unknown): stream is ReadableStream;
+export function isWritable(stream: unknown): stream is WritableStream;
 
 // Options helper
 export function makeOptions(options?: StreamOptions): Record<string, unknown>;
@@ -83,7 +83,7 @@ export function createWritableStream<T = unknown>(
 ): unknown;
 
 // Backpressure (Node.js only)
-export function backpressureGuage(streams: Record<string, unknown>): Record<
+export function backpressureGauge(streams: Record<string, unknown>): Record<
 	string,
 	{
 		timeline: Array<{ timestamp: number; duration: number }>;

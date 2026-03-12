@@ -245,14 +245,14 @@ const controller = new AbortController()
 await timeout(5000, { signal: controller.signal }) // cancellable
 ```
 
-### `backpressureGuage(streams)` <span class="badge">Node.js only</span>
+### `backpressureGauge(streams)` <span class="badge">Node.js only</span>
 
 Measures pause/resume timing across streams. Useful for identifying bottlenecks.
 
 ```javascript
-import { backpressureGuage } from '@datastream/core'
+import { backpressureGauge } from '@datastream/core'
 
-const metrics = backpressureGuage({ parse: parseStream, validate: validateStream })
+const metrics = backpressureGauge({ parse: parseStream, validate: validateStream })
 // After pipeline completes:
 // metrics.parse.total = { timestamp, duration }
 // metrics.parse.timeline = [{ timestamp, duration }, ...]

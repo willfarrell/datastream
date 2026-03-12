@@ -82,12 +82,18 @@ describe("streamToBuffer", () => {
 });
 
 describe("type guards", () => {
-	test("isReadable returns boolean", () => {
-		expect(isReadable({})).type.toBe<boolean>();
+	test("isReadable narrows to ReadableStream", () => {
+		const stream: unknown = {};
+		if (isReadable(stream)) {
+			expect(stream).type.toBe<ReadableStream>();
+		}
 	});
 
-	test("isWritable returns boolean", () => {
-		expect(isWritable({})).type.toBe<boolean>();
+	test("isWritable narrows to WritableStream", () => {
+		const stream: unknown = {};
+		if (isWritable(stream)) {
+			expect(stream).type.toBe<WritableStream>();
+		}
 	});
 });
 

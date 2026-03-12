@@ -1,4 +1,4 @@
-name: "Test (sast)"
+name: Tests (sast)
 
 on:
   pull_request:

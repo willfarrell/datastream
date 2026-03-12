@@ -1,10 +1,10 @@
-name: Publish Website
+name: Deploy website to CloudFlare Pages
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "websites/*"
+      - "websites/**"
     branches:
       - main
 

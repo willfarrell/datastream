@@ -49,7 +49,7 @@ export const result = async (streams) => {
 };
 
 // Not possible in WebStream
-export const backpressureGuage = (streams) => {
+export const backpressureGauge = (streams) => {
 	const keys = Object.keys(streams);
 	const values = Object.values(streams);
 	const metrics = {};

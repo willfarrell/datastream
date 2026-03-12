@@ -1,4 +1,4 @@
-name: Test (types)
+name: Tests (types)
 
 on:
   pull_request:
