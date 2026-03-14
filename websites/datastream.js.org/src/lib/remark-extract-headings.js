@@ -11,12 +11,7 @@ export function remarkExtractHeadings() {
 		visit(tree, "heading", (node) => {
 			// Only extract H2 headings
 			if (node.depth === 2) {
-				let text = nodetoString(node);
-				let prev;
-				do {
-					prev = text;
-					text = text.replace(/<[^>]*>/g, "");
-				} while (text !== prev);
+				const text = nodetoString(node).replace(/[<>]/g, "");
 				// Create slug from heading text
 				const id = text
 					.toLowerCase()
