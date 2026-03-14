@@ -77,7 +77,14 @@ export const objectPivotWideToLongStream = (
 	valueParam ??= "valueParam";
 
 	const transform = (chunk, enqueue) => {
-		const value = structuredClone(chunk);
+		let value;
+		try {
+			value = structuredClone(chunk);
+		} catch (e) {
+			throw new Error("Failed to clone chunk, possibly circular reference", {
+				cause: e,
+			});
+		}
 		for (const key of keys) {
 			delete value[key];
 		}
@@ -121,7 +128,14 @@ export const objectKeyJoinStream = (
 	streamOptions = {},
 ) => {
 	const transform = (chunk, enqueue) => {
-		const value = structuredClone(chunk);
+		let value;
+		try {
+			value = structuredClone(chunk);
+		} catch (e) {
+			throw new Error("Failed to clone chunk, possibly circular reference", {
+				cause: e,
+			});
+		}
 		for (const newKey of Object.keys(keys)) {
 			// perf opportunity
 			value[newKey] = keys[newKey]
@@ -217,7 +231,17 @@ export const objectSkipConsecutiveDuplicatesStream = (
 ) => {
 	let previousChunk;
 	const transform = (chunk, enqueue) => {
-		const chunkStringified = JSON.stringify(chunk);
+		let chunkStringified;
+		try {
+			chunkStringified = JSON.stringify(chunk);
+		} catch (e) {
+			throw new Error(
+				"Failed to stringify chunk, possibly circular reference",
+				{
+					cause: e,
+				},
+			);
+		}
 		if (chunkStringified !== previousChunk) {
 			enqueue(chunk);
 			previousChunk = chunkStringified;

@@ -58,6 +58,8 @@ export const awsS3ChecksumStream = (
 	ChecksumAlgorithm ??= "SHA256";
 	partSize ??= 17_179_870;
 	const algorithm = _algorithms[ChecksumAlgorithm];
+	if (!algorithm)
+		throw new Error(`Unsupported ChecksumAlgorithm: ${ChecksumAlgorithm}`);
 	let checksums = [];
 	let bytes = new Uint8Array(0);
 	const passThrough = async (chunk) => {
@@ -92,8 +94,10 @@ export const awsS3ChecksumStream = (
 					_concatBuffers(checksums),
 				);
 				checksum = `${_arrayBufferToBase64(checksum)}-${checksums.length}`;
-			} else {
+			} else if (checksums.length === 1) {
 				checksum = _arrayBufferToBase64(checksums[0]);
+			} else {
+				checksum = "";
 			}
 			checksums = checksums.map(_arrayBufferToBase64);
 		}
