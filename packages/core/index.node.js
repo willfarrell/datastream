@@ -167,11 +167,11 @@ export const streamToBuffer = (stream) => {
 };
 
 export const isReadable = (stream) => {
-	return stream instanceof Readable || typeof stream.pipe === "function";
+	return stream instanceof Readable;
 };
 
 export const isWritable = (stream) => {
-	return stream instanceof Writable || typeof stream.write === "function";
+	return stream instanceof Writable;
 };
 
 export const makeOptions = ({
