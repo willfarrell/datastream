@@ -19,7 +19,7 @@ import { Bench } from "tinybench";
 
 // -- Data generators --
 
-const time = 5_000;
+const time = Number(process.env.BENCH_TIME ?? 5_000);
 
 const generateString = (size) => {
 	const chars =

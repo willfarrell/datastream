@@ -47,7 +47,7 @@ import { Bench } from "tinybench";
 // -- Config --
 
 const ITEMS = 1_000;
-const time = 5_000;
+const time = Number(process.env.BENCH_TIME ?? 5_000);
 
 const generateItems = (count) =>
 	Array.from({ length: count }, (_, i) => ({

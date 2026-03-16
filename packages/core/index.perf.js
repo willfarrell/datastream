@@ -14,7 +14,7 @@ import { Bench } from "tinybench";
 
 const ITEMS = 10_000;
 const COLS = 10;
-const time = 5_000;
+const time = Number(process.env.BENCH_TIME ?? 5_000);
 
 // ~1MB string (matches CSV benchmark scale)
 const generateString = (rows, cols, newline = "\r\n") => {
