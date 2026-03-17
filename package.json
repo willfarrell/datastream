@@ -87,7 +87,7 @@
 			"minimatch": "^10.2.4"
 		},
 		"wrangler": {
-			"undici": "^7.24.0"
+			"undici": "^7.24.4"
 		}
 	},
 	"workspaces": [
