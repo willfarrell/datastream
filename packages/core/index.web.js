@@ -174,15 +174,15 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		{
 			start() {},
 			async transform(chunk, controller) {
-				const enqueue = (chunk, encoding) => {
-					controller.enqueue(chunk, encoding);
+				const enqueue = (chunk) => {
+					controller.enqueue(chunk);
 				};
 				await transform(chunk, enqueue);
 			},
 			async flush(controller) {
 				if (flush) {
-					const enqueue = (chunk, encoding) => {
-						controller.enqueue(chunk, encoding);
+					const enqueue = (chunk) => {
+						controller.enqueue(chunk);
 					};
 					await flush(enqueue);
 				}
