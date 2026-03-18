@@ -251,7 +251,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 
 				if (closeQ === -1) {
 					// Unterminated quote
-					pos = len;
 					if (isFlushing) {
 						trackError("UnterminatedQuote", "Unterminated quoted field");
 						const raw = text.substring(contentStart);
@@ -339,7 +338,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 
 			if (closeQ === -1) {
 				// Unterminated quote
-				pos = len;
 				const raw = text.substring(contentStart);
 				const field = hasEscape ? raw.replaceAll(escapedQuote, quoteChar) : raw;
 				if (isFlushing) {
@@ -455,7 +453,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					rowEnd = text.indexOf(newlineChar, pos);
 				}
 				if (pos >= len) {
-					pos = len;
 					break;
 				}
 				// Partial row without newline: fall through to regular path
@@ -481,7 +478,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 				fieldStart = pos;
 				fields = rowTpl.slice();
 				if (pos >= len) {
-					pos = len;
 					break;
 				}
 				// Re-enter the fast path via continue outer
@@ -522,7 +518,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					continue;
 				}
 
-				pos = len;
 				break;
 			}
 		}

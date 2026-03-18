@@ -1,4 +1,4 @@
-import { unlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,14 +10,15 @@ import { Bench } from "tinybench";
 
 const time = Number(process.env.BENCH_TIME ?? 5_000);
 
-const tmpFile = join(tmpdir(), "datastream-perf-test.csv");
+const tmpDir = mkdtempSync(join(tmpdir(), "datastream-perf-"));
+const tmpFile = join(tmpDir, "test.csv");
 const bigString = Array.from(
 	{ length: 10_000 },
 	(_, i) => `${i},item_${i},${Math.random()}`,
 ).join("\n");
 writeFileSync(tmpFile, bigString);
 
-const tmpOutFile = join(tmpdir(), "datastream-perf-test-out.csv");
+const tmpOutFile = join(tmpDir, "test-out.csv");
 
 // -- Tests --
 
@@ -65,9 +66,6 @@ test("perf: fileReadStream → fileWriteStream roundtrip", async () => {
 // Cleanup
 test("cleanup temp files", () => {
 	try {
-		unlinkSync(tmpFile);
-	} catch {}
-	try {
-		unlinkSync(tmpOutFile);
+		rmSync(tmpDir, { recursive: true });
 	} catch {}
 });

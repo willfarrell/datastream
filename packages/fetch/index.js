@@ -106,7 +106,7 @@ const nextLinkRegExp = /<(.*?)>; rel="next"/;
 
 async function* fetchJson(options, streamOptions) {
 	const { dataPath, nextPath } = options;
-	let { url } = options;
+	let url;
 
 	while (options.url) {
 		const response =
