@@ -61,6 +61,6 @@
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
 		"@datastream/core": "0.1.4",
-		"ajv-cmd": "0.8.2"
+		"ajv-cmd": "0.9.0"
 	}
 }
