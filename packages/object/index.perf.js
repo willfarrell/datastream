@@ -24,7 +24,7 @@ import { Bench } from "tinybench";
 
 const ITEMS = 100_000;
 const COLS = 10;
-const time = 5_000;
+const time = Number(process.env.BENCH_TIME ?? 5_000);
 
 const generateObjects = (rows, cols) =>
 	Array.from({ length: rows }, (_, r) => {

@@ -54,7 +54,7 @@ const generateRowArrays = (rows, cols) =>
 
 const ROWS = 1_000_000;
 const COLS = 10;
-const time = 5_000;
+const time = Number(process.env.BENCH_TIME ?? 5_000);
 
 const csvSimple = generateCsvString(ROWS, COLS);
 const csvQuoted = generateCsvStringQuoted(ROWS, COLS);

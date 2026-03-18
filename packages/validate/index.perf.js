@@ -11,7 +11,7 @@ import { Bench } from "tinybench";
 // -- Data generators --
 
 const ITEMS = 100_000;
-const time = 5_000;
+const time = Number(process.env.BENCH_TIME ?? 5_000);
 
 const schema = {
 	type: "object",

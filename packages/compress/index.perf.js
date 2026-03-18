@@ -20,7 +20,7 @@ import { Bench } from "tinybench";
 
 // -- Data generators --
 
-const time = 5_000;
+const time = Number(process.env.BENCH_TIME ?? 5_000);
 
 // Compressible data (~1MB of repeated JSON-like content)
 const compressibleBody = JSON.stringify(

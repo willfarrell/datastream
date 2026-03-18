@@ -14,7 +14,7 @@ import { Bench } from "tinybench";
 
 // -- Mock setup --
 
-const time = 5_000;
+const time = Number(process.env.BENCH_TIME ?? 5_000);
 const ITEMS = 1_000;
 const PAGE_SIZE = 100;
 

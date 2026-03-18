@@ -8,7 +8,7 @@ import { Bench } from "tinybench";
 
 // -- Setup --
 
-const time = 5_000;
+const time = Number(process.env.BENCH_TIME ?? 5_000);
 
 const tmpFile = join(tmpdir(), "datastream-perf-test.csv");
 const bigString = Array.from(
