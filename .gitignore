@@ -1,7 +1,9 @@
 *.cjs
 *.cjs.map
+!*.config.cjs
 *.mjs
 *.mjs.map
+!*.config.mjs
 coverage
 
 # Logs
