@@ -25,7 +25,7 @@ npm install @aws-sdk/client-sqs
 
 ### `awsS3SetClient`
 
-Set a custom S3 client. By default, FIPS endpoints are enabled for US and CA regions.
+Set a custom S3 client. By default, FIPS endpoints are enabled for US and CA regions. Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
 import { S3Client } from '@aws-sdk/client-s3'
@@ -112,6 +112,8 @@ Computes a multi-part S3 checksum while data passes through. Designed for pre-si
 ## DynamoDB
 
 ### `awsDynamoDBSetClient`
+
+Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
@@ -225,6 +227,8 @@ awsDynamoDBDeleteItemStream({ TableName: 'Users' })
 
 ### `awsLambdaSetClient`
 
+Mutates module-level state — not safe for concurrent multi-tenant use.
+
 ```javascript
 import { LambdaClient } from '@aws-sdk/client-lambda'
 import { awsLambdaSetClient } from '@datastream/aws'
@@ -267,6 +271,8 @@ await pipeline([
 
 ### `awsSNSSetClient`
 
+Mutates module-level state — not safe for concurrent multi-tenant use.
+
 ```javascript
 import { SNSClient } from '@aws-sdk/client-sns'
 import { awsSNSSetClient } from '@datastream/aws'
@@ -305,6 +311,8 @@ await pipeline([
 ## SQS
 
 ### `awsSQSSetClient`
+
+Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
 import { SQSClient } from '@aws-sdk/client-sqs'

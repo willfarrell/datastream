@@ -57,13 +57,17 @@ describe("zstd", () => {
 describe("protobuf", () => {
 	test("protobufSerializeStream accepts Type", () => {
 		expect(
-			protobufSerializeStream({ Type: {} as any }),
+			protobufSerializeStream({
+				Type: {} as import("@datastream/compress/protobuf").ProtobufType,
+			}),
 		).type.not.toBeAssignableTo<never>();
 	});
 
 	test("protobufDeserializeStream accepts Type", () => {
 		expect(
-			protobufDeserializeStream({ Type: {} as any }),
+			protobufDeserializeStream({
+				Type: {} as import("@datastream/compress/protobuf").ProtobufType,
+			}),
 		).type.not.toBeAssignableTo<never>();
 	});
 });

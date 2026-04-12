@@ -153,9 +153,18 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 		streamOptions = flush;
 		flush = undefined;
 	}
+	const { signal } = streamOptions ?? {};
 	return new TransformStream(
 		{
-			start() {},
+			start(controller) {
+				if (signal) {
+					signal.addEventListener("abort", () => {
+						controller.error(
+							signal.reason ?? new DOMException("Aborted", "AbortError"),
+						);
+					});
+				}
+			},
 			async transform(chunk, controller) {
 				await passThrough(chunk);
 				controller.enqueue(chunk);
@@ -177,9 +186,18 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		streamOptions = flush;
 		flush = undefined;
 	}
+	const { signal } = streamOptions ?? {};
 	return new TransformStream(
 		{
-			start() {},
+			start(controller) {
+				if (signal) {
+					signal.addEventListener("abort", () => {
+						controller.error(
+							signal.reason ?? new DOMException("Aborted", "AbortError"),
+						);
+					});
+				}
+			},
 			async transform(chunk, controller) {
 				const enqueue = (chunk) => {
 					controller.enqueue(chunk);
@@ -206,8 +224,18 @@ export const createWritableStream = (write, close, streamOptions) => {
 		streamOptions = close;
 		close = undefined;
 	}
+	const { signal } = streamOptions ?? {};
 	return new WritableStream(
 		{
+			start(controller) {
+				if (signal) {
+					signal.addEventListener("abort", () => {
+						controller.error(
+							signal.reason ?? new DOMException("Aborted", "AbortError"),
+						);
+					});
+				}
+			},
 			async write(chunk) {
 				await write(chunk);
 			},
@@ -228,12 +256,13 @@ export const timeout = (ms, { signal } = {}) => {
 	return new Promise((resolve, reject) => {
 		const abortHandler = () => {
 			clearTimeout(timerId);
+			signal.removeEventListener("abort", abortHandler);
 			reject(new Error("Aborted", { cause: "AbortError" }));
 		};
 		if (signal) signal.addEventListener("abort", abortHandler);
 		const timerId = setTimeout(() => {
-			resolve();
 			if (signal) signal.removeEventListener("abort", abortHandler);
+			resolve();
 		}, ms);
 	});
 };
