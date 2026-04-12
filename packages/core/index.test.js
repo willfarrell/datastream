@@ -734,4 +734,43 @@ if (variant === "node") {
 	//     signal: undefined
 	//   })
 	// })
+
+	// *** timeout abort cleanup regression *** //
+	test(`${variant}: timeout should clear timer when aborted`, async (_t) => {
+		const controller = new AbortController();
+		const promise = timeout(60_000, { signal: controller.signal });
+		controller.abort();
+		try {
+			await promise;
+			throw new Error("Should have thrown");
+		} catch (e) {
+			strictEqual(e.message, "Aborted");
+			strictEqual(e.cause, "AbortError");
+		}
+	});
+
+	test(`${variant}: timeout should reject immediately if signal already aborted`, async (_t) => {
+		const controller = new AbortController();
+		controller.abort();
+		try {
+			await timeout(60_000, { signal: controller.signal });
+			throw new Error("Should have thrown");
+		} catch (e) {
+			strictEqual(e.message, "Aborted");
+		}
+	});
+
+	// *** createReadableStream queue limit regression *** //
+	test(`${variant}: createReadableStream should throw when queue exceeds limit`, async (_t) => {
+		const stream = createReadableStream(undefined, { highWaterMark: 3 });
+		stream.push("a");
+		stream.push("b");
+		stream.push("c");
+		try {
+			stream.push("d");
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("exceeds limit"));
+		}
+	});
 }

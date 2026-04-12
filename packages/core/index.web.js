@@ -56,11 +56,11 @@ export const streamToObject = async (stream) => {
 };
 
 export const streamToString = async (stream) => {
-	let value = "";
+	const chunks = [];
 	for await (const chunk of stream) {
-		value += chunk;
+		chunks.push(chunk);
 	}
-	return value;
+	return chunks.join("");
 };
 
 export const isReadable = (stream) => {
@@ -92,6 +92,7 @@ export const makeOptions = ({
 };
 
 export const createReadableStream = (input, streamOptions = {}) => {
+	const maxQueueSize = streamOptions.highWaterMark ?? 1024;
 	const queued = [];
 	const stream = new ReadableStream(
 		{
@@ -101,7 +102,7 @@ export const createReadableStream = (input, streamOptions = {}) => {
 					controller.enqueue(chunk);
 				}
 				if (typeof input === "string") {
-					const chunkSize = streamOptions?.chunkSize ?? 16 * 1024;
+					const chunkSize = streamOptions?.chunkSize ?? 16_384; // 16KB
 					let position = 0;
 					const length = input.length;
 					while (position < length) {
@@ -111,9 +112,8 @@ export const createReadableStream = (input, streamOptions = {}) => {
 					}
 					controller.close();
 				} else if (Array.isArray(input)) {
-					// TODO update to for(;;) loop, faster
-					for (const chunk of input) {
-						controller.enqueue(chunk);
+					for (let i = 0, l = input.length; i < l; i++) {
+						controller.enqueue(input[i]);
 					}
 					controller.close();
 				} else if (["function", "object"].includes(typeof input)) {
@@ -136,7 +136,14 @@ export const createReadableStream = (input, streamOptions = {}) => {
 		},
 		makeOptions(streamOptions),
 	);
-	stream.push = (chunk) => queued.push(chunk);
+	stream.push = (chunk) => {
+		if (queued.length >= maxQueueSize) {
+			throw new Error(
+				`createReadableStream queue size (${queued.length}) exceeds limit (${maxQueueSize})`,
+			);
+		}
+		queued.push(chunk);
+	};
 	return stream;
 };
 
@@ -216,15 +223,15 @@ export const createWritableStream = (write, close, streamOptions) => {
 
 export const timeout = (ms, { signal } = {}) => {
 	if (signal?.aborted) {
-		return Promise.reject(new Error("Aborted", "AbortError"));
+		return Promise.reject(new Error("Aborted", { cause: "AbortError" }));
 	}
 	return new Promise((resolve, reject) => {
 		const abortHandler = () => {
-			clearTimeout(timeout);
-			reject(new Error("Aborted", "AbortError"));
+			clearTimeout(timerId);
+			reject(new Error("Aborted", { cause: "AbortError" }));
 		};
 		if (signal) signal.addEventListener("abort", abortHandler);
-		setTimeout(() => {
+		const timerId = setTimeout(() => {
 			resolve();
 			if (signal) signal.removeEventListener("abort", abortHandler);
 		}, ms);

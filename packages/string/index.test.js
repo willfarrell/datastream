@@ -1,4 +1,4 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	createReadableStream,
@@ -269,6 +269,40 @@ test(`${variant}: stringMinimumChunkSize should pass through after first chunk m
 	const output = await streamToArray(stream);
 
 	deepStrictEqual(output, ["abcdef", "gh", "ij"]);
+});
+
+// *** stringReplaceStream buffer limit regression *** //
+test(`${variant}: stringReplaceStream should throw when buffer exceeds maxBufferSize`, async (_t) => {
+	const input = ["aaaa", "bbbb", "cccc"];
+	const streams = [
+		createReadableStream(input),
+		stringReplaceStream({
+			pattern: "zzz",
+			replacement: "yyy",
+			maxBufferSize: 3,
+		}),
+	];
+	try {
+		await pipeline(streams);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("maxBufferSize"));
+	}
+});
+
+// *** stringSplitStream buffer limit regression *** //
+test(`${variant}: stringSplitStream should throw when buffer exceeds maxBufferSize`, async (_t) => {
+	const input = ["aaaaaa", "bbbbbb", "cccccc"];
+	const streams = [
+		createReadableStream(input),
+		stringSplitStream({ separator: "zzz", maxBufferSize: 10 }),
+	];
+	try {
+		await pipeline(streams);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("maxBufferSize"));
+	}
 });
 
 // *** default export *** //

@@ -107,12 +107,21 @@ export const stringSkipConsecutiveDuplicates = (
 };
 
 export const stringReplaceStream = (options, streamOptions = {}) => {
-	const { pattern, replacement } = options;
+	const {
+		pattern,
+		replacement,
+		maxBufferSize = 16_777_216, // 16MB
+	} = options;
 	let previousChunk = "";
 	const transform = (chunk, enqueue) => {
 		const newChunk = (previousChunk + chunk).replace(pattern, replacement);
 		enqueue(newChunk.substring(0, previousChunk.length));
 		previousChunk = newChunk.substring(previousChunk.length);
+		if (previousChunk.length > maxBufferSize) {
+			throw new Error(
+				`stringReplaceStream buffer (${previousChunk.length}) exceeds maxBufferSize (${maxBufferSize})`,
+			);
+		}
 	};
 	const flush = (enqueue) => {
 		enqueue(previousChunk);
@@ -121,7 +130,10 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 };
 
 export const stringSplitStream = (options, streamOptions = {}) => {
-	const { separator } = options;
+	const {
+		separator,
+		maxBufferSize = 16_777_216, // 16MB
+	} = options;
 	let previousChunk = "";
 	const transform = (chunk, enqueue) => {
 		chunk = previousChunk + chunk;
@@ -135,6 +147,11 @@ export const stringSplitStream = (options, streamOptions = {}) => {
 				previousChunk = chunk.substring(pos);
 				break;
 			}
+		}
+		if (previousChunk.length > maxBufferSize) {
+			throw new Error(
+				`stringSplitStream buffer (${previousChunk.length}) exceeds maxBufferSize (${maxBufferSize}), separator not found`,
+			);
 		}
 	};
 	const flush = (enqueue) => {

@@ -7,7 +7,7 @@ import {
 	timeout,
 } from "@datastream/core";
 
-const defaults = {
+let defaults = {
 	// custom
 	rateLimit: 0.01, // 100 per sec
 	dataPath: undefined, // for json response, where the data is to return form body root
@@ -34,7 +34,7 @@ const mergeOptions = (options = {}) => {
 };
 
 export const fetchSetDefaults = (options) => {
-	Object.assign(defaults, mergeOptions(options));
+	defaults = mergeOptions(options);
 };
 
 // Note: requires EncodeStream to ensure it's Uint8Array
@@ -194,8 +194,25 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 	if (!response.ok) {
 		// 429 Too Many Requests
 		if (response.status === 429) {
+			options.retryCount = (options.retryCount ?? 0) + 1;
+			const retryMaxCount = options.retryMaxCount ?? 10;
+			if (options.retryCount >= retryMaxCount) {
+				await response.body?.cancel();
+				throw new Error(
+					`fetch ${response.status} ${options.method} ${options.url} max retries (${retryMaxCount}) exceeded`,
+					{
+						cause: {
+							status: response.status,
+							url: options.url,
+							method: options.method,
+						},
+					},
+				);
+			}
+			await response.body?.cancel();
 			return fetchRateLimit(options, streamOptions);
 		}
+		await response.body?.cancel();
 		throw new Error(
 			`fetch ${response.status} ${options.method} ${options.url}`,
 			{

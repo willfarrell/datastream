@@ -125,22 +125,22 @@ export const streamToObject = (stream) => {
 export const streamToString = (stream) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
-			let value = "";
+			const chunks = [];
 			stream.on("data", (chunk) => {
-				value += chunk;
+				chunks.push(chunk);
 			});
 			stream.on("end", () => {
-				resolve(value);
+				resolve(chunks.join(""));
 			});
 			stream.on("error", reject);
 		});
 	}
 	return (async () => {
-		let value = "";
+		const chunks = [];
 		for await (const chunk of stream) {
-			value += chunk;
+			chunks.push(chunk);
 		}
-		return value;
+		return chunks.join("");
 	})();
 };
 
@@ -208,7 +208,7 @@ export const createReadableStream = (input = "", streamOptions = {}) => {
 
 export const createReadableStreamFromString = (input, streamOptions = {}) => {
 	function* iterator(input) {
-		const size = streamOptions?.chunkSize ?? 16 * 1024;
+		const size = streamOptions?.chunkSize ?? 16_384; // 16KB
 		let position = 0;
 		const length = input.length;
 		while (position < length) {
@@ -224,7 +224,7 @@ export const createReadableStreamFromArrayBuffer = (
 	streamOptions = {},
 ) => {
 	function* iterator(input) {
-		const size = streamOptions?.chunkSize ?? 16 * 1024;
+		const size = streamOptions?.chunkSize ?? 16_384; // 16KB
 		const bytes = new Uint8Array(input);
 		let position = 0;
 		const length = bytes.byteLength;

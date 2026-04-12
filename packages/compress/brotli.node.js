@@ -16,8 +16,31 @@ export const brotliCompressStream = ({ quality } = {}, streamOptions = {}) => {
 		},
 	});
 };
-export const brotliDecompressStream = (params, streamOptions = {}) => {
-	return createBrotliDecompress({ ...streamOptions, params });
+export const brotliDecompressStream = (options = {}, streamOptions = {}) => {
+	const { maxOutputSize, ...params } = options;
+	const zlibOptions = Object.keys(params).length
+		? { ...streamOptions, params }
+		: streamOptions;
+	const stream = createBrotliDecompress(zlibOptions);
+	if (maxOutputSize != null) {
+		let outputSize = 0;
+		const originalPush = stream.push.bind(stream);
+		stream.push = (chunk) => {
+			if (chunk !== null) {
+				outputSize += chunk.length;
+				if (outputSize > maxOutputSize) {
+					stream.destroy(
+						new Error(
+							`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+						),
+					);
+					return false;
+				}
+			}
+			return originalPush(chunk);
+		};
+	}
+	return stream;
 };
 
 export default {

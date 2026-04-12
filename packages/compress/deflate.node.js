@@ -8,8 +8,28 @@ export const deflateCompressStream = (options = {}, _streamOptions = {}) => {
 	const { quality, ...rest } = options;
 	return createDeflate({ ...rest, level: rest.level ?? quality });
 };
-export const deflateDecompressStream = (_options = {}, streamOptions = {}) => {
-	return createInflate(streamOptions);
+export const deflateDecompressStream = (options = {}, streamOptions = {}) => {
+	const { maxOutputSize } = options;
+	const stream = createInflate(streamOptions);
+	if (maxOutputSize != null) {
+		let outputSize = 0;
+		const originalPush = stream.push.bind(stream);
+		stream.push = (chunk) => {
+			if (chunk !== null) {
+				outputSize += chunk.length;
+				if (outputSize > maxOutputSize) {
+					stream.destroy(
+						new Error(
+							`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+						),
+					);
+					return false;
+				}
+			}
+			return originalPush(chunk);
+		};
+	}
+	return stream;
 };
 
 export default {

@@ -126,7 +126,7 @@ Buffers data until the first chunk meets a minimum size, then passes all subsequ
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `chunkSize` | `number` | `1024` | Minimum first chunk size in characters |
+| `chunkSize` | `number` | `1024` (1KB) | Minimum first chunk size in characters |
 
 ## `stringMinimumChunkSize` <span class="badge">Transform</span>
 
@@ -136,7 +136,7 @@ Buffers data until chunks meet a minimum size before emitting. Useful when downs
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `chunkSize` | `number` | `1024` | Minimum chunk size in characters |
+| `chunkSize` | `number` | `1024` (1KB) | Minimum chunk size in characters |
 
 ## `stringSkipConsecutiveDuplicates` <span class="badge">Transform</span>
 
