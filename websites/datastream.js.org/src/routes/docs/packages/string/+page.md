@@ -130,7 +130,7 @@ Buffers data until the first chunk meets a minimum size, then passes all subsequ
 
 ## `stringMinimumChunkSize` <span class="badge">Transform</span>
 
-Buffers data until chunks meet a minimum size before emitting. Useful when downstream requires a minimum data size for processing.
+Buffers every chunk to meet a minimum size before emitting. Unlike `stringMinimumFirstChunkSize` which only buffers the first chunk then passes through, this continues buffering all subsequent chunks that are smaller than `chunkSize`.
 
 ### Options
 

@@ -59,14 +59,15 @@ export const awsDynamoDBGetItemStream = async (
 			`awsDynamoDBGetItemStream Keys.length (${options.Keys.length}) exceeds BatchGetItem limit of 100`,
 		);
 	}
-	options.retryCount ??= 0;
-	options.retryMaxCount ??= 10;
 	async function* command(options) {
+		let keys = options.Keys;
+		let retryCount = options.retryCount ?? 0;
+		const retryMaxCount = options.retryMaxCount ?? 10;
 		while (true) {
 			const response = await client.send(
 				new BatchGetItemCommand({
 					RequestItems: {
-						[options.TableName]: { Keys: options.Keys },
+						[options.TableName]: { Keys: keys },
 					},
 				}),
 			);
@@ -79,7 +80,7 @@ export const awsDynamoDBGetItemStream = async (
 				break;
 			}
 
-			if (options.retryCount >= options.retryMaxCount) {
+			if (retryCount >= retryMaxCount) {
 				throw new Error("awsDynamoDBBatchGetItem has UnprocessedKeys", {
 					cause: {
 						...options,
@@ -88,9 +89,9 @@ export const awsDynamoDBGetItemStream = async (
 				});
 			}
 
-			await timeout(3 ** options.retryCount++); // 3^10 == 59sec
-
-			options.Keys = UnprocessedKeys;
+			await timeout(3 ** retryCount); // 3^10 == 59sec
+			retryCount++;
+			keys = UnprocessedKeys;
 		}
 	}
 	return command(options);
@@ -136,9 +137,13 @@ export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) => {
 	return createWritableStream(write, final, streamOptions);
 };
 
-const dynamodbBatchWrite = async (options, batch, streamOptions) => {
-	options.retryCount ??= 0;
-	options.retryMaxCount ??= 10;
+const dynamodbBatchWrite = async (
+	options,
+	batch,
+	streamOptions,
+	retryCount = 0,
+) => {
+	const retryMaxCount = options.retryMaxCount ?? 10;
 	const { UnprocessedItems } = await client.send(
 		new BatchWriteItemCommand({
 			RequestItems: {
@@ -147,7 +152,7 @@ const dynamodbBatchWrite = async (options, batch, streamOptions) => {
 		}),
 	);
 	if (UnprocessedItems?.[options.TableName]?.length) {
-		if (options.retryCount >= options.retryMaxCount) {
+		if (retryCount >= retryMaxCount) {
 			throw new Error("awsDynamoDBBatchWriteItem has UnprocessedItems", {
 				cause: {
 					...options,
@@ -156,14 +161,14 @@ const dynamodbBatchWrite = async (options, batch, streamOptions) => {
 			});
 		}
 
-		await timeout(3 ** options.retryCount++); // 3^10 == 59sec
+		await timeout(3 ** retryCount); // 3^10 == 59sec
 		return dynamodbBatchWrite(
 			options,
 			UnprocessedItems[options.TableName],
 			streamOptions,
+			retryCount + 1,
 		);
 	}
-	options.retryCount = 0; // reset for next batch
 };
 
 export default {

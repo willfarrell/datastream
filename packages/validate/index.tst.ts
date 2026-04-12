@@ -29,7 +29,7 @@ describe("validateStream", () => {
 
 	test("accepts compiled schema function", () => {
 		expect(
-			validateStream({ schema: (data: unknown) => true }),
+			validateStream({ schema: (_data: unknown) => true }),
 		).type.not.toBeAssignableTo<never>();
 	});
 

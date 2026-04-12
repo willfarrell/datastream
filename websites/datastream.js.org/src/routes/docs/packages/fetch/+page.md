@@ -13,7 +13,7 @@ npm install @datastream/fetch
 
 ## `fetchSetDefaults`
 
-Set global defaults for all fetch streams.
+Set global defaults for all fetch streams. Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ### Defaults
 
@@ -89,7 +89,11 @@ fetchReadableStream({
 
 ### 429 retry
 
-When receiving a `429 Too Many Requests` response, the request is automatically retried after respecting the rate limit delay.
+When receiving a `429 Too Many Requests` response, the request is automatically retried with exponential backoff. If a `Retry-After` header is present, its value (in seconds) is used as the delay. Otherwise, the delay follows `min(1000 × 2^(attempt-1), 30000)` ms. Retries are capped at `retryMaxCount` (default: 10).
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `retryMaxCount` | `number` | `10` | Maximum retry attempts on 429 |
 
 ### Example
 

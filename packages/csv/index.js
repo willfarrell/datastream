@@ -567,12 +567,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 	ctx.errors = errors;
 };
 
-// Stable enqueue callback — avoids V8 "wrong call target" deopt from per-call closures
-let _quotedParserRows = [];
-const _quotedParserEnqueue = (row) => {
-	_quotedParserRows.push(row);
-};
-
 export const csvQuotedParser = (text, options = {}, isFlushing = false) => {
 	const delimiterChar = options.delimiterChar ?? defaultDelimiterChar;
 	const newlineChar = options.newlineChar ?? defaultNewlineChar;
@@ -602,10 +596,8 @@ export const csvQuotedParser = (text, options = {}, isFlushing = false) => {
 		tail: "",
 		errors: null,
 	};
-	_quotedParserRows = [];
-	csvParseInline(text, ctx, isFlushing, _quotedParserEnqueue);
-	const rows = _quotedParserRows;
-	_quotedParserRows = [];
+	const rows = [];
+	csvParseInline(text, ctx, isFlushing, (row) => rows.push(row));
 	return {
 		rows,
 		tail: ctx.tail,

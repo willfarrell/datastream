@@ -259,7 +259,7 @@ test(`${variant}: stringMinimumChunkSize should flush small input`, async (_t) =
 	deepStrictEqual(output, ["ab"]);
 });
 
-test(`${variant}: stringMinimumChunkSize should pass through after first chunk met`, async (_t) => {
+test(`${variant}: stringMinimumChunkSize should buffer all chunks to minimum size`, async (_t) => {
 	const input = ["abcdef", "gh", "ij"];
 	const streams = [
 		createReadableStream(input),
@@ -268,7 +268,7 @@ test(`${variant}: stringMinimumChunkSize should pass through after first chunk m
 	const stream = pipejoin(streams);
 	const output = await streamToArray(stream);
 
-	deepStrictEqual(output, ["abcdef", "gh", "ij"]);
+	deepStrictEqual(output, ["abcdef", "ghij"]);
 });
 
 // *** stringReplaceStream buffer limit regression *** //

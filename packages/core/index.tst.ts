@@ -1,4 +1,10 @@
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamTransform,
+	DatastreamWritable,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 import {
 	createReadableStream,
 	createTransformStream,
@@ -111,15 +117,21 @@ describe("makeOptions", () => {
 
 describe("createReadableStream", () => {
 	test("accepts string input", () => {
-		expect(createReadableStream("hello")).type.not.toBeAssignableTo<never>();
+		expect(createReadableStream("hello")).type.toBeAssignableTo<
+			DatastreamReadable<string>
+		>();
 	});
 
 	test("accepts array input", () => {
-		expect(createReadableStream([1, 2, 3])).type.not.toBeAssignableTo<never>();
+		expect(createReadableStream([1, 2, 3])).type.toBeAssignableTo<
+			DatastreamReadable<number>
+		>();
 	});
 
 	test("accepts no input", () => {
-		expect(createReadableStream()).type.not.toBeAssignableTo<never>();
+		expect(createReadableStream()).type.toBeAssignableTo<
+			DatastreamReadable<unknown>
+		>();
 	});
 });
 
@@ -129,19 +141,21 @@ describe("createTransformStream", () => {
 			createTransformStream((chunk: string, enqueue: (c: string) => void) => {
 				enqueue(chunk);
 			}),
-		).type.not.toBeAssignableTo<never>();
+		).type.toBeAssignableTo<DatastreamTransform<string, string>>();
 	});
 });
 
 describe("createWritableStream", () => {
 	test("accepts write function", () => {
-		expect(
-			createWritableStream((chunk: unknown) => {}),
-		).type.not.toBeAssignableTo<never>();
+		expect(createWritableStream((_chunk: unknown) => {})).type.toBeAssignableTo<
+			DatastreamWritable<unknown>
+		>();
 	});
 
 	test("accepts no arguments", () => {
-		expect(createWritableStream()).type.not.toBeAssignableTo<never>();
+		expect(createWritableStream()).type.toBeAssignableTo<
+			DatastreamWritable<unknown>
+		>();
 	});
 });
 

@@ -70,21 +70,15 @@ export const stringMinimumFirstChunkSize = (
 export const stringMinimumChunkSize = (options = {}, streamOptions = {}) => {
 	const { chunkSize = 1024 } = options;
 	let buffer = "";
-	let done = false;
 	const transform = (chunk, enqueue) => {
-		if (done) {
-			enqueue(chunk);
-			return;
-		}
 		buffer += chunk;
 		if (buffer.length >= chunkSize) {
-			done = true;
 			enqueue(buffer);
 			buffer = "";
 		}
 	};
 	const flush = (enqueue) => {
-		if (!done && buffer.length > 0) {
+		if (buffer.length > 0) {
 			enqueue(buffer);
 		}
 	};

@@ -20,10 +20,10 @@
 				"noBannedTypes": "off"
 			},
 			"correctness": {
-				"noUnusedFunctionParameters": "off"
+				"noUnusedFunctionParameters": "warn"
 			},
 			"suspicious": {
-				"noExplicitAny": "off"
+				"noExplicitAny": "warn"
 			}
 		}
 	},
