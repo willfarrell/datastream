@@ -6,8 +6,28 @@ import { createGunzip, createGzip } from "node:zlib";
 export const gzipCompressStream = ({ quality } = {}, streamOptions = {}) => {
 	return createGzip({ ...streamOptions, level: quality });
 };
-export const gzipDecompressStream = (_options = {}, streamOptions = {}) => {
-	return createGunzip(streamOptions);
+export const gzipDecompressStream = (options = {}, streamOptions = {}) => {
+	const { maxOutputSize } = options;
+	const stream = createGunzip(streamOptions);
+	if (maxOutputSize != null) {
+		let outputSize = 0;
+		const originalPush = stream.push.bind(stream);
+		stream.push = (chunk) => {
+			if (chunk !== null) {
+				outputSize += chunk.length;
+				if (outputSize > maxOutputSize) {
+					stream.destroy(
+						new Error(
+							`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+						),
+					);
+					return false;
+				}
+			}
+			return originalPush(chunk);
+		};
+	}
+	return stream;
 };
 
 export default {

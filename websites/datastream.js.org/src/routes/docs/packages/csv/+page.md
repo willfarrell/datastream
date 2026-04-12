@@ -19,7 +19,7 @@ Auto-detects the delimiter, newline, quote, and escape characters from the first
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `chunkSize` | `number` | `1024` | Minimum bytes to buffer before detecting |
+| `chunkSize` | `number` | `1024` (1KB) | Minimum bytes to buffer before detecting |
 | `resultKey` | `string` | `"csvDetectDelimiters"` | Key in pipeline result |
 
 ### Result
@@ -53,7 +53,7 @@ Detects and strips the header row. Outputs data rows only (without the header).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `chunkSize` | `number` | `1024` | Minimum bytes to buffer before detecting |
+| `chunkSize` | `number` | `1024` (1KB) | Minimum bytes to buffer before detecting |
 | `delimiterChar` | `string \| () => string` | `","` | Delimiter character or lazy function |
 | `newlineChar` | `string \| () => string` | `"\r\n"` | Newline character or lazy function |
 | `quoteChar` | `string \| () => string` | `'"'` | Quote character or lazy function |
@@ -90,12 +90,22 @@ Parses CSV text into arrays of field values (string arrays). Each output chunk i
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `chunkSize` | `number` | `2097152` (2MB) | Input buffer size before first parse |
+| `fieldMaxSize` | `number` | `16777216` (16MB) | Maximum size of a single field in bytes |
 | `delimiterChar` | `string \| () => string` | `","` | Delimiter character or lazy function |
 | `newlineChar` | `string \| () => string` | `"\r\n"` | Newline character or lazy function |
 | `quoteChar` | `string \| () => string` | `'"'` | Quote character or lazy function |
 | `escapeChar` | `string \| () => string` | quoteChar | Escape character or lazy function |
 | `parser` | `function` | `csvQuotedParser` | Custom parser function |
 | `resultKey` | `string` | `"csvErrors"` | Key in pipeline result |
+
+#### Field size protection
+
+A crafted CSV with an unterminated quoted field causes the parser to buffer the entire remaining input into a single field, consuming unbounded memory. An attacker can exploit this to exhaust process memory with a relatively small file. Setting `fieldMaxSize` caps per-field memory and aborts parsing with an error when exceeded. Always set this when parsing untrusted CSV input, and lower it from the default if your data has known field size bounds.
+
+```javascript
+// Parse with a 1MB field limit for untrusted input
+csvParseStream({ fieldMaxSize: 1 * 1024 * 1024 })
+```
 
 ### Result
 

@@ -25,14 +25,34 @@ export const brotliCompressStream = (options = {}, streamOptions = {}) => {
 	};
 	return createTransformStream(transform, flush, streamOptions);
 };
-export const brotliDecompressStream = (_options = {}, streamOptions = {}) => {
+export const brotliDecompressStream = (options = {}, streamOptions = {}) => {
+	const { maxOutputSize } = options;
 	const engine = new DecompressStream();
+	let outputSize = 0;
 	const transform = (chunk, enqueue) => {
-		enqueue(engine.decompress(chunk));
+		const result = engine.decompress(chunk);
+		if (maxOutputSize != null) {
+			outputSize += result.byteLength;
+			if (outputSize > maxOutputSize) {
+				throw new Error(
+					`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+				);
+			}
+		}
+		enqueue(result);
 	};
 	const flush = (enqueue) => {
 		if (engine.result() === BrotliStreamResult.NeedsMoreInput) {
-			enqueue(engine.decompress(undefined, 100));
+			const result = engine.decompress(undefined, 100);
+			if (maxOutputSize != null) {
+				outputSize += result.byteLength;
+				if (outputSize > maxOutputSize) {
+					throw new Error(
+						`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+					);
+				}
+			}
+			enqueue(result);
 		}
 	};
 	return createTransformStream(transform, flush, streamOptions);

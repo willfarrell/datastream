@@ -1,6 +1,6 @@
 /* global Headers, Response */
 
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	createPassThroughStream,
@@ -468,6 +468,40 @@ test(`${variant}: fetchResponseStream should handle dataPath as array`, async (_
 	const output = await streamToArray(stream);
 	global.fetch = originalFetch;
 	deepStrictEqual(output, [{ id: 1 }]);
+});
+
+// *** fetchRateLimit 429 max retry regression *** //
+test(`${variant}: fetchRateLimit should throw after max retries on persistent 429`, async (_t) => {
+	const originalFetch = global.fetch;
+	let callCount = 0;
+	global.fetch = () => {
+		callCount++;
+		return Promise.resolve(
+			new Response("rate limited", {
+				status: 429,
+				statusText: "Too Many Requests",
+			}),
+		);
+	};
+
+	fetchSetDefaults({ rateLimit: 0 });
+	const config = [
+		{
+			url: "https://example.org/always-429",
+			rateLimit: 0,
+			retryMaxCount: 2,
+		},
+	];
+	try {
+		const stream = fetchResponseStream(config);
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("max retries"));
+		ok(callCount >= 2, `Expected at least 2 calls, got ${callCount}`);
+	} finally {
+		global.fetch = originalFetch;
+	}
 });
 
 // *** default export *** //

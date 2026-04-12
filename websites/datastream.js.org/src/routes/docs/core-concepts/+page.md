@@ -95,7 +95,7 @@ All stream factory functions accept a `streamOptions` parameter:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `highWaterMark` | `number` | — | Backpressure threshold — how many chunks to buffer before pausing |
-| `chunkSize` | `number` | `16384` | Size hint for chunking strategies |
+| `chunkSize` | `number` | `16384` (16KB) | Size hint for chunking strategies |
 | `signal` | `AbortSignal` | — | Signal to abort the pipeline |
 
 ```javascript

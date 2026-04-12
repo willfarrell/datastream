@@ -1,4 +1,4 @@
-import { strictEqual } from "node:assert";
+import { ok, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	brotliCompressSync,
@@ -22,6 +22,7 @@ import {
 import {
 	createReadableStream,
 	pipejoin,
+	pipeline,
 	streamToBuffer,
 	streamToString,
 } from "@datastream/core";
@@ -102,3 +103,55 @@ test(`${variant}: deflateDecompressStream should decompress`, async (_t) => {
 	const output = await streamToString(pipejoin(streams));
 	strictEqual(output, compressibleBody);
 });
+
+// *** decompression bomb protection *** //
+if (variant === "node") {
+	test(`${variant}: gzipDecompressStream should enforce maxOutputSize`, async (_t) => {
+		const input = gzipSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			gzipDecompressStream({ maxOutputSize: 100 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: deflateDecompressStream should enforce maxOutputSize`, async (_t) => {
+		const input = deflateSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			deflateDecompressStream({ maxOutputSize: 100 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: brotliDecompressStream should enforce maxOutputSize`, async (_t) => {
+		const input = brotliCompressSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			brotliDecompressStream({ maxOutputSize: 100 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: gzipDecompressStream should work without maxOutputSize`, async (_t) => {
+		const input = gzipSync(compressibleBody);
+		const streams = [createReadableStream(input), gzipDecompressStream()];
+		const output = await streamToString(pipejoin(streams));
+		strictEqual(output, compressibleBody);
+	});
+}

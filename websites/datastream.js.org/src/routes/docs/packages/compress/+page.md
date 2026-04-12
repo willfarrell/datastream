@@ -21,7 +21,9 @@ npm install @datastream/compress
 
 ### `gzipDecompressStream` <span class="badge">Transform</span>
 
-No options required.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxOutputSize` | `number` | — | Maximum decompressed output in bytes. Destroys the stream with an error when exceeded |
 
 ### Example
 
@@ -55,7 +57,9 @@ await pipeline([
 
 ### `deflateDecompressStream` <span class="badge">Transform</span>
 
-No options required.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxOutputSize` | `number` | — | Maximum decompressed output in bytes. Destroys the stream with an error when exceeded |
 
 ## brotli
 
@@ -67,7 +71,9 @@ No options required.
 
 ### `brotliDecompressStream` <span class="badge">Transform</span>
 
-No options required.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxOutputSize` | `number` | — | Maximum decompressed output in bytes. Destroys the stream with an error when exceeded |
 
 ## zstd <span class="badge">Node.js only</span>
 
@@ -81,7 +87,20 @@ Requires Node.js with zstd support.
 
 ### `zstdDecompressStream` <span class="badge">Transform</span>
 
-No options required.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxOutputSize` | `number` | — | Maximum decompressed output in bytes. Destroys the stream with an error when exceeded |
+
+## Decompression bomb protection
+
+A malicious compressed payload known as a "decompression bomb" can be as small as a few kilobytes but expand to gigabytes when decompressed, exhausting memory and crashing the process. Setting `maxOutputSize` ensures decompression is aborted before memory is exhausted. Always set this when decompressing untrusted input.
+
+```javascript
+import { gzipDecompressStream } from '@datastream/compress'
+
+// Limit decompressed output to 100MB
+gzipDecompressStream({ maxOutputSize: 100 * 1024 * 1024 })
+```
 
 ## Platform support
 

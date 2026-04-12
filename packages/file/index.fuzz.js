@@ -1,9 +1,14 @@
+import { strictEqual } from "node:assert";
 import test from "node:test";
 import { fileReadStream, fileWriteStream } from "@datastream/file";
 import fc from "fast-check";
 
 const catchError = (input, e) => {
-	const expectedErrors = ["Invalid extension"];
+	const expectedErrors = [
+		"Invalid extension",
+		"Path traversal detected",
+		"Symbolic links are not allowed",
+	];
 	if (expectedErrors.includes(e.message)) {
 		return;
 	}
@@ -82,4 +87,44 @@ test("fuzz fileReadStream w/ types", async () => {
 			examples: [],
 		},
 	);
+});
+
+// *** path traversal protection regression *** //
+test("fileReadStream should reject path traversal when basePath is set", () => {
+	try {
+		fileReadStream({
+			path: "/etc/passwd",
+			basePath: "/tmp/safe",
+			types: [],
+		});
+		throw new Error("Should have thrown");
+	} catch (e) {
+		strictEqual(e.message, "Path traversal detected");
+	}
+});
+
+test("fileReadStream should reject relative path traversal when basePath is set", () => {
+	try {
+		fileReadStream({
+			path: "/tmp/safe/../../etc/passwd",
+			basePath: "/tmp/safe",
+			types: [],
+		});
+		throw new Error("Should have thrown");
+	} catch (e) {
+		strictEqual(e.message, "Path traversal detected");
+	}
+});
+
+test("fileWriteStream should reject path traversal when basePath is set", () => {
+	try {
+		fileWriteStream({
+			path: "/etc/shadow",
+			basePath: "/tmp/safe",
+			types: [],
+		});
+		throw new Error("Should have thrown");
+	} catch (e) {
+		strictEqual(e.message, "Path traversal detected");
+	}
 });
