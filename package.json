@@ -83,6 +83,9 @@
 		"@sveltejs/kit": {
 			"cookie": "^0.7.2"
 		},
+		"@willfarrell-ds/cli": {
+			"mathjs": ">=15.2.0"
+		},
 		"fast-xml-parser": ">=5.5.7",
 		"license-check-and-add": {
 			"minimatch": "^10.2.4"
