@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+/// <reference types="node" />
 import type {
 	DatastreamReadable,
 	DatastreamTransform,
@@ -61,29 +63,38 @@ describe("result", () => {
 
 describe("streamToArray", () => {
 	test("returns Promise of array", () => {
-		expect(streamToArray({})).type.toBe<Promise<unknown[]>>();
+		const stream = createReadableStream([1]);
+		expect(streamToArray(stream)).type.toBeAssignableTo<Promise<unknown[]>>();
 	});
 
 	test("accepts generic type", () => {
-		expect(streamToArray<string>({})).type.toBe<Promise<string[]>>();
+		const stream = createReadableStream(["a"]);
+		expect(streamToArray<string>(stream)).type.toBeAssignableTo<
+			Promise<string[]>
+		>();
 	});
 });
 
 describe("streamToObject", () => {
 	test("returns Promise of object", () => {
-		expect(streamToObject({})).type.toBe<Promise<Record<string, unknown>>>();
+		const stream = createReadableStream();
+		expect(streamToObject(stream)).type.toBeAssignableTo<
+			Promise<Record<string, unknown>>
+		>();
 	});
 });
 
 describe("streamToString", () => {
 	test("returns Promise of string", () => {
-		expect(streamToString({})).type.toBe<Promise<string>>();
+		const stream = createReadableStream();
+		expect(streamToString(stream)).type.toBeAssignableTo<Promise<string>>();
 	});
 });
 
 describe("streamToBuffer", () => {
 	test("returns Promise of Buffer", () => {
-		expect(streamToBuffer({})).type.toBe<Promise<Buffer>>();
+		const stream = createReadableStream();
+		expect(streamToBuffer(stream)).type.toBeAssignableTo<Promise<Buffer>>();
 	});
 });
 

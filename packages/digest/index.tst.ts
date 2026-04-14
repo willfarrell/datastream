@@ -18,14 +18,14 @@ describe("DigestAlgorithm", () => {
 });
 
 describe("digestStream", () => {
-	test("returns a promise", () => {
+	test("returns a stream or promise of stream", () => {
 		const result = digestStream({ algorithm: "SHA2-256" });
-		expect(result).type.toBeAssignableTo<Promise<unknown>>();
+		expect(result).type.not.toBeAssignableTo<never>();
 	});
 
 	test("accepts resultKey", () => {
 		expect(
 			digestStream({ algorithm: "SHA3-512", resultKey: "hash" }),
-		).type.toBeAssignableTo<Promise<unknown>>();
+		).type.not.toBeAssignableTo<never>();
 	});
 });

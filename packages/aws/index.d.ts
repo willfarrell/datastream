@@ -19,6 +19,7 @@ export {
 export {
 	awsDynamoDBQueryStream,
 	awsDynamoDBScanStream,
+	awsDynamoDBExecuteStatementStream,
 	awsDynamoDBGetItemStream,
 	awsDynamoDBPutItemStream,
 	awsDynamoDBDeleteItemStream,

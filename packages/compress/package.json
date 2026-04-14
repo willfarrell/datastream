@@ -143,9 +143,9 @@
 		"@datastream/core": "0.1.6"
 	},
 	"peerDependencies": {
-		"brotli-wasm": "3.0.1",
-		"protobufjs": "8.0.1",
-		"zstd-codec": "0.1.5"
+		"brotli-wasm": "^3.0.0",
+		"protobufjs": "^8.0.0",
+		"zstd-codec": "^0.1.0"
 	},
 	"peerDependenciesMeta": {
 		"brotli-wasm": {

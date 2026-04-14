@@ -12,6 +12,7 @@ export interface CsvDelimiters {
 export interface CsvParserOptions extends CsvDelimiters {
 	numCols?: number;
 	idx?: number;
+	fieldMaxSize?: number;
 	delimiterCharCode?: number;
 	delimiterCharLength?: number;
 	delimiterCharSingle?: boolean;
@@ -81,6 +82,7 @@ export function csvUnquotedParser(
 export function csvParseStream(
 	options?: {
 		chunkSize?: number;
+		fieldMaxSize?: number;
 		resultKey?: string;
 		parser?: (
 			text: string,

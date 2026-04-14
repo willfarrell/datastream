@@ -37,6 +37,7 @@ export function objectPivotWideToLongStream(
 		keys: string[];
 		keyParam?: string;
 		valueParam?: string;
+		isNestedObject?: boolean;
 	},
 	streamOptions?: StreamOptions,
 ): unknown;
@@ -61,6 +62,7 @@ export function objectKeyJoinStream(
 	options: {
 		keys: Record<string, string[]>;
 		separator: string;
+		isNestedObject?: boolean;
 	},
 	streamOptions?: StreamOptions,
 ): unknown;
