@@ -56,7 +56,7 @@ export const awsS3ChecksumStream = (
 	streamOptions = {},
 ) => {
 	ChecksumAlgorithm ??= "SHA256";
-	partSize ??= 17_179_870;
+	partSize ??= 17_179_870; // ~16MB, just under S3 multipart minimum
 	const algorithm = _algorithms[ChecksumAlgorithm];
 	if (!algorithm)
 		throw new Error(`Unsupported ChecksumAlgorithm: ${ChecksumAlgorithm}`);

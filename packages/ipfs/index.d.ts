@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: MIT
 import type { StreamOptions, StreamResult } from "@datastream/core";
 
+export interface IpfsNode {
+	get(cid: string): unknown;
+	add(data: unknown[]): Promise<{ cid: string }>;
+}
+
 export function ipfsGetStream(
 	options: {
-		node: unknown;
+		node: IpfsNode;
 		cid: string;
 	},
 	streamOptions?: StreamOptions,
@@ -12,7 +17,7 @@ export function ipfsGetStream(
 
 export function ipfsAddStream(
 	options?: {
-		node?: unknown;
+		node?: IpfsNode;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
@@ -22,4 +27,8 @@ export function ipfsAddStream(
 	}
 >;
 
-export default ipfsGetStream;
+declare const _default: {
+	getStream: typeof ipfsGetStream;
+	addStream: typeof ipfsAddStream;
+};
+export default _default;

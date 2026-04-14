@@ -745,7 +745,7 @@ if (variant === "node") {
 			throw new Error("Should have thrown");
 		} catch (e) {
 			strictEqual(e.message, "Aborted");
-			strictEqual(e.cause, "AbortError");
+			deepStrictEqual(e.cause, { code: "AbortError" });
 		}
 	});
 

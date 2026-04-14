@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: MIT
 import type { StreamOptions } from "@datastream/core";
 
-export function awsSQSSetClient(sqsClient: unknown): void;
+export function awsKinesisSetClient(kinesisClient: unknown): void;
 
-export function awsSQSReceiveMessageStream(
+export function awsKinesisGetRecordsStream(
 	options: {
 		client?: unknown;
-		QueueUrl?: string;
+		ShardIterator?: string;
 		pollingActive?: boolean;
 		pollingDelay?: number;
 		[key: string]: unknown;
@@ -15,19 +15,11 @@ export function awsSQSReceiveMessageStream(
 	streamOptions?: StreamOptions,
 ): Promise<unknown>;
 
-export function awsSQSDeleteMessageStream(
+export function awsKinesisPutRecordsStream(
 	options: {
 		client?: unknown;
-		QueueUrl?: string;
-		[key: string]: unknown;
-	},
-	streamOptions?: StreamOptions,
-): unknown;
-
-export function awsSQSSendMessageStream(
-	options: {
-		client?: unknown;
-		QueueUrl?: string;
+		StreamName?: string;
+		StreamARN?: string;
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,

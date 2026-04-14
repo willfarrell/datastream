@@ -73,6 +73,30 @@
 				"default": "./sns.web.mjs"
 			}
 		},
+		"./cloudwatch-logs": {
+			"node": {
+				"import": {
+					"types": "./cloudwatch-logs.d.ts",
+					"default": "./cloudwatch-logs.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./cloudwatch-logs.d.ts",
+				"default": "./cloudwatch-logs.web.mjs"
+			}
+		},
+		"./kinesis": {
+			"node": {
+				"import": {
+					"types": "./kinesis.d.ts",
+					"default": "./kinesis.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./kinesis.d.ts",
+				"default": "./kinesis.web.mjs"
+			}
+		},
 		"./sqs": {
 			"node": {
 				"import": {
@@ -100,7 +124,9 @@
 	"license": "MIT",
 	"keywords": [
 		"AWS",
+		"CloudWatch",
 		"DynamoDB",
+		"Kinesis",
 		"Lambda",
 		"S3",
 		"SNS",
@@ -125,7 +151,9 @@
 		"@datastream/core": "0.1.6"
 	},
 	"peerDependencies": {
+		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
+		"@aws-sdk/client-kinesis": "^3.0.0",
 		"@aws-sdk/client-lambda": "^3.0.0",
 		"@aws-sdk/client-s3": "^3.0.0",
 		"@aws-sdk/client-sns": "^3.0.0",
@@ -134,7 +162,13 @@
 		"@aws-sdk/lib-storage": "^3.0.0"
 	},
 	"peerDependenciesMeta": {
+		"@aws-sdk/client-cloudwatch-logs": {
+			"optional": true
+		},
 		"@aws-sdk/client-dynamodb": {
+			"optional": true
+		},
+		"@aws-sdk/client-kinesis": {
 			"optional": true
 		},
 		"@aws-sdk/client-lambda": {
@@ -157,7 +191,9 @@
 		}
 	},
 	"devDependencies": {
+		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
+		"@aws-sdk/client-kinesis": "^3.0.0",
 		"@aws-sdk/client-lambda": "^3.0.0",
 		"@aws-sdk/client-s3": "^3.0.0",
 		"@aws-sdk/client-sns": "^3.0.0",

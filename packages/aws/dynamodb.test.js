@@ -4,11 +4,13 @@ import {
 	BatchGetItemCommand,
 	BatchWriteItemCommand,
 	DynamoDBClient,
+	ExecuteStatementCommand,
 	QueryCommand,
 	ScanCommand,
 } from "@aws-sdk/client-dynamodb";
-import {
+import dynamodbDefault, {
 	awsDynamoDBDeleteItemStream,
+	awsDynamoDBExecuteStatementStream,
 	awsDynamoDBGetItemStream,
 	awsDynamoDBPutItemStream,
 	awsDynamoDBQueryStream,
@@ -208,6 +210,57 @@ test(`${variant}: awsDynamoDBScanStream should return items`, async (_t) => {
 		{ key: "b", value: 2 },
 		{ key: "c", value: 3 },
 	]);
+});
+
+test(`${variant}: awsDynamoDBExecuteStatementStream should return items`, async (_t) => {
+	const client = mockClient(DynamoDBClient);
+	awsDynamoDBSetClient(client);
+	client
+		.on(ExecuteStatementCommand, {
+			Statement: 'SELECT * FROM "TableName"',
+		})
+		.resolves({
+			Items: [
+				{ key: "a", value: 1 },
+				{ key: "b", value: 2 },
+			],
+			NextToken: "token1",
+		})
+		.on(ExecuteStatementCommand, {
+			Statement: 'SELECT * FROM "TableName"',
+			NextToken: "token1",
+		})
+		.resolves({
+			Items: [{ key: "c", value: 3 }],
+		});
+
+	const options = {
+		Statement: 'SELECT * FROM "TableName"',
+	};
+	const stream = await awsDynamoDBExecuteStatementStream(options);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		{ key: "a", value: 1 },
+		{ key: "b", value: 2 },
+		{ key: "c", value: 3 },
+	]);
+});
+
+test(`${variant}: awsDynamoDBExecuteStatementStream should handle empty result`, async (_t) => {
+	const client = mockClient(DynamoDBClient);
+	awsDynamoDBSetClient(client);
+	client.on(ExecuteStatementCommand).resolves({
+		Items: [],
+	});
+
+	const options = {
+		Statement: "SELECT * FROM \"TableName\" WHERE key = 'missing'",
+	};
+	const stream = await awsDynamoDBExecuteStatementStream(options);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, []);
 });
 
 test(`${variant}: awsDynamoDBPutItemStream should store items`, async (_t) => {
@@ -521,4 +574,16 @@ test(`${variant}: awsDynamoDBDeleteItemStream should throw error`, async (_t) =>
 	await rejects(() => pipeline(stream), {
 		message: "awsDynamoDBBatchWriteItem has UnprocessedItems",
 	});
+});
+
+test(`${variant}: default export should include all stream functions`, (_t) => {
+	deepStrictEqual(Object.keys(dynamodbDefault).sort(), [
+		"deleteItemStream",
+		"executeStatementStream",
+		"getItemStream",
+		"putItemStream",
+		"queryStream",
+		"scanStream",
+		"setClient",
+	]);
 });

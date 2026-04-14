@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 import { createDeflate, createInflate } from "node:zlib";
 
-// TODO benchmark against `fflate`
 // quality -1 - 9
 export const deflateCompressStream = (options = {}, _streamOptions = {}) => {
 	const { quality, ...rest } = options;

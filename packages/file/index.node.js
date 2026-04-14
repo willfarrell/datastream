@@ -29,9 +29,14 @@ const enforcePath = (path, basePath) => {
 		if (!resolvedPath.startsWith(resolvedBase)) {
 			throw new Error("Path traversal detected");
 		}
-		const stat = lstatSync(resolvedPath);
-		if (stat.isSymbolicLink()) {
-			throw new Error("Symbolic links are not allowed");
+		try {
+			const stat = lstatSync(resolvedPath);
+			if (stat.isSymbolicLink()) {
+				throw new Error("Symbolic links are not allowed");
+			}
+		} catch (e) {
+			if (e.message === "Symbolic links are not allowed") throw e;
+			throw new Error("Path not found", { cause: e });
 		}
 	}
 };
