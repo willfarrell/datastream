@@ -2,22 +2,26 @@
 // SPDX-License-Identifier: MIT
 import { createPassThroughStream } from "@datastream/core";
 
-export const ipfsGetStream = async (
-	{ node, _repo, cid },
-	_streamOptions = {},
-) => {
-	// node ??= await create({ repo })
+export const ipfsGetStream = async ({ node, cid }, _streamOptions = {}) => {
 	return node.get(cid);
 };
 
 export const ipfsAddStream = async (
-	{ node, _repo, resultKey } = {},
+	{ node, resultKey } = {},
 	streamOptions = {},
 ) => {
-	// node ??= await create({ repo })
-
-	const stream = createPassThroughStream(() => {}, streamOptions);
-	const { cid } = node.add(stream);
+	const chunks = [];
+	let cid;
+	const stream = createPassThroughStream(
+		(chunk) => {
+			chunks.push(chunk);
+		},
+		async () => {
+			const result = await node.add(chunks);
+			cid = result.cid;
+		},
+		streamOptions,
+	);
 
 	stream.result = () => ({
 		key: resultKey ?? "cid",

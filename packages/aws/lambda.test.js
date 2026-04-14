@@ -13,9 +13,12 @@ if (variant === "node") {
 	const { InvokeWithResponseStreamCommand, LambdaClient } = await import(
 		"@aws-sdk/client-lambda"
 	);
-	const { awsLambdaReadableStream, awsLambdaSetClient } = await import(
-		"@datastream/aws/lambda"
-	);
+	const lambdaModule = await import("@datastream/aws/lambda");
+	const {
+		default: lambdaDefault,
+		awsLambdaReadableStream,
+		awsLambdaSetClient,
+	} = lambdaModule;
 	const { createReadableStream, pipeline } = await import("@datastream/core");
 	const { mockClient } = await import("aws-sdk-client-mock");
 
@@ -119,5 +122,13 @@ if (variant === "node") {
 		}
 
 		deepStrictEqual(result, "abc");
+	});
+
+	test(`${variant}: default export should include all stream functions`, (_t) => {
+		deepStrictEqual(Object.keys(lambdaDefault).sort(), [
+			"readableStream",
+			"responseStream",
+			"setClient",
+		]);
 	});
 }

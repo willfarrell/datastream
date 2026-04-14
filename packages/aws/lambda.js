@@ -17,13 +17,14 @@ export const awsLambdaReadableStream = (lambdaOptions, streamOptions = {}) => {
 };
 export const awsLambdaResponseStream = awsLambdaReadableStream;
 
-async function* awsLambdaGenerator(lambdaOptions, _streamOptions = {}) {
+async function* awsLambdaGenerator(lambdaOptions, streamOptions = {}) {
 	if (!Array.isArray(lambdaOptions)) {
 		lambdaOptions = [lambdaOptions];
 	}
 	for (const options of lambdaOptions) {
 		const response = await defaultClient.send(
 			new InvokeWithResponseStreamCommand(options),
+			{ abortSignal: streamOptions.signal },
 		);
 		for await (const chunk of response.EventStream) {
 			if (chunk?.PayloadChunk?.Payload) {

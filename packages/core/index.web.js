@@ -48,11 +48,11 @@ export const streamToArray = async (stream) => {
 };
 
 export const streamToObject = async (stream) => {
-	const value = {};
+	const value = Object.create(null);
 	for await (const chunk of stream) {
 		Object.assign(value, chunk);
 	}
-	return value;
+	return { ...value };
 };
 
 export const streamToString = async (stream) => {
@@ -251,13 +251,15 @@ export const createWritableStream = (write, close, streamOptions) => {
 
 export const timeout = (ms, { signal } = {}) => {
 	if (signal?.aborted) {
-		return Promise.reject(new Error("Aborted", { cause: "AbortError" }));
+		return Promise.reject(
+			new Error("Aborted", { cause: { code: "AbortError" } }),
+		);
 	}
 	return new Promise((resolve, reject) => {
 		const abortHandler = () => {
 			clearTimeout(timerId);
 			signal.removeEventListener("abort", abortHandler);
-			reject(new Error("Aborted", { cause: "AbortError" }));
+			reject(new Error("Aborted", { cause: { code: "AbortError" } }));
 		};
 		if (signal) signal.addEventListener("abort", abortHandler);
 		const timerId = setTimeout(() => {

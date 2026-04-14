@@ -4,6 +4,7 @@ import {
 	BatchGetItemCommand,
 	BatchWriteItemCommand,
 	DynamoDBClient,
+	ExecuteStatementCommand,
 	QueryCommand,
 	ScanCommand,
 } from "@aws-sdk/client-dynamodb";
@@ -18,11 +19,13 @@ awsDynamoDBSetClient(client);
 
 // options = {TableName, ...}
 
-export const awsDynamoDBQueryStream = async (options, _streamOptions = {}) => {
+export const awsDynamoDBQueryStream = async (options, streamOptions = {}) => {
 	async function* command(options) {
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new QueryCommand(options));
+			const response = await client.send(new QueryCommand(options), {
+				abortSignal: streamOptions.signal,
+			});
 			for (const item of response.Items) {
 				yield item;
 			}
@@ -33,11 +36,13 @@ export const awsDynamoDBQueryStream = async (options, _streamOptions = {}) => {
 	return command(options);
 };
 
-export const awsDynamoDBScanStream = async (options, _streamOptions = {}) => {
+export const awsDynamoDBScanStream = async (options, streamOptions = {}) => {
 	async function* command(options) {
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new ScanCommand(options));
+			const response = await client.send(new ScanCommand(options), {
+				abortSignal: streamOptions.signal,
+			});
 			for (const item of response.Items) {
 				yield item;
 			}
@@ -48,12 +53,27 @@ export const awsDynamoDBScanStream = async (options, _streamOptions = {}) => {
 	return command(options);
 };
 
-// TODO awsDynamoDBExecuteStatementStream
-
-export const awsDynamoDBGetItemStream = async (
+export const awsDynamoDBExecuteStatementStream = async (
 	options,
-	_streamOptions = {},
+	streamOptions = {},
 ) => {
+	async function* command(options) {
+		let expectMore = true;
+		while (expectMore) {
+			const response = await client.send(new ExecuteStatementCommand(options), {
+				abortSignal: streamOptions.signal,
+			});
+			for (const item of response.Items ?? []) {
+				yield item;
+			}
+			options.NextToken = response.NextToken;
+			expectMore = !!response.NextToken;
+		}
+	}
+	return command(options);
+};
+
+export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 	if (options.Keys?.length > 100) {
 		throw new Error(
 			`awsDynamoDBGetItemStream Keys.length (${options.Keys.length}) exceeds BatchGetItem limit of 100`,
@@ -70,6 +90,7 @@ export const awsDynamoDBGetItemStream = async (
 						[options.TableName]: { Keys: keys },
 					},
 				}),
+				{ abortSignal: streamOptions.signal },
 			);
 			for (const item of response.Responses[options.TableName]) {
 				yield item;
@@ -175,6 +196,7 @@ export default {
 	setClient: awsDynamoDBSetClient,
 	queryStream: awsDynamoDBQueryStream,
 	scanStream: awsDynamoDBScanStream,
+	executeStatementStream: awsDynamoDBExecuteStatementStream,
 	getItemStream: awsDynamoDBGetItemStream,
 	putItemStream: awsDynamoDBPutItemStream,
 	deleteItemStream: awsDynamoDBDeleteItemStream,

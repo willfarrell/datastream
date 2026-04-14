@@ -16,21 +16,26 @@ export const awsSQSSetClient = (sqsClient) => {
 
 export const awsSQSReceiveMessageStream = async (
 	options,
-	_streamOptions = {},
+	streamOptions = {},
 ) => {
-	// TODO needs option to keep polling or not
+	const { pollingActive, pollingDelay = 1000, ...sqsOptions } = options;
 	async function* command(options) {
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new ReceiveMessageCommand(options));
+			const response = await client.send(new ReceiveMessageCommand(options), {
+				abortSignal: streamOptions.signal,
+			});
 			const messages = response.Messages ?? [];
 			for (const item of messages) {
 				yield item;
 			}
-			expectMore = messages.length;
+			expectMore = pollingActive || messages.length > 0;
+			if (pollingActive && messages.length === 0 && pollingDelay > 0) {
+				await new Promise((resolve) => setTimeout(resolve, pollingDelay));
+			}
 		}
 	}
-	return command(options);
+	return command(sqsOptions);
 };
 
 export const awsSQSDeleteMessageStream = (options, streamOptions = {}) => {

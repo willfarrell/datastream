@@ -103,22 +103,22 @@ export const streamToArray = (stream) => {
 export const streamToObject = (stream) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
-			const value = {};
+			const value = Object.create(null);
 			stream.on("data", (chunk) => {
 				Object.assign(value, chunk);
 			});
 			stream.on("end", () => {
-				resolve(value);
+				resolve({ ...value });
 			});
 			stream.on("error", reject);
 		});
 	}
 	return (async () => {
-		const value = {};
+		const value = Object.create(null);
 		for await (const chunk of stream) {
 			Object.assign(value, chunk);
 		}
-		return value;
+		return { ...value };
 	})();
 };
 
