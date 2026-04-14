@@ -680,7 +680,7 @@ const csvSteamifyParser = (options = {}) => {
 		ctx.escapeCharCode = escapeChar.charCodeAt(0);
 		ctx.escapeIsQuote = escapeChar === quoteChar;
 		ctx.escapedQuote = escapeChar + quoteChar;
-		ctx.fieldMaxSize = fieldMaxSize;
+		ctx.fieldMaxSize = fieldMaxSize ?? 16_777_216;
 		resolved = true;
 	};
 
@@ -689,7 +689,7 @@ const csvSteamifyParser = (options = {}) => {
 		const str = typeof chunk === "string" ? chunk : chunk.toString();
 		const text = buffer.length > 0 ? buffer + str : str;
 		buffer = "";
-		if (text.length > fieldMaxSize * 2) {
+		if (text.length > ctx.fieldMaxSize * 2) {
 			throw new Error(
 				`CSV buffer size (${text.length}) exceeds safety limit, likely unterminated quoted field`,
 			);

@@ -3,6 +3,7 @@ import {
 	awsCloudWatchLogsGetLogEventsStream,
 	awsCloudWatchLogsSetClient,
 	awsDynamoDBDeleteItemStream,
+	awsDynamoDBExecuteStatementStream,
 	awsDynamoDBGetItemStream,
 	awsDynamoDBPutItemStream,
 	awsDynamoDBQueryStream,
@@ -111,6 +112,14 @@ describe("DynamoDB", () => {
 		expect(awsDynamoDBScanStream({ TableName: "t" })).type.toBeAssignableTo<
 			Promise<unknown>
 		>();
+	});
+
+	test("awsDynamoDBExecuteStatementStream returns promise", () => {
+		expect(
+			awsDynamoDBExecuteStatementStream({
+				Statement: 'SELECT * FROM "TableName"',
+			}),
+		).type.toBeAssignableTo<Promise<unknown>>();
 	});
 
 	test("awsDynamoDBGetItemStream returns promise", () => {
