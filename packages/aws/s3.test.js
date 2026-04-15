@@ -343,6 +343,22 @@ test(`${variant}: awsS3ChecksumStream should cache result on second call`, async
 	deepStrictEqual(result1, result2);
 });
 
+test(`${variant}: awsS3GetObjectStream should pass abort signal to client.send`, async (_t) => {
+	const client = mockClient(S3Client);
+	client.on(GetObjectCommand).resolves({
+		Body: createReadableStream("data"),
+	});
+
+	const controller = new AbortController();
+	await awsS3GetObjectStream(
+		{ Bucket: "b", Key: "k", client },
+		{ signal: controller.signal },
+	);
+
+	const calls = client.commandCalls(GetObjectCommand);
+	deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+});
+
 test(`${variant}: default export should include all stream functions`, (_t) => {
 	deepStrictEqual(Object.keys(s3Default).sort(), [
 		"checksumStream",
