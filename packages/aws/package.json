@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/aws",
 	"version": "0.1.6",
-	"description": "AWS service streaming integrations for S3, DynamoDB, Lambda, SNS, and SQS",
+	"description": "AWS service streaming integrations for CloudWatch Logs, DynamoDB, Kinesis, Lambda, S3, SNS, and SQS",
 	"type": "module",
 	"engines": {
 		"node": ">=24"
