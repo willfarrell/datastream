@@ -576,6 +576,23 @@ test(`${variant}: awsDynamoDBDeleteItemStream should throw error`, async (_t) =>
 	});
 });
 
+test(`${variant}: awsDynamoDBPutItemStream should pass abort signal to batch write`, async (_t) => {
+	const client = mockClient(DynamoDBClient);
+	awsDynamoDBSetClient(client);
+	client.on(BatchWriteItemCommand).resolves({ UnprocessedItems: {} });
+
+	const controller = new AbortController();
+	const input = [{ key: "a", value: 1 }];
+	const stream = [
+		createReadableStream(input),
+		awsDynamoDBPutItemStream({ TableName: "T" }, { signal: controller.signal }),
+	];
+	await pipeline(stream);
+
+	const calls = client.commandCalls(BatchWriteItemCommand);
+	deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+});
+
 test(`${variant}: default export should include all stream functions`, (_t) => {
 	deepStrictEqual(Object.keys(dynamodbDefault).sort(), [
 		"deleteItemStream",

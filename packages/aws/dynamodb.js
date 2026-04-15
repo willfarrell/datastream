@@ -171,6 +171,7 @@ const dynamodbBatchWrite = async (
 				[options.TableName]: batch,
 			},
 		}),
+		{ abortSignal: streamOptions?.signal },
 	);
 	if (UnprocessedItems?.[options.TableName]?.length) {
 		if (retryCount >= retryMaxCount) {

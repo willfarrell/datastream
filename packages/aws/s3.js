@@ -19,6 +19,7 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 	const { client, ...params } = options;
 	const { Body } = await (client ?? defaultClient).send(
 		new GetObjectCommand(params),
+		{ abortSignal: streamOptions.signal },
 	);
 	if (!Body) {
 		throw new Error("S3.GetObject not found", { cause: params });
