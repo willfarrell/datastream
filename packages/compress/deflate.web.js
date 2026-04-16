@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-/* global CompressionStream, DecompressionStream */
+/* global CompressionStream, DecompressionStream, TransformStream */
 // CompressionStream
 // - https://caniuse.com/?search=CompressionStream
 // - not supported on firefox - https://bugzilla.mozilla.org/show_bug.cgi?id=1586639
@@ -14,7 +14,7 @@ export const deflateDecompressStream = (options = {}, _streamOptions = {}) => {
 	const decompressor = new DecompressionStream("deflate");
 	if (maxOutputSize != null) {
 		let outputSize = 0;
-		const limiter = new TransformStream({
+		const transformer = {
 			transform(chunk, controller) {
 				outputSize += chunk.byteLength;
 				if (outputSize > maxOutputSize) {
@@ -27,7 +27,8 @@ export const deflateDecompressStream = (options = {}, _streamOptions = {}) => {
 				}
 				controller.enqueue(chunk);
 			},
-		});
+		};
+		const limiter = new TransformStream(transformer);
 		return {
 			readable: decompressor.readable.pipeThrough(limiter),
 			writable: decompressor.writable,
