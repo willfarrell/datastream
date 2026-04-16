@@ -1,6 +1,12 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamPassThrough,
+	DatastreamReadable,
+	DatastreamWritable,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export function awsS3SetClient(s3Client: unknown): void;
 
@@ -12,7 +18,7 @@ export function awsS3GetObjectStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function awsS3PutObjectStream(
 	options: {
@@ -24,7 +30,7 @@ export function awsS3PutObjectStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamWritable & {
 	result: () => Promise<StreamResult<unknown>>;
 };
 
@@ -35,7 +41,7 @@ export function awsS3ChecksumStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamPassThrough & {
 	result: () => StreamResult<{
 		checksum: string;
 		checksums: string[];

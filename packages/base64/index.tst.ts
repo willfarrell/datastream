@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+/// <reference types="node" />
 import _default, {
 	base64DecodeStream,
 	base64EncodeStream,

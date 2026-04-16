@@ -155,3 +155,93 @@ if (variant === "node") {
 		strictEqual(output, compressibleBody);
 	});
 }
+
+// *** web variant decompression bomb protection *** //
+// *** protobuf *** //
+let hasProtobuf = false;
+try {
+	const protobuf = await import("protobufjs");
+	hasProtobuf = !!protobuf;
+} catch {
+	// protobufjs not installed
+}
+
+if (hasProtobuf) {
+	const protobuf = await import("protobufjs");
+	const { protobufSerializeStream, protobufDeserializeStream } = await import(
+		"@datastream/compress/protobuf"
+	);
+
+	const TestType = new protobuf.Type("TestMessage")
+		.add(new protobuf.Field("name", 1, "string"))
+		.add(new protobuf.Field("value", 2, "int32"));
+	new protobuf.Root().define("test").add(TestType);
+
+	test(`${variant}: protobuf roundtrip serialize/deserialize`, async (_t) => {
+		const input = [
+			{ name: "a", value: 1 },
+			{ name: "b", value: 2 },
+		];
+		const serialize = protobufSerializeStream({ Type: TestType });
+		const deserialize = protobufDeserializeStream({ Type: TestType });
+		const streams = [createReadableStream(input), serialize, deserialize];
+		const output = await streamToString(pipejoin(streams));
+		ok(output.includes("a"));
+	});
+}
+
+if (variant === "webstream") {
+	test(`${variant}: gzipDecompressStream should enforce maxOutputSize`, async (_t) => {
+		const input = gzipSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			gzipDecompressStream({ maxOutputSize: 100 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: deflateDecompressStream should enforce maxOutputSize`, async (_t) => {
+		const input = deflateSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			deflateDecompressStream({ maxOutputSize: 100 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: gzipCompressStream should enforce maxOutputSize`, async (_t) => {
+		const streams = [
+			createReadableStream(compressibleBody),
+			gzipCompressStream({ maxOutputSize: 10 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: deflateCompressStream should enforce maxOutputSize`, async (_t) => {
+		const streams = [
+			createReadableStream(compressibleBody),
+			deflateCompressStream({ maxOutputSize: 10 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+}

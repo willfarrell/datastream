@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+/// <reference types="node" />
 import type { DigestAlgorithm } from "@datastream/digest";
 import { digestStream } from "@datastream/digest";
 import { describe, expect, test } from "tstyche";

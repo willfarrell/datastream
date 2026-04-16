@@ -1,13 +1,17 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamTransform,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export type EncryptAlgorithm =
 	| "AES-256-GCM"
 	| "AES-256-CTR"
 	| "CHACHA20-POLY1305";
 
-type EncryptStreamResult = unknown & {
+type EncryptStreamResult = DatastreamTransform & {
 	result: () => StreamResult<{
 		algorithm: EncryptAlgorithm;
 		iv: Uint8Array;
@@ -36,7 +40,7 @@ export function decryptStream(
 		maxOutputSize?: number;
 	},
 	streamOptions?: StreamOptions,
-): unknown | Promise<unknown>;
+): DatastreamTransform | Promise<DatastreamTransform>;
 
 export function generateEncryptionKey(options?: {
 	bits?: 128 | 256;

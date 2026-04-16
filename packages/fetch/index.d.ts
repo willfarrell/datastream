@@ -1,6 +1,11 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamWritable,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export interface FetchOptions {
 	url?: string;
@@ -31,7 +36,7 @@ export function fetchWritableStream(
 	options: FetchOptions,
 	streamOptions?: StreamOptions,
 ): Promise<
-	unknown & {
+	DatastreamWritable & {
 		result: () => StreamResult<Response>;
 	}
 >;
@@ -40,7 +45,7 @@ export { fetchWritableStream as fetchRequestStream };
 export function fetchReadableStream(
 	fetchOptions: FetchOptions | FetchOptions[],
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamReadable;
 export { fetchReadableStream as fetchResponseStream };
 
 export function fetchRateLimit(

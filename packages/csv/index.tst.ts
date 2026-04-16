@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+/// <reference types="node" />
 import type {
 	CsvCoerceType,
 	CsvDelimiters,

@@ -6,8 +6,32 @@
 // - not supported on firefox - https://bugzilla.mozilla.org/show_bug.cgi?id=1586639
 // - not supported in safari
 
-export const deflateCompressStream = (_options = {}, _streamOptions = {}) => {
-	return new CompressionStream("deflate");
+export const deflateCompressStream = (options = {}, _streamOptions = {}) => {
+	const { maxOutputSize } = options;
+	const compressor = new CompressionStream("deflate");
+	if (maxOutputSize != null) {
+		let outputSize = 0;
+		const transformer = {
+			transform(chunk, controller) {
+				outputSize += chunk.byteLength;
+				if (outputSize > maxOutputSize) {
+					controller.error(
+						new Error(
+							`Compression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+						),
+					);
+					return;
+				}
+				controller.enqueue(chunk);
+			},
+		};
+		const limiter = new TransformStream(transformer);
+		return {
+			readable: compressor.readable.pipeThrough(limiter),
+			writable: compressor.writable,
+		};
+	}
+	return compressor;
 };
 export const deflateDecompressStream = (options = {}, _streamOptions = {}) => {
 	const { maxOutputSize } = options;

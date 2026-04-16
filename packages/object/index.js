@@ -20,7 +20,10 @@ export const objectCountStream = ({ resultKey } = {}, streamOptions = {}) => {
 	return stream;
 };
 
-export const objectBatchStream = ({ keys }, streamOptions = {}) => {
+export const objectBatchStream = (
+	{ keys, maxBatchSize = Infinity },
+	streamOptions = {},
+) => {
 	let previousId;
 	let batch;
 	const transform = (chunk, enqueue) => {
@@ -33,6 +36,10 @@ export const objectBatchStream = ({ keys }, streamOptions = {}) => {
 			batch = [];
 		}
 		batch.push(chunk);
+		if (batch.length >= maxBatchSize) {
+			enqueue(batch);
+			batch = [];
+		}
 	};
 	const flush = (enqueue) => {
 		if (batch) {
@@ -52,7 +59,7 @@ export const objectPivotLongToWideStream = (
 		if (!Array.isArray(chunks)) {
 			throw new Error("Expected chunk to be array, use with objectBatchStream");
 		}
-		const row = chunks[0];
+		const row = { ...chunks[0] };
 
 		for (const chunk of chunks) {
 			const keyParam = keys.map((key) => chunk[key]).join(delimiter);

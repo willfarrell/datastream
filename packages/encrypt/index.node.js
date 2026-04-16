@@ -41,7 +41,7 @@ const validateAad = (aad) => {
 };
 
 export const encryptStream = (
-	{ algorithm = "AES-256-GCM", key, iv, aad } = {},
+	{ algorithm = "AES-256-GCM", key, iv, aad, maxInputSize } = {},
 	streamOptions = {},
 ) => {
 	const config = algorithmMap[algorithm];
@@ -60,6 +60,22 @@ export const encryptStream = (
 	});
 	if (aad && authAlgorithms.includes(algorithm)) {
 		stream.setAAD(aad);
+	}
+	if (maxInputSize !== null && maxInputSize !== undefined) {
+		let inputSize = 0;
+		const originalWrite = stream._transform.bind(stream);
+		stream._transform = (chunk, encoding, callback) => {
+			inputSize += chunk.length;
+			if (inputSize > maxInputSize) {
+				callback(
+					new Error(
+						`Encryption input exceeds maxInputSize (${maxInputSize} bytes). Use AES-256-CTR for large data.`,
+					),
+				);
+				return;
+			}
+			originalWrite(chunk, encoding, callback);
+		};
 	}
 	stream.result = () => ({
 		key: "encrypt",
@@ -107,6 +123,7 @@ export const decryptStream = (
 			if (chunk !== null) {
 				outputSize += chunk.length;
 				if (outputSize > maxOutputSize) {
+					stream.push = originalPush;
 					stream.destroy(
 						new Error(
 							`Decryption output exceeds maxOutputSize (${maxOutputSize} bytes)`,
@@ -117,6 +134,9 @@ export const decryptStream = (
 			}
 			return originalPush(chunk);
 		};
+		stream.on("close", () => {
+			stream.push = originalPush;
+		});
 	}
 	return stream;
 };

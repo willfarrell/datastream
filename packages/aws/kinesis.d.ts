@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamWritable,
+	StreamOptions,
+} from "@datastream/core";
 
 export function awsKinesisSetClient(kinesisClient: unknown): void;
 
@@ -13,7 +17,7 @@ export function awsKinesisGetRecordsStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function awsKinesisPutRecordsStream(
 	options: {
@@ -23,4 +27,4 @@ export function awsKinesisPutRecordsStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamWritable;

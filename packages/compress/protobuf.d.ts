@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions } from "@datastream/core";
+import type { DatastreamTransform, StreamOptions } from "@datastream/core";
 
 export interface ProtobufType {
 	encode(message: unknown): { finish(): Uint8Array };
@@ -11,8 +11,8 @@ export interface ProtobufType {
 export function protobufSerializeStream(
 	options?: { Type?: ProtobufType },
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 export function protobufDeserializeStream(
 	options?: { Type?: ProtobufType },
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;

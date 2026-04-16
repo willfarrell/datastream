@@ -22,6 +22,18 @@ const validatePaginationUrl = (nextUrl, origin) => {
 	}
 };
 
+const redactUrl = (urlString) => {
+	try {
+		const url = new URL(urlString);
+		if (url.search) url.search = "?[REDACTED]";
+		if (url.username) url.username = "[REDACTED]";
+		if (url.password) url.password = "[REDACTED]";
+		return url.toString();
+	} catch {
+		return "[INVALID URL]";
+	}
+};
+
 let defaults = {
 	// custom
 	rateLimit: 0.01, // 100 per sec
@@ -100,8 +112,13 @@ async function* fetchGenerator(fetchOptions, streamOptions) {
 		}
 		options.__origin = new URL(options.url).origin;
 		const response = await fetchUnknown(options, streamOptions);
-		for await (const chunk of response) {
-			yield chunk;
+		try {
+			for await (const chunk of response) {
+				yield chunk;
+			}
+		} catch (error) {
+			await response?.cancel?.();
+			throw error;
 		}
 		// ensure there is rate limiting between req with different options
 		rateLimitTimestamp = options.rateLimitTimestamp;
@@ -209,6 +226,7 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 	};
 	const response = await fetch(options.url, fetchInit);
 	if (!response.ok) {
+		const safeUrl = redactUrl(options.url);
 		// 429 Too Many Requests
 		if (response.status === 429) {
 			options.retryCount = (options.retryCount ?? 0) + 1;
@@ -216,7 +234,7 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 			if (options.retryCount >= retryMaxCount) {
 				await response.body?.cancel();
 				throw new Error(
-					`fetch ${response.status} ${options.method} ${options.url} max retries (${retryMaxCount}) exceeded`,
+					`fetch ${response.status} ${options.method} ${safeUrl} max retries (${retryMaxCount}) exceeded`,
 					{
 						cause: {
 							status: response.status,
@@ -235,16 +253,13 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 			return fetchRateLimit(options, streamOptions);
 		}
 		await response.body?.cancel();
-		throw new Error(
-			`fetch ${response.status} ${options.method} ${options.url}`,
-			{
-				cause: {
-					status: response.status,
-					url: options.url,
-					method: options.method,
-				},
+		throw new Error(`fetch ${response.status} ${options.method} ${safeUrl}`, {
+			cause: {
+				status: response.status,
+				url: options.url,
+				method: options.method,
 			},
-		);
+		});
 	}
 	return response;
 };

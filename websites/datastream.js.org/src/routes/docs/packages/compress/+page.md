@@ -18,6 +18,7 @@ npm install @datastream/compress
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `quality` | `number` | `-1` | Compression level (-1 to 9). -1 = default, 0 = none, 9 = best |
+| `maxOutputSize` | `number` | — | Maximum compressed output in bytes (web variant) |
 
 ### `gzipDecompressStream` <span class="badge">Transform</span>
 
@@ -54,6 +55,7 @@ await pipeline([
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `quality` | `number` | `-1` | Compression level (-1 to 9) |
+| `maxOutputSize` | `number` | — | Maximum compressed output in bytes (web variant) |
 
 ### `deflateDecompressStream` <span class="badge">Transform</span>
 
@@ -91,7 +93,9 @@ Requires Node.js with zstd support.
 |--------|------|---------|-------------|
 | `maxOutputSize` | `number` | — | Maximum decompressed output in bytes. Destroys the stream with an error when exceeded |
 
-## Decompression bomb protection
+## Output size protection
+
+### Decompression bombs
 
 A malicious compressed payload known as a "decompression bomb" can be as small as a few kilobytes but expand to gigabytes when decompressed, exhausting memory and crashing the process. Setting `maxOutputSize` ensures decompression is aborted before memory is exhausted. Always set this when decompressing untrusted input.
 
@@ -100,6 +104,17 @@ import { gzipDecompressStream } from '@datastream/compress'
 
 // Limit decompressed output to 100MB
 gzipDecompressStream({ maxOutputSize: 100 * 1024 * 1024 })
+```
+
+### Compression output limits
+
+Compression streams also support `maxOutputSize` (web variant) to cap compressed output size. This can be useful to enforce storage limits.
+
+```javascript
+import { gzipCompressStream } from '@datastream/compress'
+
+// Limit compressed output to 50MB
+gzipCompressStream({ maxOutputSize: 50 * 1024 * 1024 })
 ```
 
 ## Platform support

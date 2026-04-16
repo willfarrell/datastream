@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamWritable,
+	StreamOptions,
+} from "@datastream/core";
 
 export interface FilePickerTypes {
 	description?: string;
@@ -12,7 +16,7 @@ export function fileReadStream(
 		types?: FilePickerTypes[];
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function fileWriteStream(
 	options: {
@@ -20,7 +24,7 @@ export function fileWriteStream(
 		types?: FilePickerTypes[];
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamWritable>;
 
 declare const _default: {
 	readStream: typeof fileReadStream;

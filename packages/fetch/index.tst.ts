@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+/// <reference types="node" />
 import type { FetchOptions } from "@datastream/fetch";
 import {
 	fetchRateLimit,

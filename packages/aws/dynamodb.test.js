@@ -593,6 +593,26 @@ test(`${variant}: awsDynamoDBPutItemStream should pass abort signal to batch wri
 	deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
 });
 
+// *** options mutation *** //
+test(`${variant}: awsDynamoDBQueryStream should not mutate caller options`, async (_t) => {
+	const client = mockClient(DynamoDBClient);
+	awsDynamoDBSetClient(client);
+	client.on(QueryCommand).resolves({
+		Items: [{ key: "a" }],
+		LastEvaluatedKey: { key: "a" },
+	});
+	client.on(QueryCommand).resolves({
+		Items: [{ key: "b" }],
+	});
+
+	const options = { TableName: "T" };
+	const optionsCopy = { ...options };
+	const stream = await awsDynamoDBQueryStream(options);
+	await streamToArray(stream);
+
+	deepStrictEqual(options, optionsCopy);
+});
+
 test(`${variant}: default export should include all stream functions`, (_t) => {
 	deepStrictEqual(Object.keys(dynamodbDefault).sort(), [
 		"deleteItemStream",

@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamWritable,
+	StreamOptions,
+} from "@datastream/core";
 
 export function awsDynamoDBSetClient(
 	ddbClient: unknown,
@@ -14,7 +18,7 @@ export function awsDynamoDBQueryStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function awsDynamoDBScanStream(
 	options: {
@@ -23,7 +27,7 @@ export function awsDynamoDBScanStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function awsDynamoDBExecuteStatementStream(
 	options: {
@@ -33,7 +37,7 @@ export function awsDynamoDBExecuteStatementStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function awsDynamoDBGetItemStream(
 	options: {
@@ -45,7 +49,7 @@ export function awsDynamoDBGetItemStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function awsDynamoDBPutItemStream(
 	options: {
@@ -54,7 +58,7 @@ export function awsDynamoDBPutItemStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamWritable;
 
 export function awsDynamoDBDeleteItemStream(
 	options: {
@@ -63,4 +67,4 @@ export function awsDynamoDBDeleteItemStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamWritable;

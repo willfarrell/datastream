@@ -35,8 +35,10 @@ const charsetKeys = [
 
 export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 	const charsets = Object.fromEntries(charsetKeys.map((k) => [k, 0]));
+	let chunkCount = 0;
 	const passThrough = (chunk) => {
 		const matches = detect(chunk);
+		chunkCount++;
 		if (matches.length) {
 			for (const match of matches) {
 				charsets[match.charsetName] += match.confidence;
@@ -45,8 +47,12 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 	};
 	const stream = createPassThroughStream(passThrough, streamOptions);
 	stream.result = () => {
+		const divisor = chunkCount || 1;
 		const values = Object.entries(charsets)
-			.map(([charset, confidence]) => ({ charset, confidence }))
+			.map(([charset, confidence]) => ({
+				charset,
+				confidence: confidence / divisor,
+			}))
 			.sort((a, b) => b.confidence - a.confidence);
 		return { key: resultKey ?? "charset", value: values[0] };
 	};

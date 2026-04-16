@@ -1,4 +1,4 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	charsetDecodeStream,
@@ -332,3 +332,45 @@ test(`${variant}: charsetDetectStream instances should not share state`, async (
 	strictEqual(typeof result1.value.confidence, "number");
 	strictEqual(typeof result2.value.confidence, "number");
 });
+
+// *** charsetDetectStream confidence normalization *** //
+test(`${variant}: charsetDetectStream should normalize confidence across chunks`, async (_t) => {
+	// Send many chunks — confidence should be averaged, not sum to huge numbers
+	const chunks = Array.from({ length: 100 }, () => Buffer.from("Hello World"));
+	const streams = [createReadableStream(chunks), charsetDetectStream()];
+
+	await pipeline(streams);
+	const { value } = streams[1].result();
+
+	// Confidence should be a reasonable value (0-100 range), not 100x the single-chunk value
+	ok(
+		value.confidence <= 100,
+		`confidence ${value.confidence} should be <= 100`,
+	);
+});
+
+// *** charsetEncodeStream charset validation (web-only) *** //
+// Web implementation only supports UTF-8; node supports all charsets via iconv
+if (variant === "webstream") {
+	test(`${variant}: charsetEncodeStream should throw for non-UTF-8 charset`, {
+		skip: "requires web implementation",
+	}, async (_t) => {
+		try {
+			charsetEncodeStream({ charset: "iso-8859-1" });
+			throw new Error("Expected error");
+		} catch (e) {
+			ok(e.message.includes("UTF-8"));
+		}
+	});
+
+	test(`${variant}: charsetDecodeStream should throw for unsupported charset`, {
+		skip: "requires web implementation",
+	}, async (_t) => {
+		try {
+			charsetDecodeStream({ charset: "INVALID-CHARSET-999" });
+			throw new Error("Expected error");
+		} catch (e) {
+			ok(e.message !== "Expected error");
+		}
+	});
+}

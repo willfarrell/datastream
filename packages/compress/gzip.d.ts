@@ -1,12 +1,21 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions } from "@datastream/core";
+import type { DatastreamTransform, StreamOptions } from "@datastream/core";
+
+export interface GzipCompressOptions {
+	quality?: number;
+	maxOutputSize?: number;
+}
+
+export interface GzipDecompressOptions {
+	maxOutputSize?: number;
+}
 
 export function gzipCompressStream(
-	options?: Record<string, unknown>,
+	options?: GzipCompressOptions,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 export function gzipDecompressStream(
-	options?: Record<string, unknown>,
+	options?: GzipDecompressOptions,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;

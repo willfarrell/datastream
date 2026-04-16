@@ -3,8 +3,12 @@
 /* global TextEncoderStream */
 
 export const charsetEncodeStream = ({ charset } = {}, _streamOptions = {}) => {
-	// doesn't support signal?
-	return new TextEncoderStream(charset);
+	if (charset !== null && charset.toUpperCase() !== "UTF-8") {
+		throw new Error(
+			`charsetEncodeStream: Web only supports UTF-8 encoding, got "${charset}"`,
+		);
+	}
+	return new TextEncoderStream();
 };
 
 export default charsetEncodeStream;
