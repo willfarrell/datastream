@@ -107,6 +107,7 @@ export const decryptStream = (
 			if (chunk !== null) {
 				outputSize += chunk.length;
 				if (outputSize > maxOutputSize) {
+					stream.push = originalPush;
 					stream.destroy(
 						new Error(
 							`Decryption output exceeds maxOutputSize (${maxOutputSize} bytes)`,
@@ -117,6 +118,9 @@ export const decryptStream = (
 			}
 			return originalPush(chunk);
 		};
+		stream.on("close", () => {
+			stream.push = originalPush;
+		});
 	}
 	return stream;
 };

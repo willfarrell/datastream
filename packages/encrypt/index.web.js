@@ -244,7 +244,10 @@ const aesCtrDecrypt = async ({ key, iv, maxOutputSize }, streamOptions) => {
 };
 
 // ChaCha20-Poly1305: requires optional peer dep
-const chacha20Encrypt = async ({ key, iv, aad }, streamOptions) => {
+const chacha20Encrypt = async (
+	{ key, iv, aad, maxInputSize },
+	streamOptions,
+) => {
 	validateKey(key);
 	validateAad(aad);
 	let sodium;
@@ -258,11 +261,19 @@ const chacha20Encrypt = async ({ key, iv, aad }, streamOptions) => {
 	}
 	iv ??= sodium.randombytes_buf(12);
 	validateIv(iv, "CHACHA20-POLY1305");
+	maxInputSize ??= DEFAULT_MAX_INPUT_SIZE;
 	const chunks = [];
+	let inputSize = 0;
 	let authTag;
 	const transform = (chunk) => {
 		const buf =
 			chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk);
+		inputSize += buf.byteLength;
+		if (inputSize > maxInputSize) {
+			throw new Error(
+				`Encryption input exceeds maxInputSize (${maxInputSize} bytes). Use AES-256-CTR for large data.`,
+			);
+		}
 		chunks.push(buf);
 	};
 	const flush = (enqueue) => {
@@ -343,7 +354,7 @@ export const encryptStream = async (
 		return aesCtrEncrypt({ key, iv }, streamOptions);
 	}
 	if (algorithm === "CHACHA20-POLY1305") {
-		return chacha20Encrypt({ key, iv, aad }, streamOptions);
+		return chacha20Encrypt({ key, iv, aad, maxInputSize }, streamOptions);
 	}
 	throw new Error(`Unsupported algorithm: ${algorithm}`);
 };

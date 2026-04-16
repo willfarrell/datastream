@@ -38,7 +38,8 @@
 	],
 	"scripts": {
 		"test": "npm run test:unit",
-		"test:unit": "node --test"
+		"test:unit": "node --test",
+		"test:benchmark": "node __benchmarks__/index.js"
 	},
 	"license": "MIT",
 	"keywords": [

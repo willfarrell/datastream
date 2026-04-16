@@ -17,6 +17,7 @@ export const deflateDecompressStream = (options = {}, streamOptions = {}) => {
 			if (chunk !== null) {
 				outputSize += chunk.length;
 				if (outputSize > maxOutputSize) {
+					stream.push = originalPush;
 					stream.destroy(
 						new Error(
 							`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
@@ -27,6 +28,9 @@ export const deflateDecompressStream = (options = {}, streamOptions = {}) => {
 			}
 			return originalPush(chunk);
 		};
+		stream.on("close", () => {
+			stream.push = originalPush;
+		});
 	}
 	return stream;
 };

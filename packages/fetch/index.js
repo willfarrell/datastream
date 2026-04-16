@@ -100,8 +100,13 @@ async function* fetchGenerator(fetchOptions, streamOptions) {
 		}
 		options.__origin = new URL(options.url).origin;
 		const response = await fetchUnknown(options, streamOptions);
-		for await (const chunk of response) {
-			yield chunk;
+		try {
+			for await (const chunk of response) {
+				yield chunk;
+			}
+		} catch (error) {
+			await response?.cancel?.();
+			throw error;
 		}
 		// ensure there is rate limiting between req with different options
 		rateLimitTimestamp = options.rateLimitTimestamp;

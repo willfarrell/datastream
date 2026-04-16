@@ -104,14 +104,15 @@ export const makeOptions = ({
 	signal,
 	...streamOptions
 } = {}) => {
+	const size = chunkSize != null ? () => chunkSize : undefined;
 	return {
 		writableStrategy: {
 			highWaterMark,
-			size: { chunk: chunkSize },
+			size,
 		},
 		readableStrategy: {
 			highWaterMark,
-			size: { chunk: chunkSize },
+			size,
 		},
 		signal,
 		...streamOptions,
