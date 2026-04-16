@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/ipfs",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "IPFS get and add streaming operations",
 	"type": "module",
 	"engines": {
@@ -61,6 +61,6 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.3.0"
+		"@datastream/core": "0.3.1"
 	}
 }

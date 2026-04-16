@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/string",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "String transform streams for splitting, replacing, counting, and deduplication",
 	"type": "module",
 	"engines": {
@@ -60,6 +60,6 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.3.0"
+		"@datastream/core": "0.3.1"
 	}
 }
