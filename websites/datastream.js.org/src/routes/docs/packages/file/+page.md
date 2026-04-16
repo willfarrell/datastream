@@ -23,6 +23,7 @@ Reads a file as a stream.
 | Option | Type | Description |
 |--------|------|-------------|
 | `path` | `string` | File path (Node.js) |
+| `basePath` | `string` | When provided, enforces that `path` resolves within `basePath`. Prevents path traversal and rejects symbolic links |
 | `types` | `object[]` | File type filter for the file picker (see below) |
 
 ### Example — Node.js
@@ -58,6 +59,7 @@ Writes a stream to a file.
 | Option | Type | Description |
 |--------|------|-------------|
 | `path` | `string` | File path (Node.js), suggested file name (Browser) |
+| `basePath` | `string` | When provided, enforces that `path` resolves within `basePath`. Prevents path traversal and rejects symbolic links |
 | `types` | `object[]` | File type filter |
 
 ### Example — Node.js
@@ -99,3 +101,18 @@ const types = [
 ```
 
 On Node.js, if `types` is provided and the file extension doesn't match, an `"Invalid extension"` error is thrown.
+
+## Security
+
+When accepting file paths from user input, always use an absolute `path` or set `basePath` to prevent path traversal attacks (e.g., `../../etc/passwd`). Relative paths without a `basePath` constraint can resolve outside the intended directory.
+
+`basePath` is opt-in. When provided, paths are resolved and checked with `path.resolve().startsWith(basePath)`, and symbolic links are rejected. When omitted, no path restriction is applied.
+
+```javascript
+// Restrict reads to a specific directory
+fileReadStream({ path: userInput, basePath: '/data/uploads', types })
+
+// Convenience helper for cwd-scoped reads
+const safeFileRead = (path, types) =>
+  fileReadStream({ path, basePath: process.cwd(), types })
+```

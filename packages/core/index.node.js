@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: MIT
 import { Readable, Transform, Writable } from "node:stream";
 import { pipeline as pipelinePromise } from "node:stream/promises";
-import { setTimeout } from "node:timers/promises";
+
+// Node.js streams interpret push(null) as EOF.
+// Use a sentinel so null values flow through object-mode streams.
+const NULL_SENTINEL = Symbol.for("@datastream/null");
+const toSafe = (v) => (v === null ? NULL_SENTINEL : v);
+const fromSafe = (v) => (v === NULL_SENTINEL ? null : v);
 
 export const pipeline = async (streams, streamOptions = {}) => {
 	for (let idx = 0, l = streams.length; idx < l; idx++) {
@@ -78,12 +83,24 @@ export const backpressureGauge = (streams) => {
 	return metrics;
 };
 
-export const streamToArray = (stream) => {
+export const streamToArray = (stream, { maxBufferSize } = {}) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const value = [];
+			let size = 0;
 			stream.on("data", (chunk) => {
-				value.push(chunk);
+				if (maxBufferSize != null) {
+					size += chunk?.length ?? chunk?.byteLength ?? 1;
+					if (size > maxBufferSize) {
+						stream.destroy(
+							new Error(
+								`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
+							),
+						);
+						return;
+					}
+				}
+				value.push(fromSafe(chunk));
 			});
 			stream.on("end", () => {
 				resolve(value);
@@ -93,63 +110,127 @@ export const streamToArray = (stream) => {
 	}
 	return (async () => {
 		const value = [];
+		let size = 0;
 		for await (const chunk of stream) {
+			if (maxBufferSize != null) {
+				size += chunk?.length ?? chunk?.byteLength ?? 1;
+				if (size > maxBufferSize) {
+					throw new Error(
+						`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
+					);
+				}
+			}
 			value.push(chunk);
 		}
 		return value;
 	})();
 };
 
-export const streamToObject = (stream) => {
+export const streamToObject = (stream, { maxBufferSize } = {}) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
-			const value = {};
+			const value = Object.create(null);
+			let size = 0;
 			stream.on("data", (chunk) => {
+				if (maxBufferSize != null) {
+					size += chunk?.length ?? chunk?.byteLength ?? 1;
+					if (size > maxBufferSize) {
+						stream.destroy(
+							new Error(
+								`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
+							),
+						);
+						return;
+					}
+				}
 				Object.assign(value, chunk);
 			});
 			stream.on("end", () => {
-				resolve(value);
+				resolve({ ...value });
 			});
 			stream.on("error", reject);
 		});
 	}
 	return (async () => {
-		const value = {};
+		const value = Object.create(null);
+		let size = 0;
 		for await (const chunk of stream) {
+			if (maxBufferSize != null) {
+				size += chunk?.length ?? chunk?.byteLength ?? 1;
+				if (size > maxBufferSize) {
+					throw new Error(
+						`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
+					);
+				}
+			}
 			Object.assign(value, chunk);
 		}
-		return value;
+		return { ...value };
 	})();
 };
 
-export const streamToString = (stream) => {
+export const streamToString = (stream, { maxBufferSize } = {}) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
-			let value = "";
+			const chunks = [];
+			let size = 0;
 			stream.on("data", (chunk) => {
-				value += chunk;
+				if (maxBufferSize != null) {
+					size += chunk?.length ?? chunk?.byteLength ?? 0;
+					if (size > maxBufferSize) {
+						stream.destroy(
+							new Error(
+								`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
+							),
+						);
+						return;
+					}
+				}
+				chunks.push(chunk);
 			});
 			stream.on("end", () => {
-				resolve(value);
+				resolve(chunks.join(""));
 			});
 			stream.on("error", reject);
 		});
 	}
 	return (async () => {
-		let value = "";
+		const chunks = [];
+		let size = 0;
 		for await (const chunk of stream) {
-			value += chunk;
+			if (maxBufferSize != null) {
+				size += chunk?.length ?? chunk?.byteLength ?? 0;
+				if (size > maxBufferSize) {
+					throw new Error(
+						`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
+					);
+				}
+			}
+			chunks.push(chunk);
 		}
-		return value;
+		return chunks.join("");
 	})();
 };
 
-export const streamToBuffer = (stream) => {
+export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const value = [];
+			let size = 0;
 			stream.on("data", (chunk) => {
-				value.push(Buffer.from(chunk));
+				const buf = Buffer.from(chunk);
+				if (maxBufferSize != null) {
+					size += buf.length;
+					if (size > maxBufferSize) {
+						stream.destroy(
+							new Error(
+								`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
+							),
+						);
+						return;
+					}
+				}
+				value.push(buf);
 			});
 			stream.on("end", () => {
 				resolve(Buffer.concat(value));
@@ -159,8 +240,18 @@ export const streamToBuffer = (stream) => {
 	}
 	return (async () => {
 		const value = [];
+		let size = 0;
 		for await (const chunk of stream) {
-			value.push(Buffer.from(chunk));
+			const buf = Buffer.from(chunk);
+			if (maxBufferSize != null) {
+				size += buf.length;
+				if (size > maxBufferSize) {
+					throw new Error(
+						`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
+					);
+				}
+			}
+			value.push(buf);
 		}
 		return Buffer.concat(value);
 	})();
@@ -195,7 +286,27 @@ export const makeOptions = ({
 	};
 };
 
-export const createReadableStream = (input = "", streamOptions = {}) => {
+export const createReadableStream = (input, streamOptions = {}) => {
+	if (input === undefined) {
+		const maxQueueSize = streamOptions.highWaterMark ?? 1024;
+		let queueSize = 0;
+		const stream = new Readable({
+			objectMode: streamOptions.objectMode ?? true,
+			highWaterMark: streamOptions.highWaterMark,
+			read() {},
+		});
+		const nativePush = Readable.prototype.push.bind(stream);
+		stream.push = (chunk) => {
+			if (chunk !== null && queueSize >= maxQueueSize) {
+				throw new Error(
+					`createReadableStream queue size (${queueSize}) exceeds limit (${maxQueueSize})`,
+				);
+			}
+			if (chunk !== null) queueSize++;
+			return nativePush(chunk);
+		};
+		return stream;
+	}
 	// string doesn't chunk, and is slow
 	if (typeof input === "string") {
 		return createReadableStreamFromString(input, streamOptions);
@@ -203,12 +314,15 @@ export const createReadableStream = (input = "", streamOptions = {}) => {
 	if (typeof input === "object" && input.byteLength) {
 		return createReadableStreamFromArrayBuffer(input, streamOptions);
 	}
+	if (Array.isArray(input)) {
+		return Readable.from(input.map(toSafe), streamOptions);
+	}
 	return Readable.from(input, streamOptions);
 };
 
 export const createReadableStreamFromString = (input, streamOptions = {}) => {
 	function* iterator(input) {
-		const size = streamOptions?.chunkSize ?? 16 * 1024;
+		const size = streamOptions?.chunkSize ?? 16_384; // 16KB
 		let position = 0;
 		const length = input.length;
 		while (position < length) {
@@ -224,7 +338,7 @@ export const createReadableStreamFromArrayBuffer = (
 	streamOptions = {},
 ) => {
 	function* iterator(input) {
-		const size = streamOptions?.chunkSize ?? 16 * 1024;
+		const size = streamOptions?.chunkSize ?? 16_384; // 16KB
 		const bytes = new Uint8Array(input);
 		let position = 0;
 		const length = bytes.byteLength;
@@ -247,7 +361,7 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 		...makeOptions(streamOptions),
 		transform(chunk, _encoding, callback) {
 			try {
-				const result = passThrough(chunk);
+				const result = passThrough(fromSafe(chunk));
 				if (result != null && typeof result.then === "function") {
 					result.then(() => {
 						this.push(chunk);
@@ -290,7 +404,7 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		...makeOptions(streamOptions),
 		transform(chunk, _encoding, callback) {
 			try {
-				const result = transform(chunk, enqueue);
+				const result = transform(fromSafe(chunk), enqueue);
 				if (result != null && typeof result.then === "function") {
 					result.then(() => callback(), callback);
 				} else {
@@ -318,7 +432,7 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		},
 	});
 	const enqueue = (chunk, encoding) => {
-		stream.push(chunk, encoding);
+		stream.push(toSafe(chunk), encoding);
 	};
 	return stream;
 };
@@ -333,7 +447,7 @@ export const createWritableStream = (write, final, streamOptions) => {
 		...makeOptions(streamOptions),
 		write(chunk, _encoding, callback) {
 			try {
-				const result = write(chunk);
+				const result = write(fromSafe(chunk));
 				if (result != null && typeof result.then === "function") {
 					result.then(() => callback(), callback);
 				} else {
@@ -363,5 +477,21 @@ export const createWritableStream = (write, final, streamOptions) => {
 };
 
 export const timeout = (ms, { signal } = {}) => {
-	return setTimeout(ms, { signal });
+	if (signal?.aborted) {
+		return Promise.reject(
+			new Error("Aborted", { cause: { code: "AbortError" } }),
+		);
+	}
+	return new Promise((resolve, reject) => {
+		const abortHandler = () => {
+			clearTimeout(timerId);
+			signal.removeEventListener("abort", abortHandler);
+			reject(new Error("Aborted", { cause: { code: "AbortError" } }));
+		};
+		if (signal) signal.addEventListener("abort", abortHandler);
+		const timerId = setTimeout(() => {
+			if (signal) signal.removeEventListener("abort", abortHandler);
+			resolve();
+		}, ms);
+	});
 };

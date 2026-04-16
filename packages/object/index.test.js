@@ -471,3 +471,66 @@ test(`${variant}: objectToEntriesStream should return undefined for missing keys
 
 	deepStrictEqual(output, [[1, undefined, 3]]);
 });
+
+// *** objectSkipConsecutiveDuplicatesStream shallow equality regression *** //
+test(`${variant}: objectSkipConsecutiveDuplicatesStream should use shallow equality by default`, async (_t) => {
+	const input = [{ a: 1 }, { a: 1 }, { a: 2 }, { a: 2 }, { a: 1 }];
+	const streams = [
+		createReadableStream(input),
+		objectSkipConsecutiveDuplicatesStream(),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+	deepStrictEqual(output, [{ a: 1 }, { a: 2 }, { a: 1 }]);
+});
+
+test(`${variant}: objectSkipConsecutiveDuplicatesStream isNestedObject should use deep comparison`, async (_t) => {
+	const input = [
+		{ a: 1, b: { c: 2 } },
+		{ a: 1, b: { c: 2 } },
+		{ a: 1, b: { c: 3 } },
+	];
+	const streams = [
+		createReadableStream(input),
+		objectSkipConsecutiveDuplicatesStream({ isNestedObject: true }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+	deepStrictEqual(output, [
+		{ a: 1, b: { c: 2 } },
+		{ a: 1, b: { c: 3 } },
+	]);
+});
+
+// *** objectPivotWideToLongStream shallow copy regression *** //
+test(`${variant}: objectPivotWideToLongStream should not mutate input chunks`, async (_t) => {
+	const input = [{ id: 1, x: 10, y: 20 }];
+	const original = { ...input[0] };
+	const streams = [
+		createReadableStream(input),
+		objectPivotWideToLongStream({
+			keys: ["x", "y"],
+			keyParam: "axis",
+			valueParam: "val",
+		}),
+	];
+	const stream = pipejoin(streams);
+	await streamToArray(stream);
+	deepStrictEqual(input[0], original);
+});
+
+// *** objectKeyJoinStream shallow copy regression *** //
+test(`${variant}: objectKeyJoinStream should not mutate input chunks`, async (_t) => {
+	const input = [{ first: "a", last: "b", other: "c" }];
+	const original = { ...input[0] };
+	const streams = [
+		createReadableStream(input),
+		objectKeyJoinStream({
+			keys: { full: ["first", "last"] },
+			separator: " ",
+		}),
+	];
+	const stream = pipejoin(streams);
+	await streamToArray(stream);
+	deepStrictEqual(input[0], original);
+});

@@ -8,6 +8,8 @@ export function awsSQSReceiveMessageStream(
 	options: {
 		client?: unknown;
 		QueueUrl?: string;
+		pollingActive?: boolean;
+		pollingDelay?: number;
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,

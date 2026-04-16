@@ -1,17 +1,68 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import { createReadStream, createWriteStream } from "node:fs";
-import { extname } from "node:path";
+import {
+	constants,
+	createReadStream,
+	createWriteStream,
+	lstatSync,
+	openSync,
+} from "node:fs";
+import { extname, resolve } from "node:path";
 import { makeOptions } from "@datastream/core";
 
-export const fileReadStream = ({ path, types }, streamOptions = {}) => {
+export const fileReadStream = (
+	{ path, basePath, types },
+	streamOptions = {},
+) => {
+	enforcePath(path, basePath);
 	enforceType(path, types);
+	if (basePath != null) {
+		// Open with O_NOFOLLOW to prevent TOCTOU symlink race
+		const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+		return createReadStream(null, { ...makeOptions(streamOptions), fd });
+	}
 	return createReadStream(path, makeOptions(streamOptions));
 };
 
-export const fileWriteStream = ({ path, types }, streamOptions = {}) => {
+export const fileWriteStream = (
+	{ path, basePath, types },
+	streamOptions = {},
+) => {
+	enforcePath(path, basePath);
 	enforceType(path, types);
+	if (basePath != null) {
+		const fd = openSync(
+			path,
+			constants.O_WRONLY |
+				constants.O_CREAT |
+				constants.O_TRUNC |
+				constants.O_NOFOLLOW,
+		);
+		return createWriteStream(null, { ...makeOptions(streamOptions), fd });
+	}
 	return createWriteStream(path, makeOptions(streamOptions));
+};
+
+const enforcePath = (path, basePath) => {
+	if (basePath != null) {
+		const resolvedPath = resolve(path);
+		const resolvedBase = resolve(basePath);
+		if (!resolvedPath.startsWith(resolvedBase)) {
+			throw new Error("Path traversal detected");
+		}
+		try {
+			const stat = lstatSync(resolvedPath);
+			if (stat.isSymbolicLink()) {
+				throw new Error("Symbolic links are not allowed");
+			}
+		} catch (e) {
+			if (e.message === "Symbolic links are not allowed") throw e;
+			// File may not exist yet (for writes), that's ok
+			if (e.code !== "ENOENT") {
+				throw new Error("Path not found", { cause: e });
+			}
+		}
+	}
 };
 
 const enforceType = (path, types = []) => {

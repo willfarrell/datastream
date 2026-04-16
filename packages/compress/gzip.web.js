@@ -9,8 +9,31 @@
 export const gzipCompressStream = (_options = {}, _streamOptions = {}) => {
 	return new CompressionStream("gzip");
 };
-export const gzipDecompressStream = (_options = {}, _streamOptions = {}) => {
-	return new DecompressionStream("gzip");
+export const gzipDecompressStream = (options = {}, _streamOptions = {}) => {
+	const { maxOutputSize } = options;
+	const decompressor = new DecompressionStream("gzip");
+	if (maxOutputSize != null) {
+		let outputSize = 0;
+		const limiter = new TransformStream({
+			transform(chunk, controller) {
+				outputSize += chunk.byteLength;
+				if (outputSize > maxOutputSize) {
+					controller.error(
+						new Error(
+							`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+						),
+					);
+					return;
+				}
+				controller.enqueue(chunk);
+			},
+		});
+		return {
+			readable: decompressor.readable.pipeThrough(limiter),
+			writable: decompressor.writable,
+		};
+	}
+	return decompressor;
 };
 
 export default {

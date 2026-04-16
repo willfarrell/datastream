@@ -1,4 +1,12 @@
-import type { StreamOptions, StreamResult } from "@datastream/core";
+/// <reference lib="dom" />
+/// <reference types="node" />
+import type {
+	DatastreamReadable,
+	DatastreamTransform,
+	DatastreamWritable,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 import {
 	createReadableStream,
 	createTransformStream,
@@ -55,29 +63,38 @@ describe("result", () => {
 
 describe("streamToArray", () => {
 	test("returns Promise of array", () => {
-		expect(streamToArray({})).type.toBe<Promise<unknown[]>>();
+		const stream = createReadableStream([1]);
+		expect(streamToArray(stream)).type.toBeAssignableTo<Promise<unknown[]>>();
 	});
 
 	test("accepts generic type", () => {
-		expect(streamToArray<string>({})).type.toBe<Promise<string[]>>();
+		const stream = createReadableStream(["a"]);
+		expect(streamToArray<string>(stream)).type.toBeAssignableTo<
+			Promise<string[]>
+		>();
 	});
 });
 
 describe("streamToObject", () => {
 	test("returns Promise of object", () => {
-		expect(streamToObject({})).type.toBe<Promise<Record<string, unknown>>>();
+		const stream = createReadableStream();
+		expect(streamToObject(stream)).type.toBeAssignableTo<
+			Promise<Record<string, unknown>>
+		>();
 	});
 });
 
 describe("streamToString", () => {
 	test("returns Promise of string", () => {
-		expect(streamToString({})).type.toBe<Promise<string>>();
+		const stream = createReadableStream();
+		expect(streamToString(stream)).type.toBeAssignableTo<Promise<string>>();
 	});
 });
 
 describe("streamToBuffer", () => {
 	test("returns Promise of Buffer", () => {
-		expect(streamToBuffer({})).type.toBe<Promise<Buffer>>();
+		const stream = createReadableStream();
+		expect(streamToBuffer(stream)).type.toBeAssignableTo<Promise<Buffer>>();
 	});
 });
 
@@ -111,15 +128,21 @@ describe("makeOptions", () => {
 
 describe("createReadableStream", () => {
 	test("accepts string input", () => {
-		expect(createReadableStream("hello")).type.not.toBeAssignableTo<never>();
+		expect(createReadableStream("hello")).type.toBeAssignableTo<
+			DatastreamReadable<string>
+		>();
 	});
 
 	test("accepts array input", () => {
-		expect(createReadableStream([1, 2, 3])).type.not.toBeAssignableTo<never>();
+		expect(createReadableStream([1, 2, 3])).type.toBeAssignableTo<
+			DatastreamReadable<number>
+		>();
 	});
 
 	test("accepts no input", () => {
-		expect(createReadableStream()).type.not.toBeAssignableTo<never>();
+		expect(createReadableStream()).type.toBeAssignableTo<
+			DatastreamReadable<unknown>
+		>();
 	});
 });
 
@@ -129,19 +152,21 @@ describe("createTransformStream", () => {
 			createTransformStream((chunk: string, enqueue: (c: string) => void) => {
 				enqueue(chunk);
 			}),
-		).type.not.toBeAssignableTo<never>();
+		).type.toBeAssignableTo<DatastreamTransform<string, string>>();
 	});
 });
 
 describe("createWritableStream", () => {
 	test("accepts write function", () => {
-		expect(
-			createWritableStream((chunk: unknown) => {}),
-		).type.not.toBeAssignableTo<never>();
+		expect(createWritableStream((_chunk: unknown) => {})).type.toBeAssignableTo<
+			DatastreamWritable<unknown>
+		>();
 	});
 
 	test("accepts no arguments", () => {
-		expect(createWritableStream()).type.not.toBeAssignableTo<never>();
+		expect(createWritableStream()).type.toBeAssignableTo<
+			DatastreamWritable<unknown>
+		>();
 	});
 });
 

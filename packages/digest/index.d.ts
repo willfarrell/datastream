@@ -10,16 +10,16 @@ export type DigestAlgorithm =
 	| "SHA3-384"
 	| "SHA3-512";
 
+type DigestStreamResult = unknown & {
+	result: () => StreamResult<string>;
+};
+
 export function digestStream(
 	options: {
 		algorithm: DigestAlgorithm;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): Promise<
-	unknown & {
-		result: () => StreamResult<string>;
-	}
->;
+): DigestStreamResult | Promise<DigestStreamResult>;
 
 export default digestStream;

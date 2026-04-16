@@ -3,37 +3,38 @@
 import { createPassThroughStream } from "@datastream/core";
 import detect from "charset-detector";
 
-const charsets = {
-	"UTF-8": 0,
-	"UTF-16BE": 0,
-	"UTF-16LE": 0,
-	"UTF-32BE": 0,
-	"UTF-32LE": 0,
-	Shift_JIS: 0,
-	"ISO-2022-JP": 0,
-	"ISO-2022-CN": 0,
-	"ISO-2022-KR": 0,
-	GB18030: 0,
-	"EUC-JP": 0,
-	"EUC-KR": 0,
-	Big5: 0,
-	"ISO-8859-1": 0,
-	"ISO-8859-2": 0,
-	"ISO-8859-5": 0,
-	"ISO-8859-6": 0,
-	"ISO-8859-7": 0,
-	"ISO-8859-8-I": 0,
-	"ISO-8859-8": 0,
-	"windows-1251": 0,
-	"windows-1256": 0,
-	"windows-1252": 0,
-	"windows-1254": 0,
-	"windows-1250": 0,
-	"KOIR8-R": 0,
-	"ISO-8859-9": 0,
-};
+const charsetKeys = [
+	"UTF-8",
+	"UTF-16BE",
+	"UTF-16LE",
+	"UTF-32BE",
+	"UTF-32LE",
+	"Shift_JIS",
+	"ISO-2022-JP",
+	"ISO-2022-CN",
+	"ISO-2022-KR",
+	"GB18030",
+	"EUC-JP",
+	"EUC-KR",
+	"Big5",
+	"ISO-8859-1",
+	"ISO-8859-2",
+	"ISO-8859-5",
+	"ISO-8859-6",
+	"ISO-8859-7",
+	"ISO-8859-8-I",
+	"ISO-8859-8",
+	"windows-1251",
+	"windows-1256",
+	"windows-1252",
+	"windows-1254",
+	"windows-1250",
+	"KOIR8-R",
+	"ISO-8859-9",
+];
 
 export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
+	const charsets = Object.fromEntries(charsetKeys.map((k) => [k, 0]));
 	const passThrough = (chunk) => {
 		const matches = detect(chunk);
 		if (matches.length) {

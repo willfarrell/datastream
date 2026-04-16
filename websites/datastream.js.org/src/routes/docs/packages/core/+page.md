@@ -145,7 +145,7 @@ Creates a stream that observes each chunk without modifying it. The chunk is aut
 |-----------|------|-------------|
 | `fn` | `(chunk) => void` | Called for each chunk, return value ignored |
 | `flush` | `() => void` | Optional, called when stream ends |
-| `streamOptions` | `object` | Stream configuration |
+| `streamOptions` | `object` | Stream configuration (supports `signal` for abort) |
 
 #### Example
 
@@ -169,7 +169,7 @@ Creates a stream that modifies chunks. Use `enqueue` to emit output — you can 
 |-----------|------|-------------|
 | `fn` | `(chunk, enqueue) => void` | Transform each chunk, call `enqueue(output)` to emit |
 | `flush` | `(enqueue) => void` | Optional, emit final chunks when stream ends |
-| `streamOptions` | `object` | Stream configuration |
+| `streamOptions` | `object` | Stream configuration (supports `signal` for abort) |
 
 #### Example
 
@@ -199,7 +199,7 @@ Creates a stream that consumes chunks at the end of a pipeline.
 |-----------|------|-------------|
 | `fn` | `(chunk) => void` | Called for each chunk |
 | `close` | `() => void` | Optional, called when stream ends |
-| `streamOptions` | `object` | Stream configuration |
+| `streamOptions` | `object` | Stream configuration (supports `signal` for abort) |
 
 #### Example
 

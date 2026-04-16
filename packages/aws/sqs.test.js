@@ -6,7 +6,7 @@ import {
 	SendMessageBatchCommand,
 	SQSClient,
 } from "@aws-sdk/client-sqs";
-import {
+import sqsDefault, {
 	awsSQSDeleteMessageStream,
 	awsSQSReceiveMessageStream,
 	awsSQSSendMessageStream,
@@ -59,6 +59,85 @@ test(`${variant}: awsSQSReceiveMessageStream should handle empty queue (Messages
 	const output = await streamToArray(stream);
 
 	deepStrictEqual(output, []);
+});
+
+test(`${variant}: awsSQSReceiveMessageStream should keep polling with pollingActive option`, async (_t) => {
+	const client = mockClient(SQSClient);
+	awsSQSSetClient(client);
+
+	client
+		.on(ReceiveMessageCommand)
+		.resolvesOnce({ Messages: [{ id: "a" }] })
+		.resolvesOnce({ Messages: [] })
+		.resolvesOnce({ Messages: [{ id: "b" }] })
+		.resolves({ Messages: [] });
+
+	const options = { pollingActive: true, pollingDelay: 0 };
+	const stream = await awsSQSReceiveMessageStream(options);
+
+	// Collect first 2 items manually since pollingActive means infinite generator
+	const output = [];
+	for await (const item of stream) {
+		output.push(item);
+		if (output.length >= 2) break;
+	}
+
+	deepStrictEqual(output, [{ id: "a" }, { id: "b" }]);
+});
+
+test(`${variant}: awsSQSReceiveMessageStream should delay polling when pollingActive and queue is empty`, async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+
+	const client = mockClient(SQSClient);
+	awsSQSSetClient(client);
+
+	client
+		.on(ReceiveMessageCommand)
+		.resolvesOnce({ Messages: [] })
+		.resolvesOnce({ Messages: [{ id: "a" }] })
+		.resolves({ Messages: [] });
+
+	const options = { pollingActive: true, pollingDelay: 1000 };
+	const stream = await awsSQSReceiveMessageStream(options);
+
+	const output = [];
+	const consuming = (async () => {
+		for await (const item of stream) {
+			output.push(item);
+			if (output.length >= 1) break;
+		}
+	})();
+
+	// Allow microtasks to settle so generator reaches setTimeout
+	await new Promise((resolve) => setImmediate(resolve));
+	// Advance mock timer past pollingDelay
+	t.mock.timers.tick(1000);
+
+	await consuming;
+
+	deepStrictEqual(output, [{ id: "a" }]);
+});
+
+test(`${variant}: awsSQSReceiveMessageStream should not delay polling when messages are returned`, async (_t) => {
+	const client = mockClient(SQSClient);
+	awsSQSSetClient(client);
+
+	client
+		.on(ReceiveMessageCommand)
+		.resolvesOnce({ Messages: [{ id: "a" }] })
+		.resolvesOnce({ Messages: [{ id: "b" }] })
+		.resolves({ Messages: [] });
+
+	const options = { pollingActive: true, pollingDelay: 1000 };
+	const stream = await awsSQSReceiveMessageStream(options);
+
+	const output = [];
+	for await (const item of stream) {
+		output.push(item);
+		if (output.length >= 2) break;
+	}
+
+	deepStrictEqual(output, [{ id: "a" }, { id: "b" }]);
 });
 
 test(`${variant}: awsSQSDeleteMessageStream should delete chunk`, async (_t) => {
@@ -151,4 +230,13 @@ test(`${variant}: awsSQSSendMessageStream should handle empty input`, async (_t)
 	const result = await pipeline(stream);
 
 	deepStrictEqual(result, {});
+});
+
+test(`${variant}: default export should include all stream functions`, (_t) => {
+	deepStrictEqual(Object.keys(sqsDefault).sort(), [
+		"deleteMessageStream",
+		"receiveMessageStream",
+		"sendMessageStream",
+		"setClient",
+	]);
 });

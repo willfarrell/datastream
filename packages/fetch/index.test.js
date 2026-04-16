@@ -1,6 +1,6 @@
 /* global Headers, Response */
 
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	createPassThroughStream,
@@ -468,6 +468,181 @@ test(`${variant}: fetchResponseStream should handle dataPath as array`, async (_
 	const output = await streamToArray(stream);
 	global.fetch = originalFetch;
 	deepStrictEqual(output, [{ id: 1 }]);
+});
+
+// *** fetchRateLimit 429 max retry regression *** //
+test(`${variant}: fetchRateLimit should throw after max retries on persistent 429`, async (_t) => {
+	const originalFetch = global.fetch;
+	let callCount = 0;
+	global.fetch = () => {
+		callCount++;
+		return Promise.resolve(
+			new Response("rate limited", {
+				status: 429,
+				statusText: "Too Many Requests",
+			}),
+		);
+	};
+
+	fetchSetDefaults({ rateLimit: 0 });
+	const config = [
+		{
+			url: "https://example.org/always-429",
+			rateLimit: 0,
+			retryMaxCount: 2,
+		},
+	];
+	try {
+		const stream = fetchResponseStream(config);
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("max retries"));
+		ok(callCount >= 2, `Expected at least 2 calls, got ${callCount}`);
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+// *** SSRF protection: same-origin pagination *** //
+test(`${variant}: fetchResponseStream should reject Link header with cross-origin URL`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url === "https://example.org/ssrf-link") {
+			return new Response(JSON.stringify({ data: [{ id: 1 }] }), {
+				status: 200,
+				headers: new Headers({
+					"Content-Type": "application/json",
+					Link: '<http://169.254.169.254/metadata>; rel="next"',
+				}),
+			});
+		}
+		return originalFetch(url);
+	};
+	fetchSetDefaults({ dataPath: "data" });
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/ssrf-link",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("does not match initial URL origin"));
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+test(`${variant}: fetchResponseStream should reject nextPath with cross-origin URL`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url === "https://example.org/ssrf-next") {
+			return new Response(
+				JSON.stringify({
+					data: [{ id: 1 }],
+					next: "http://127.0.0.1:8080/internal",
+				}),
+				{
+					status: 200,
+					headers: new Headers({
+						"Content-Type": "application/json",
+					}),
+				},
+			);
+		}
+		return originalFetch(url);
+	};
+	fetchSetDefaults({});
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/ssrf-next",
+			dataPath: "data",
+			nextPath: "next",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("does not match initial URL origin"));
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+test(`${variant}: fetchResponseStream should reject nextPath with different protocol`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url === "https://example.org/ssrf-proto") {
+			return new Response(
+				JSON.stringify({
+					data: [{ id: 1 }],
+					next: "file:///etc/passwd",
+				}),
+				{
+					status: 200,
+					headers: new Headers({
+						"Content-Type": "application/json",
+					}),
+				},
+			);
+		}
+		return originalFetch(url);
+	};
+	fetchSetDefaults({});
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/ssrf-proto",
+			dataPath: "data",
+			nextPath: "next",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("does not match initial URL origin"));
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+test(`${variant}: fetchResponseStream should reject Link header with different port`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url === "https://example.org/ssrf-port") {
+			return new Response(JSON.stringify({ data: [{ id: 1 }] }), {
+				status: 200,
+				headers: new Headers({
+					"Content-Type": "application/json",
+					Link: '<https://example.org:8443/admin>; rel="next"',
+				}),
+			});
+		}
+		return originalFetch(url);
+	};
+	fetchSetDefaults({ dataPath: "data" });
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/ssrf-port",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("does not match initial URL origin"));
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+test(`${variant}: fetchResponseStream should allow same-origin pagination`, async (_t) => {
+	// Existing Link header tests (json-obj/2 → json-obj/3) already verify this,
+	// but adding an explicit test for clarity.
+	fetchSetDefaults({ dataPath: "", headers: { Accept: "application/json" } });
+	const config = [{ url: "https://example.org/json-obj/2" }];
+	const stream = fetchResponseStream(config);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		{ key: "item", value: 2 },
+		{ key: "item", value: 3 },
+	]);
 });
 
 // *** default export *** //

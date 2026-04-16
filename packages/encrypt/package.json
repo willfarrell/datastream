@@ -1,0 +1,73 @@
+{
+	"name": "@datastream/encrypt",
+	"version": "0.2.0",
+	"description": "Symmetric encryption/decryption streams",
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"engineStrict": true,
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.node.mjs",
+	"module": "./index.web.mjs",
+	"exports": {
+		".": {
+			"node": {
+				"import": {
+					"types": "./index.d.ts",
+					"default": "./index.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./index.d.ts",
+				"default": "./index.web.mjs"
+			}
+		},
+		"./webstream": {
+			"types": "./index.d.ts",
+			"default": "./index.web.mjs"
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"*.mjs",
+		"*.map",
+		"*.d.ts"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test",
+		"test:benchmark": "node __benchmarks__/index.js"
+	},
+	"license": "MIT",
+	"keywords": [
+		"Web Stream API",
+		"Node Stream API"
+	],
+	"author": {
+		"name": "datastream contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "github:willfarrell/datastream",
+		"directory": "packages/encrypt"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"dependencies": {
+		"@datastream/core": "0.2.0"
+	},
+	"peerDependencies": {
+		"libsodium-wrappers": ">=0.7.0"
+	},
+	"peerDependenciesMeta": {
+		"libsodium-wrappers": {
+			"optional": true
+		}
+	}
+}

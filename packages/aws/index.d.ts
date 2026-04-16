@@ -1,6 +1,16 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 export {
+	awsCloudWatchLogsGetLogEventsStream,
+	awsCloudWatchLogsFilterLogEventsStream,
+	awsCloudWatchLogsSetClient,
+} from "@datastream/aws/cloudwatch-logs";
+export {
+	awsKinesisGetRecordsStream,
+	awsKinesisPutRecordsStream,
+	awsKinesisSetClient,
+} from "@datastream/aws/kinesis";
+export {
 	awsS3GetObjectStream,
 	awsS3PutObjectStream,
 	awsS3ChecksumStream,
@@ -9,6 +19,7 @@ export {
 export {
 	awsDynamoDBQueryStream,
 	awsDynamoDBScanStream,
+	awsDynamoDBExecuteStatementStream,
 	awsDynamoDBGetItemStream,
 	awsDynamoDBPutItemStream,
 	awsDynamoDBDeleteItemStream,

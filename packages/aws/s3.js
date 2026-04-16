@@ -19,6 +19,7 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 	const { client, ...params } = options;
 	const { Body } = await (client ?? defaultClient).send(
 		new GetObjectCommand(params),
+		{ abortSignal: streamOptions.signal },
 	);
 	if (!Body) {
 		throw new Error("S3.GetObject not found", { cause: params });
@@ -56,7 +57,7 @@ export const awsS3ChecksumStream = (
 	streamOptions = {},
 ) => {
 	ChecksumAlgorithm ??= "SHA256";
-	partSize ??= 17_179_870;
+	partSize ??= 17_179_870; // ~16MB, just under S3 multipart minimum
 	const algorithm = _algorithms[ChecksumAlgorithm];
 	if (!algorithm)
 		throw new Error(`Unsupported ChecksumAlgorithm: ${ChecksumAlgorithm}`);

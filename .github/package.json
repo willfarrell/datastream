@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/github-workflows",
-	"version": "0.1.6",
+	"version": "0.2.0",
 	"private": true,
 	"engines": {
 		"node": ">=24.0"

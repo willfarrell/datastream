@@ -1,10 +1,17 @@
 import {
+	awsCloudWatchLogsFilterLogEventsStream,
+	awsCloudWatchLogsGetLogEventsStream,
+	awsCloudWatchLogsSetClient,
 	awsDynamoDBDeleteItemStream,
+	awsDynamoDBExecuteStatementStream,
 	awsDynamoDBGetItemStream,
 	awsDynamoDBPutItemStream,
 	awsDynamoDBQueryStream,
 	awsDynamoDBScanStream,
 	awsDynamoDBSetClient,
+	awsKinesisGetRecordsStream,
+	awsKinesisPutRecordsStream,
+	awsKinesisSetClient,
 	awsLambdaReadableStream,
 	awsLambdaResponseStream,
 	awsLambdaSetClient,
@@ -20,6 +27,47 @@ import {
 	awsSQSSetClient,
 } from "@datastream/aws";
 import { describe, expect, test } from "tstyche";
+
+describe("CloudWatch Logs", () => {
+	test("awsCloudWatchLogsSetClient accepts client", () => {
+		expect(awsCloudWatchLogsSetClient({})).type.toBe<void>();
+	});
+
+	test("awsCloudWatchLogsGetLogEventsStream returns promise", () => {
+		expect(
+			awsCloudWatchLogsGetLogEventsStream({
+				logGroupName: "/test/group",
+				logStreamName: "stream1",
+			}),
+		).type.toBeAssignableTo<Promise<unknown>>();
+	});
+
+	test("awsCloudWatchLogsFilterLogEventsStream returns promise", () => {
+		expect(
+			awsCloudWatchLogsFilterLogEventsStream({
+				logGroupName: "/test/group",
+			}),
+		).type.toBeAssignableTo<Promise<unknown>>();
+	});
+});
+
+describe("Kinesis", () => {
+	test("awsKinesisSetClient accepts client", () => {
+		expect(awsKinesisSetClient({})).type.toBe<void>();
+	});
+
+	test("awsKinesisGetRecordsStream returns promise", () => {
+		expect(
+			awsKinesisGetRecordsStream({ ShardIterator: "iter1" }),
+		).type.toBeAssignableTo<Promise<unknown>>();
+	});
+
+	test("awsKinesisPutRecordsStream returns stream", () => {
+		expect(
+			awsKinesisPutRecordsStream({ StreamName: "test-stream" }),
+		).type.not.toBeAssignableTo<never>();
+	});
+});
 
 describe("S3", () => {
 	test("awsS3SetClient accepts client", () => {
@@ -64,6 +112,14 @@ describe("DynamoDB", () => {
 		expect(awsDynamoDBScanStream({ TableName: "t" })).type.toBeAssignableTo<
 			Promise<unknown>
 		>();
+	});
+
+	test("awsDynamoDBExecuteStatementStream returns promise", () => {
+		expect(
+			awsDynamoDBExecuteStatementStream({
+				Statement: 'SELECT * FROM "TableName"',
+			}),
+		).type.toBeAssignableTo<Promise<unknown>>();
 	});
 
 	test("awsDynamoDBGetItemStream returns promise", () => {

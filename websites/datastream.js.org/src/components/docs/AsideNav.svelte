@@ -20,6 +20,7 @@ const nav = {
 	},
 	"Data Formats": {
 		csv: "/docs/packages/csv",
+		json: "/docs/packages/json",
 		string: "/docs/packages/string",
 		object: "/docs/packages/object",
 		base64: "/docs/packages/base64",
@@ -29,6 +30,7 @@ const nav = {
 		validate: "/docs/packages/validate",
 		compress: "/docs/packages/compress",
 		digest: "/docs/packages/digest",
+		encrypt: "/docs/packages/encrypt",
 	},
 	Examples: {
 		"CSV ETL": "/docs/examples/csv-etl",
@@ -36,6 +38,7 @@ const nav = {
 		"S3 to S3": "/docs/examples/s3-transform",
 		"Browser files": "/docs/examples/browser-file-processing",
 		"Checksum & compress": "/docs/examples/checksum-compress",
+		Parquet: "/docs/examples/parquet",
 	},
 };
 </script>

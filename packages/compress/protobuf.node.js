@@ -10,11 +10,22 @@ export const protobufSerializeStream = ({ Type } = {}, streamOptions = {}) => {
 };
 
 export const protobufDeserializeStream = (
-	{ Type } = {},
+	{ Type, maxOutputSize } = {},
 	streamOptions = {},
 ) => {
+	let outputSize = 0;
 	const transform = (chunk, enqueue) => {
-		enqueue(Type.decode(chunk));
+		const decoded = Type.decode(chunk);
+		if (maxOutputSize != null) {
+			const encoded = JSON.stringify(decoded);
+			outputSize += encoded?.length ?? 0;
+			if (outputSize > maxOutputSize) {
+				throw new Error(
+					`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+				);
+			}
+		}
+		enqueue(decoded);
 	};
 	return createTransformStream(transform, streamOptions);
 };

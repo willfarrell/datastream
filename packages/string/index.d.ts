@@ -49,6 +49,7 @@ export function stringReplaceStream(
 	options: {
 		pattern: string | RegExp;
 		replacement: string;
+		maxBufferSize?: number;
 	},
 	streamOptions?: StreamOptions,
 ): unknown;
@@ -56,6 +57,7 @@ export function stringReplaceStream(
 export function stringSplitStream(
 	options: {
 		separator: string;
+		maxBufferSize?: number;
 	},
 	streamOptions?: StreamOptions,
 ): unknown;

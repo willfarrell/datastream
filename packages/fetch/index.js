@@ -7,7 +7,22 @@ import {
 	timeout,
 } from "@datastream/core";
 
-const defaults = {
+const validatePaginationUrl = (nextUrl, origin) => {
+	if (!nextUrl) return;
+	let url;
+	try {
+		url = new URL(nextUrl);
+	} catch {
+		throw new Error(`Invalid pagination URL: ${nextUrl}`);
+	}
+	if (url.origin !== origin) {
+		throw new Error(
+			`Pagination URL origin (${url.origin}) does not match initial URL origin (${origin})`,
+		);
+	}
+};
+
+let defaults = {
 	// custom
 	rateLimit: 0.01, // 100 per sec
 	dataPath: undefined, // for json response, where the data is to return form body root
@@ -34,7 +49,7 @@ const mergeOptions = (options = {}) => {
 };
 
 export const fetchSetDefaults = (options) => {
-	Object.assign(defaults, mergeOptions(options));
+	defaults = mergeOptions(options);
 };
 
 // Note: requires EncodeStream to ensure it's Uint8Array
@@ -83,6 +98,7 @@ async function* fetchGenerator(fetchOptions, streamOptions) {
 				"%20",
 			);
 		}
+		options.__origin = new URL(options.url).origin;
 		const response = await fetchUnknown(options, streamOptions);
 		for await (const chunk of response) {
 			yield chunk;
@@ -117,6 +133,7 @@ async function* fetchJson(options, streamOptions) {
 		url = parseLinkFromHeader(response.headers);
 		url ??= parseNextPath(body, nextPath);
 		url ??= paginateUsingQuery(options);
+		validatePaginationUrl(url, options.__origin);
 		options.url = url;
 		const data = pickPath(body, dataPath);
 		if (Array.isArray(data)) {
@@ -194,8 +211,30 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 	if (!response.ok) {
 		// 429 Too Many Requests
 		if (response.status === 429) {
+			options.retryCount = (options.retryCount ?? 0) + 1;
+			const retryMaxCount = options.retryMaxCount ?? 10;
+			if (options.retryCount >= retryMaxCount) {
+				await response.body?.cancel();
+				throw new Error(
+					`fetch ${response.status} ${options.method} ${options.url} max retries (${retryMaxCount}) exceeded`,
+					{
+						cause: {
+							status: response.status,
+							url: options.url,
+							method: options.method,
+						},
+					},
+				);
+			}
+			await response.body?.cancel();
+			const retryAfter = response.headers.get("Retry-After");
+			const backoffMs = retryAfter
+				? Number.parseInt(retryAfter, 10) * 1000 || 1000
+				: Math.min(1000 * 2 ** (options.retryCount - 1), 30_000);
+			await timeout(backoffMs, streamOptions);
 			return fetchRateLimit(options, streamOptions);
 		}
+		await response.body?.cancel();
 		throw new Error(
 			`fetch ${response.status} ${options.method} ${options.url}`,
 			{

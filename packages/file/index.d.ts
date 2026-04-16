@@ -21,3 +21,9 @@ export function fileWriteStream(
 	},
 	streamOptions?: StreamOptions,
 ): Promise<unknown>;
+
+declare const _default: {
+	readStream: typeof fileReadStream;
+	writeStream: typeof fileWriteStream;
+};
+export default _default;

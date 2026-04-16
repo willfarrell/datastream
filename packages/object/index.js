@@ -70,21 +70,16 @@ export const objectPivotLongToWideStream = (
 };
 
 export const objectPivotWideToLongStream = (
-	{ keys, keyParam, valueParam },
+	{ keys, keyParam, valueParam, isNestedObject },
 	streamOptions = {},
 ) => {
 	keyParam ??= "keyParam";
 	valueParam ??= "valueParam";
 
+	const clone = isNestedObject ? deepClone : shallowClone;
+
 	const transform = (chunk, enqueue) => {
-		let value;
-		try {
-			value = structuredClone(chunk);
-		} catch (e) {
-			throw new Error("Failed to clone chunk, possibly circular reference", {
-				cause: e,
-			});
-		}
+		const value = clone(chunk);
 		for (const key of keys) {
 			delete value[key];
 		}
@@ -124,20 +119,13 @@ export const objectKeyValuesStream = ({ key, values }, streamOptions = {}) => {
 };
 
 export const objectKeyJoinStream = (
-	{ keys, separator },
+	{ keys, separator, isNestedObject },
 	streamOptions = {},
 ) => {
+	const clone = isNestedObject ? deepClone : shallowClone;
 	const transform = (chunk, enqueue) => {
-		let value;
-		try {
-			value = structuredClone(chunk);
-		} catch (e) {
-			throw new Error("Failed to clone chunk, possibly circular reference", {
-				cause: e,
-			});
-		}
+		const value = clone(chunk);
 		for (const newKey of Object.keys(keys)) {
-			// perf opportunity
 			value[newKey] = keys[newKey]
 				.map((oldKey) => {
 					delete value[oldKey];
@@ -225,26 +213,49 @@ export const objectToEntriesStream = ({ keys }, streamOptions = {}) => {
 	return createTransformStream(transform, streamOptions);
 };
 
+const deepClone = (obj) => {
+	try {
+		return structuredClone(obj);
+	} catch (e) {
+		throw new Error("Failed to clone chunk, possibly circular reference", {
+			cause: e,
+		});
+	}
+};
+const shallowClone = (obj) => ({ ...obj });
+
+const shallowEqual = (a, b) => {
+	if (a === b) return true;
+	if (a == null || b == null) return false;
+	const keysA = Object.keys(a);
+	if (keysA.length !== Object.keys(b).length) return false;
+	for (const key of keysA) {
+		if (a[key] !== b[key]) return false;
+	}
+	return true;
+};
+
+const deepEqual = (a, b) => {
+	try {
+		return JSON.stringify(a) === JSON.stringify(b);
+	} catch (e) {
+		throw new Error("Failed to stringify chunk, possibly circular reference", {
+			cause: e,
+		});
+	}
+};
+
 export const objectSkipConsecutiveDuplicatesStream = (
-	_options = {},
+	options = {},
 	streamOptions = {},
 ) => {
+	const { isNestedObject } = options;
+	const equal = isNestedObject ? deepEqual : shallowEqual;
 	let previousChunk;
 	const transform = (chunk, enqueue) => {
-		let chunkStringified;
-		try {
-			chunkStringified = JSON.stringify(chunk);
-		} catch (e) {
-			throw new Error(
-				"Failed to stringify chunk, possibly circular reference",
-				{
-					cause: e,
-				},
-			);
-		}
-		if (chunkStringified !== previousChunk) {
+		if (!equal(chunk, previousChunk)) {
 			enqueue(chunk);
-			previousChunk = chunkStringified;
+			previousChunk = isNestedObject ? deepClone(chunk) : chunk;
 		}
 	};
 	return createTransformStream(transform, streamOptions);

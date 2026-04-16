@@ -1,5 +1,7 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
+import type { Readable, Transform, Writable } from "node:stream";
+
 // Core types used across all packages
 export interface StreamOptions {
 	highWaterMark?: number;
@@ -13,28 +15,63 @@ export interface StreamResult<T = unknown> {
 	value: T;
 }
 
-export interface ResultStream<_S, T = unknown> {
+export interface ResultStream<T = unknown> {
 	result: () => StreamResult<T> | Promise<StreamResult<T>>;
 }
 
+export type DatastreamReadable<T = unknown> = (ReadableStream<T> | Readable) & {
+	push?: (chunk: T | null) => void;
+};
+export type DatastreamTransform<I = unknown, O = I> =
+	| TransformStream<I, O>
+	| Transform;
+export type DatastreamWritable<T = unknown> = (WritableStream<T> | Writable) &
+	Partial<ResultStream>;
+export type DatastreamPassThrough<T = unknown> = (
+	| TransformStream<T, T>
+	| Transform
+) &
+	Partial<ResultStream>;
+export type DatastreamStream =
+	| DatastreamReadable
+	| DatastreamTransform
+	| DatastreamWritable
+	| DatastreamPassThrough;
+
 // Pipeline & utilities
 export function pipeline(
-	streams: unknown[],
+	streams: DatastreamStream[],
 	streamOptions?: StreamOptions,
 ): Promise<Record<string, unknown>>;
 export function pipejoin(
-	streams: unknown[],
+	streams: DatastreamStream[],
 	onError?: (error: Error) => void,
-): unknown;
-export function result(streams: unknown[]): Promise<Record<string, unknown>>;
+): DatastreamStream;
+export function result(
+	streams: DatastreamStream[],
+): Promise<Record<string, unknown>>;
 
 // Stream converters
-export function streamToArray<T = unknown>(stream: unknown): Promise<T[]>;
+export interface StreamCollectorOptions {
+	maxBufferSize?: number;
+}
+
+export function streamToArray<T = unknown>(
+	stream: DatastreamReadable<T>,
+	options?: StreamCollectorOptions,
+): Promise<T[]>;
 export function streamToObject<T = Record<string, unknown>>(
-	stream: unknown,
+	stream: DatastreamReadable,
+	options?: StreamCollectorOptions,
 ): Promise<T>;
-export function streamToString(stream: unknown): Promise<string>;
-export function streamToBuffer(stream: unknown): Promise<Buffer>;
+export function streamToString(
+	stream: DatastreamReadable,
+	options?: StreamCollectorOptions,
+): Promise<string>;
+export function streamToBuffer(
+	stream: DatastreamReadable,
+	options?: StreamCollectorOptions,
+): Promise<Buffer>;
 
 // Type guards
 export function isReadable(stream: unknown): stream is ReadableStream;
@@ -47,21 +84,21 @@ export function makeOptions(options?: StreamOptions): Record<string, unknown>;
 export function createReadableStream<T = unknown>(
 	input?: string | T[] | Iterable<T> | AsyncIterable<T>,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamReadable<T>;
 export function createReadableStreamFromString(
 	input: string,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamReadable<string>;
 export function createReadableStreamFromArrayBuffer(
 	input: ArrayBuffer | ArrayBufferLike,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamReadable<Uint8Array>;
 
 export function createPassThroughStream<T = unknown>(
 	passThrough?: ((chunk: T) => void | Promise<void>) | null,
 	flush?: (() => void | Promise<void>) | StreamOptions,
 	streamOptions?: StreamOptions,
-): unknown & ResultStream<unknown>;
+): DatastreamPassThrough<T> & ResultStream;
 
 export function createTransformStream<I = unknown, O = unknown>(
 	transform?:
@@ -74,13 +111,13 @@ export function createTransformStream<I = unknown, O = unknown>(
 		| ((enqueue: (chunk: O, encoding?: string) => void) => void | Promise<void>)
 		| StreamOptions,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform<I, O>;
 
 export function createWritableStream<T = unknown>(
 	write?: ((chunk: T) => void | Promise<void>) | null,
 	close?: (() => void | Promise<void>) | StreamOptions,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamWritable<T>;
 
 // Backpressure (Node.js only)
 export function backpressureGauge(streams: Record<string, unknown>): Record<

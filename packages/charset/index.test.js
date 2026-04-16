@@ -311,3 +311,24 @@ test(`${variant}: charsetDecodeStream should handle empty chunks`, async (_t) =>
 
 	deepStrictEqual(output, "test");
 });
+
+// *** charsetDetectStream concurrent isolation regression *** //
+test(`${variant}: charsetDetectStream instances should not share state`, async (_t) => {
+	const input1 = [Buffer.from("Hello World")];
+	const input2 = [Buffer.from("Bonjour le monde")];
+
+	const streams1 = [createReadableStream(input1), charsetDetectStream()];
+	const streams2 = [createReadableStream(input2), charsetDetectStream()];
+
+	await Promise.all([pipeline(streams1), pipeline(streams2)]);
+
+	const result1 = streams1[1].result();
+	const result2 = streams2[1].result();
+
+	// Each stream should have independent results
+	strictEqual(result1.key, "charset");
+	strictEqual(result2.key, "charset");
+	// Confidence should reflect only the data from each respective stream
+	strictEqual(typeof result1.value.confidence, "number");
+	strictEqual(typeof result2.value.confidence, "number");
+});

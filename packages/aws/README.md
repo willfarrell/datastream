@@ -1,7 +1,7 @@
 <div align="center">
   <h1>&lt;datastream&gt; `aws`</h1>
   <img alt="datastream logo" src="https://raw.githubusercontent.com/willfarrell/datastream/main/docs/img/datastream-logo.svg"/>
-  <p><strong>AWS service streams for S3, SQS, SNS, Lambda, and DynamoDB.</strong></p>
+  <p><strong>AWS service streams for CloudWatch Logs, DynamoDB, Kinesis, Lambda, S3, SNS, and SQS.</strong></p>
 <p>
 	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
 	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-dast.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-dast.yml/badge.svg" alt="GitHub Actions dast test status"></a>

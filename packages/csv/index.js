@@ -36,7 +36,10 @@ const stripBOM = (str) => {
 const resolveLazy = (value) => (typeof value === "function" ? value() : value);
 
 export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
-	const { chunkSize = 1024, resultKey } = options;
+	const {
+		chunkSize = 1024, // 1KB
+		resultKey,
+	} = options;
 
 	const value = {
 		delimiterChar: undefined,
@@ -99,7 +102,7 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 
 export const csvDetectHeaderStream = (options = {}, streamOptions = {}) => {
 	let {
-		chunkSize = 1024,
+		chunkSize = 1024, // 1KB
 		parser,
 		delimiterChar,
 		newlineChar,
@@ -209,6 +212,7 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 	const escapeCharCode = ctx.escapeCharCode;
 	const escapeIsQuote = ctx.escapeIsQuote;
 	const escapedQuote = ctx.escapedQuote;
+	const fieldMaxSize = ctx.fieldMaxSize;
 
 	const len = text.length;
 	let numCols = ctx.numCols;
@@ -275,6 +279,11 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 							.substring(contentStart, closeQ)
 							.replaceAll(escapedQuote, quoteChar)
 					: text.substring(contentStart, closeQ);
+				if (field.length > fieldMaxSize) {
+					throw new Error(
+						`CSV field size (${field.length}) exceeds fieldMaxSize (${fieldMaxSize} bytes)`,
+					);
+				}
 				pos = closeQ + 1;
 
 				// Post-quote dispatch: delimiter, newline, or end-of-input
@@ -362,6 +371,11 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 							.substring(contentStart, closeQ)
 							.replaceAll(escapedQuote, quoteChar)
 					: text.substring(contentStart, closeQ);
+				if (field.length > fieldMaxSize) {
+					throw new Error(
+						`CSV field size (${field.length}) exceeds fieldMaxSize (${fieldMaxSize} bytes)`,
+					);
+				}
 				pos = closeQ + 1;
 
 				// Post-quote dispatch: delimiter, newline, or end-of-input
@@ -553,12 +567,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 	ctx.errors = errors;
 };
 
-// Stable enqueue callback — avoids V8 "wrong call target" deopt from per-call closures
-let _quotedParserRows = [];
-const _quotedParserEnqueue = (row) => {
-	_quotedParserRows.push(row);
-};
-
 export const csvQuotedParser = (text, options = {}, isFlushing = false) => {
 	const delimiterChar = options.delimiterChar ?? defaultDelimiterChar;
 	const newlineChar = options.newlineChar ?? defaultNewlineChar;
@@ -588,10 +596,8 @@ export const csvQuotedParser = (text, options = {}, isFlushing = false) => {
 		tail: "",
 		errors: null,
 	};
-	_quotedParserRows = [];
-	csvParseInline(text, ctx, isFlushing, _quotedParserEnqueue);
-	const rows = _quotedParserRows;
-	_quotedParserRows = [];
+	const rows = [];
+	csvParseInline(text, ctx, isFlushing, (row) => rows.push(row));
 	return {
 		rows,
 		tail: ctx.tail,
@@ -637,7 +643,14 @@ export const csvUnquotedParser = (text, options = {}, isFlushing = false) => {
 // --- Streaming wrapper ---
 
 const csvSteamifyParser = (options = {}) => {
-	let { parser, delimiterChar, newlineChar, quoteChar, escapeChar } = options;
+	let {
+		parser,
+		delimiterChar,
+		newlineChar,
+		quoteChar,
+		escapeChar,
+		fieldMaxSize,
+	} = options;
 	const useCustomParser = parser != null;
 	parser ??= csvQuotedParser;
 
@@ -667,6 +680,7 @@ const csvSteamifyParser = (options = {}) => {
 		ctx.escapeCharCode = escapeChar.charCodeAt(0);
 		ctx.escapeIsQuote = escapeChar === quoteChar;
 		ctx.escapedQuote = escapeChar + quoteChar;
+		ctx.fieldMaxSize = fieldMaxSize ?? 16_777_216;
 		resolved = true;
 	};
 
@@ -675,6 +689,11 @@ const csvSteamifyParser = (options = {}) => {
 		const str = typeof chunk === "string" ? chunk : chunk.toString();
 		const text = buffer.length > 0 ? buffer + str : str;
 		buffer = "";
+		if (text.length > ctx.fieldMaxSize * 2) {
+			throw new Error(
+				`CSV buffer size (${text.length}) exceeds safety limit, likely unterminated quoted field`,
+			);
+		}
 
 		if (useCustomParser) {
 			const result = parser(text, ctx, false);
@@ -721,7 +740,13 @@ const csvSteamifyParser = (options = {}) => {
 // --- Stream exports ---
 
 export const csvParseStream = (options = {}, streamOptions = {}) => {
-	const { chunkSize = 2 * 1024 * 1024, resultKey, ...parserOptions } = options;
+	const {
+		chunkSize = 2_097_152, // 2MB
+		fieldMaxSize = 16_777_216, // 16MB
+		resultKey,
+		...parserOptions
+	} = options;
+	parserOptions.fieldMaxSize = fieldMaxSize;
 	streamOptions.highWaterMark ??= 16384;
 
 	const streamParse = csvSteamifyParser(parserOptions);

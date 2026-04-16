@@ -1,7 +1,7 @@
 import { deepStrictEqual } from "node:assert";
 import test from "node:test";
 import { PublishBatchCommand, SNSClient } from "@aws-sdk/client-sns";
-import {
+import snsDefault, {
 	awsSNSPublishMessageStream,
 	awsSNSSetClient,
 } from "@datastream/aws/sns";
@@ -61,4 +61,11 @@ test(`${variant}: awsSNSPublishMessageStream should handle empty input`, async (
 	const result = await pipeline(stream);
 
 	deepStrictEqual(result, {});
+});
+
+test(`${variant}: default export should include all stream functions`, (_t) => {
+	deepStrictEqual(Object.keys(snsDefault).sort(), [
+		"publishMessageStream",
+		"setClient",
+	]);
 });

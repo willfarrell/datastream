@@ -39,28 +39,55 @@ export const result = async (streams) => {
 	return output;
 };
 
-export const streamToArray = async (stream) => {
+export const streamToArray = async (stream, { maxBufferSize } = {}) => {
 	const value = [];
+	let size = 0;
 	for await (const chunk of stream) {
+		if (maxBufferSize != null) {
+			size += chunk?.length ?? chunk?.byteLength ?? 1;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
+			}
+		}
 		value.push(chunk);
 	}
 	return value;
 };
 
-export const streamToObject = async (stream) => {
-	const value = {};
+export const streamToObject = async (stream, { maxBufferSize } = {}) => {
+	const value = Object.create(null);
+	let size = 0;
 	for await (const chunk of stream) {
+		if (maxBufferSize != null) {
+			size += chunk?.length ?? chunk?.byteLength ?? 1;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
+			}
+		}
 		Object.assign(value, chunk);
 	}
-	return value;
+	return { ...value };
 };
 
-export const streamToString = async (stream) => {
-	let value = "";
+export const streamToString = async (stream, { maxBufferSize } = {}) => {
+	const chunks = [];
+	let size = 0;
 	for await (const chunk of stream) {
-		value += chunk;
+		if (maxBufferSize != null) {
+			size += chunk?.length ?? chunk?.byteLength ?? 0;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
+			}
+		}
+		chunks.push(chunk);
 	}
-	return value;
+	return chunks.join("");
 };
 
 export const isReadable = (stream) => {
@@ -92,7 +119,9 @@ export const makeOptions = ({
 };
 
 export const createReadableStream = (input, streamOptions = {}) => {
+	const maxQueueSize = streamOptions.highWaterMark ?? 1024;
 	const queued = [];
+	const { readableStrategy } = makeOptions(streamOptions);
 	const stream = new ReadableStream(
 		{
 			async start(controller) {
@@ -101,7 +130,7 @@ export const createReadableStream = (input, streamOptions = {}) => {
 					controller.enqueue(chunk);
 				}
 				if (typeof input === "string") {
-					const chunkSize = streamOptions?.chunkSize ?? 16 * 1024;
+					const chunkSize = streamOptions?.chunkSize ?? 16_384; // 16KB
 					let position = 0;
 					const length = input.length;
 					while (position < length) {
@@ -111,9 +140,18 @@ export const createReadableStream = (input, streamOptions = {}) => {
 					}
 					controller.close();
 				} else if (Array.isArray(input)) {
-					// TODO update to for(;;) loop, faster
-					for (const chunk of input) {
-						controller.enqueue(chunk);
+					for (let i = 0, l = input.length; i < l; i++) {
+						controller.enqueue(input[i]);
+					}
+					controller.close();
+				} else if (typeof input === "object" && input.byteLength) {
+					const bytes = new Uint8Array(input.buffer ?? input);
+					const chunkSize = streamOptions?.chunkSize ?? 16_384; // 16KB
+					let position = 0;
+					const length = bytes.byteLength;
+					while (position < length) {
+						controller.enqueue(bytes.subarray(position, position + chunkSize));
+						position += chunkSize;
 					}
 					controller.close();
 				} else if (["function", "object"].includes(typeof input)) {
@@ -134,9 +172,16 @@ export const createReadableStream = (input, streamOptions = {}) => {
 				}
 			},
 		},
-		makeOptions(streamOptions),
+		readableStrategy,
 	);
-	stream.push = (chunk) => queued.push(chunk);
+	stream.push = (chunk) => {
+		if (queued.length >= maxQueueSize) {
+			throw new Error(
+				`createReadableStream queue size (${queued.length}) exceeds limit (${maxQueueSize})`,
+			);
+		}
+		queued.push(chunk);
+	};
 	return stream;
 };
 
@@ -146,9 +191,19 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 		streamOptions = flush;
 		flush = undefined;
 	}
+	const { signal } = streamOptions ?? {};
+	const { writableStrategy, readableStrategy } = makeOptions(streamOptions);
 	return new TransformStream(
 		{
-			start() {},
+			start(controller) {
+				if (signal) {
+					signal.addEventListener("abort", () => {
+						controller.error(
+							signal.reason ?? new DOMException("Aborted", "AbortError"),
+						);
+					});
+				}
+			},
 			async transform(chunk, controller) {
 				await passThrough(chunk);
 				controller.enqueue(chunk);
@@ -160,7 +215,8 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 				controller.terminate();
 			},
 		},
-		makeOptions(streamOptions),
+		writableStrategy,
+		readableStrategy,
 	);
 };
 
@@ -170,9 +226,19 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		streamOptions = flush;
 		flush = undefined;
 	}
+	const { signal } = streamOptions ?? {};
+	const { writableStrategy, readableStrategy } = makeOptions(streamOptions);
 	return new TransformStream(
 		{
-			start() {},
+			start(controller) {
+				if (signal) {
+					signal.addEventListener("abort", () => {
+						controller.error(
+							signal.reason ?? new DOMException("Aborted", "AbortError"),
+						);
+					});
+				}
+			},
 			async transform(chunk, controller) {
 				const enqueue = (chunk) => {
 					controller.enqueue(chunk);
@@ -189,7 +255,8 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 				controller.terminate();
 			},
 		},
-		makeOptions(streamOptions),
+		writableStrategy,
+		readableStrategy,
 	);
 };
 
@@ -199,8 +266,19 @@ export const createWritableStream = (write, close, streamOptions) => {
 		streamOptions = close;
 		close = undefined;
 	}
+	const { signal } = streamOptions ?? {};
+	const { writableStrategy } = makeOptions(streamOptions);
 	return new WritableStream(
 		{
+			start(controller) {
+				if (signal) {
+					signal.addEventListener("abort", () => {
+						controller.error(
+							signal.reason ?? new DOMException("Aborted", "AbortError"),
+						);
+					});
+				}
+			},
 			async write(chunk) {
 				await write(chunk);
 			},
@@ -210,23 +288,26 @@ export const createWritableStream = (write, close, streamOptions) => {
 				}
 			},
 		},
-		makeOptions(streamOptions),
+		writableStrategy,
 	);
 };
 
 export const timeout = (ms, { signal } = {}) => {
 	if (signal?.aborted) {
-		return Promise.reject(new Error("Aborted", "AbortError"));
+		return Promise.reject(
+			new Error("Aborted", { cause: { code: "AbortError" } }),
+		);
 	}
 	return new Promise((resolve, reject) => {
 		const abortHandler = () => {
-			clearTimeout(timeout);
-			reject(new Error("Aborted", "AbortError"));
+			clearTimeout(timerId);
+			signal.removeEventListener("abort", abortHandler);
+			reject(new Error("Aborted", { cause: { code: "AbortError" } }));
 		};
 		if (signal) signal.addEventListener("abort", abortHandler);
-		setTimeout(() => {
-			resolve();
+		const timerId = setTimeout(() => {
 			if (signal) signal.removeEventListener("abort", abortHandler);
+			resolve();
 		}, ms);
 	});
 };

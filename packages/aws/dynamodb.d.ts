@@ -25,6 +25,16 @@ export function awsDynamoDBScanStream(
 	streamOptions?: StreamOptions,
 ): Promise<unknown>;
 
+export function awsDynamoDBExecuteStatementStream(
+	options: {
+		client?: unknown;
+		Statement?: string;
+		NextToken?: string;
+		[key: string]: unknown;
+	},
+	streamOptions?: StreamOptions,
+): Promise<unknown>;
+
 export function awsDynamoDBGetItemStream(
 	options: {
 		client?: unknown;

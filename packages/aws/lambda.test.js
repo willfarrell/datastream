@@ -13,9 +13,12 @@ if (variant === "node") {
 	const { InvokeWithResponseStreamCommand, LambdaClient } = await import(
 		"@aws-sdk/client-lambda"
 	);
-	const { awsLambdaReadableStream, awsLambdaSetClient } = await import(
-		"@datastream/aws/lambda"
-	);
+	const lambdaModule = await import("@datastream/aws/lambda");
+	const {
+		default: lambdaDefault,
+		awsLambdaReadableStream,
+		awsLambdaSetClient,
+	} = lambdaModule;
 	const { createReadableStream, pipeline } = await import("@datastream/core");
 	const { mockClient } = await import("aws-sdk-client-mock");
 
@@ -119,5 +122,36 @@ if (variant === "node") {
 		}
 
 		deepStrictEqual(result, "abc");
+	});
+
+	test(`${variant}: awsLambdaReadableStream should pass abort signal to client.send`, async (_t) => {
+		const client = mockClient(LambdaClient);
+		awsLambdaSetClient(client);
+
+		const encoder = new TextEncoder();
+		client.on(InvokeWithResponseStreamCommand).resolves({
+			EventStream: createReadableStream([
+				{ PayloadChunk: { Payload: encoder.encode("ok") } },
+			]),
+		});
+
+		const controller = new AbortController();
+		for await (const _chunk of await awsLambdaReadableStream(
+			{ FunctionName: "f" },
+			{ signal: controller.signal },
+		)) {
+			// consume
+		}
+
+		const calls = client.commandCalls(InvokeWithResponseStreamCommand);
+		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+	});
+
+	test(`${variant}: default export should include all stream functions`, (_t) => {
+		deepStrictEqual(Object.keys(lambdaDefault).sort(), [
+			"readableStream",
+			"responseStream",
+			"setClient",
+		]);
 	});
 }

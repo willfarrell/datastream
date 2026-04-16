@@ -1,9 +1,9 @@
 ---
 title: aws
-description: AWS service streams for S3, DynamoDB, Lambda, SNS, and SQS.
+description: AWS service streams for CloudWatch Logs, DynamoDB, Kinesis, Lambda, S3, SNS, and SQS.
 ---
 
-AWS service streams for S3, DynamoDB, Lambda, SNS, and SQS. Node.js only.
+AWS service streams for CloudWatch Logs, DynamoDB, Kinesis, Lambda, S3, SNS, and SQS. Node.js only.
 
 ## Install
 
@@ -14,18 +14,88 @@ npm install @datastream/aws
 Requires the corresponding AWS SDK v3 client packages:
 
 ```bash
-npm install @aws-sdk/client-s3 @aws-sdk/lib-storage
+npm install @aws-sdk/client-cloudwatch-logs
 npm install @aws-sdk/client-dynamodb
+npm install @aws-sdk/client-kinesis
 npm install @aws-sdk/client-lambda
+npm install @aws-sdk/client-s3 @aws-sdk/lib-storage
 npm install @aws-sdk/client-sns
 npm install @aws-sdk/client-sqs
+```
+
+## CloudWatch Logs
+
+### `awsCloudWatchLogsSetClient`
+
+Mutates module-level state — not safe for concurrent multi-tenant use.
+
+```javascript
+import { CloudWatchLogsClient } from '@aws-sdk/client-cloudwatch-logs'
+import { awsCloudWatchLogsSetClient } from '@datastream/aws'
+
+awsCloudWatchLogsSetClient(new CloudWatchLogsClient({ region: 'us-east-1' }))
+```
+
+### `awsCloudWatchLogsGetLogEventsStream` <span class="badge">Readable</span> <span class="badge">async</span>
+
+Gets log events from a CloudWatch Logs log stream. Auto-paginates until no new events are returned.
+
+#### Options
+
+Accepts `GetLogEventsCommand` parameters plus:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `logGroupName` | `string` | — | Log group name |
+| `logStreamName` | `string` | — | Log stream name |
+| `pollingActive` | `boolean` | `false` | Keep polling for new events |
+| `pollingDelay` | `number` | `1000` | Delay (ms) between polls when no new events |
+
+#### Example
+
+```javascript
+import { pipeline, createReadableStream } from '@datastream/core'
+import { awsCloudWatchLogsGetLogEventsStream } from '@datastream/aws'
+
+await pipeline([
+  createReadableStream(await awsCloudWatchLogsGetLogEventsStream({
+    logGroupName: '/aws/lambda/my-function',
+    logStreamName: 'stream-id',
+  })),
+])
+```
+
+### `awsCloudWatchLogsFilterLogEventsStream` <span class="badge">Readable</span> <span class="badge">async</span>
+
+Filters log events across log streams in a log group. Auto-paginates through all matching results.
+
+#### Options
+
+Accepts `FilterLogEventsCommand` parameters:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `logGroupName` | `string` | Log group name |
+| `filterPattern` | `string` | CloudWatch Logs filter pattern |
+| `startTime` | `number` | Start of time range (epoch ms) |
+| `endTime` | `number` | End of time range (epoch ms) |
+
+#### Example
+
+```javascript
+import { awsCloudWatchLogsFilterLogEventsStream } from '@datastream/aws'
+
+const events = await awsCloudWatchLogsFilterLogEventsStream({
+  logGroupName: '/aws/lambda/my-function',
+  filterPattern: 'ERROR',
+})
 ```
 
 ## S3
 
 ### `awsS3SetClient`
 
-Set a custom S3 client. By default, FIPS endpoints are enabled for US and CA regions.
+Set a custom S3 client. By default, FIPS endpoints are enabled for US and CA regions. Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
 import { S3Client } from '@aws-sdk/client-s3'
@@ -113,6 +183,8 @@ Computes a multi-part S3 checksum while data passes through. Designed for pre-si
 
 ### `awsDynamoDBSetClient`
 
+Mutates module-level state — not safe for concurrent multi-tenant use.
+
 ```javascript
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { awsDynamoDBSetClient } from '@datastream/aws'
@@ -157,6 +229,33 @@ Scans an entire DynamoDB table with automatic pagination.
 import { awsDynamoDBScanStream } from '@datastream/aws'
 
 const items = await awsDynamoDBScanStream({ TableName: 'Users' })
+```
+
+### `awsDynamoDBExecuteStatementStream` <span class="badge">Readable</span> <span class="badge">async</span>
+
+Executes a PartiQL statement against DynamoDB with automatic pagination.
+
+#### Options
+
+Accepts `ExecuteStatementCommand` parameters:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `Statement` | `string` | PartiQL statement |
+| `Parameters` | `object[]` | Statement parameters |
+
+#### Example
+
+```javascript
+import { pipeline, createReadableStream } from '@datastream/core'
+import { awsDynamoDBExecuteStatementStream } from '@datastream/aws'
+
+await pipeline([
+  createReadableStream(await awsDynamoDBExecuteStatementStream({
+    Statement: 'SELECT * FROM "Users" WHERE PK = ?',
+    Parameters: [{ S: 'USER#123' }],
+  })),
+])
 ```
 
 ### `awsDynamoDBGetItemStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -221,9 +320,73 @@ awsDynamoDBDeleteItemStream({ TableName: 'Users' })
 // Input chunks: { PK: { S: 'USER#1' }, SK: { S: 'PROFILE' } }
 ```
 
+## Kinesis
+
+### `awsKinesisSetClient`
+
+Mutates module-level state — not safe for concurrent multi-tenant use.
+
+```javascript
+import { KinesisClient } from '@aws-sdk/client-kinesis'
+import { awsKinesisSetClient } from '@datastream/aws'
+
+awsKinesisSetClient(new KinesisClient({ region: 'us-east-1' }))
+```
+
+### `awsKinesisGetRecordsStream` <span class="badge">Readable</span> <span class="badge">async</span>
+
+Gets records from a Kinesis shard. Polls until no more records are returned.
+
+#### Options
+
+Accepts `GetRecordsCommand` parameters plus:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `ShardIterator` | `string` | — | Shard iterator |
+| `pollingActive` | `boolean` | `false` | Keep polling for new records |
+| `pollingDelay` | `number` | `1000` | Delay (ms) between polls when no records |
+
+#### Example
+
+```javascript
+import { pipeline, createReadableStream } from '@datastream/core'
+import { awsKinesisGetRecordsStream } from '@datastream/aws'
+
+await pipeline([
+  createReadableStream(await awsKinesisGetRecordsStream({
+    ShardIterator: 'AAA...',
+  })),
+])
+```
+
+### `awsKinesisPutRecordsStream` <span class="badge">Writable</span>
+
+Writes records to a Kinesis stream. Batches 500 records per `PutRecordsCommand`.
+
+#### Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `StreamName` | `string` | Kinesis stream name |
+
+#### Example
+
+```javascript
+import { pipeline, createReadableStream } from '@datastream/core'
+import { awsKinesisPutRecordsStream } from '@datastream/aws'
+
+await pipeline([
+  createReadableStream(records),
+  awsKinesisPutRecordsStream({ StreamName: 'my-stream' }),
+])
+```
+
 ## Lambda
 
 ### `awsLambdaSetClient`
+
+Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
 import { LambdaClient } from '@aws-sdk/client-lambda'
@@ -267,6 +430,8 @@ await pipeline([
 
 ### `awsSNSSetClient`
 
+Mutates module-level state — not safe for concurrent multi-tenant use.
+
 ```javascript
 import { SNSClient } from '@aws-sdk/client-sns'
 import { awsSNSSetClient } from '@datastream/aws'
@@ -306,6 +471,8 @@ await pipeline([
 
 ### `awsSQSSetClient`
 
+Mutates module-level state — not safe for concurrent multi-tenant use.
+
 ```javascript
 import { SQSClient } from '@aws-sdk/client-sqs'
 import { awsSQSSetClient } from '@datastream/aws'
@@ -319,12 +486,14 @@ Polls an SQS queue and yields messages until the queue is empty.
 
 #### Options
 
-Accepts `ReceiveMessageCommand` parameters:
+Accepts `ReceiveMessageCommand` parameters plus:
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `QueueUrl` | `string` | SQS queue URL |
-| `MaxNumberOfMessages` | `number` | Max messages per poll (1-10) |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `QueueUrl` | `string` | — | SQS queue URL |
+| `MaxNumberOfMessages` | `number` | — | Max messages per poll (1-10) |
+| `pollingActive` | `boolean` | `false` | Keep polling even when queue is empty |
+| `pollingDelay` | `number` | `1000` | Delay (ms) between polls when queue is empty |
 
 #### Example
 

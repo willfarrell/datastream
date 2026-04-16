@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/aws",
-	"version": "0.1.6",
-	"description": "AWS service streaming integrations for S3, DynamoDB, Lambda, SNS, and SQS",
+	"version": "0.2.0",
+	"description": "AWS service streaming integrations for CloudWatch Logs, DynamoDB, Kinesis, Lambda, S3, SNS, and SQS",
 	"type": "module",
 	"engines": {
 		"node": ">=24"
@@ -73,6 +73,30 @@
 				"default": "./sns.web.mjs"
 			}
 		},
+		"./cloudwatch-logs": {
+			"node": {
+				"import": {
+					"types": "./cloudwatch-logs.d.ts",
+					"default": "./cloudwatch-logs.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./cloudwatch-logs.d.ts",
+				"default": "./cloudwatch-logs.web.mjs"
+			}
+		},
+		"./kinesis": {
+			"node": {
+				"import": {
+					"types": "./kinesis.d.ts",
+					"default": "./kinesis.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./kinesis.d.ts",
+				"default": "./kinesis.web.mjs"
+			}
+		},
 		"./sqs": {
 			"node": {
 				"import": {
@@ -100,7 +124,9 @@
 	"license": "MIT",
 	"keywords": [
 		"AWS",
+		"CloudWatch",
 		"DynamoDB",
+		"Kinesis",
 		"Lambda",
 		"S3",
 		"SNS",
@@ -122,10 +148,12 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.1.6"
+		"@datastream/core": "0.2.0"
 	},
 	"peerDependencies": {
+		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
+		"@aws-sdk/client-kinesis": "^3.0.0",
 		"@aws-sdk/client-lambda": "^3.0.0",
 		"@aws-sdk/client-s3": "^3.0.0",
 		"@aws-sdk/client-sns": "^3.0.0",
@@ -134,7 +162,13 @@
 		"@aws-sdk/lib-storage": "^3.0.0"
 	},
 	"peerDependenciesMeta": {
+		"@aws-sdk/client-cloudwatch-logs": {
+			"optional": true
+		},
 		"@aws-sdk/client-dynamodb": {
+			"optional": true
+		},
+		"@aws-sdk/client-kinesis": {
 			"optional": true
 		},
 		"@aws-sdk/client-lambda": {
@@ -157,7 +191,9 @@
 		}
 	},
 	"devDependencies": {
+		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
+		"@aws-sdk/client-kinesis": "^3.0.0",
 		"@aws-sdk/client-lambda": "^3.0.0",
 		"@aws-sdk/client-s3": "^3.0.0",
 		"@aws-sdk/client-sns": "^3.0.0",
