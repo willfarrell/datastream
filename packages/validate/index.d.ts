@@ -25,6 +25,7 @@ export function validateStream(
 		onErrorEnqueue?: boolean;
 		allowCoerceTypes?: boolean;
 		resultKey?: string;
+		maxErrors?: number;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform & {

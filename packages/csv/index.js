@@ -917,11 +917,15 @@ const coerceToType = (val, type) => {
 			return Number.isNaN(n) ? val : n;
 		}
 		case "boolean":
-			return val.toLowerCase() === "true";
+			return typeof val === "string"
+				? val.toLowerCase() === "true"
+				: Boolean(val);
 		case "null":
 			return null;
-		case "date":
-			return new Date(val);
+		case "date": {
+			const d = new Date(val);
+			return Number.isNaN(d.getTime()) ? val : d;
+		}
 		case "json":
 			try {
 				return JSON.parse(val);

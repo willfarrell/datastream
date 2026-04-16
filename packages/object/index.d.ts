@@ -25,6 +25,7 @@ export function objectCountStream(
 export function objectBatchStream<_T = Record<string, unknown>>(
 	options: {
 		keys: string[];
+		maxBatchSize?: number;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform;

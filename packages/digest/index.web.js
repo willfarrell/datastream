@@ -21,6 +21,9 @@ export const digestStream = async (
 	{ algorithm, resultKey },
 	streamOptions = {},
 ) => {
+	if (!algorithms[algorithm]) {
+		throw new Error(`Unsupported algorithm: ${algorithm}`);
+	}
 	const hash = await algorithms[algorithm]();
 	const passThrough = (chunk) => {
 		hash.update(chunk);
