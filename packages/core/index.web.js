@@ -116,6 +116,16 @@ export const createReadableStream = (input, streamOptions = {}) => {
 						controller.enqueue(input[i]);
 					}
 					controller.close();
+				} else if (typeof input === "object" && input.byteLength) {
+					const bytes = new Uint8Array(input.buffer ?? input);
+					const chunkSize = streamOptions?.chunkSize ?? 16_384; // 16KB
+					let position = 0;
+					const length = bytes.byteLength;
+					while (position < length) {
+						controller.enqueue(bytes.subarray(position, position + chunkSize));
+						position += chunkSize;
+					}
+					controller.close();
 				} else if (["function", "object"].includes(typeof input)) {
 					for await (const chunk of input) {
 						controller.enqueue(chunk);
