@@ -15,6 +15,8 @@ npm install @datastream/base64
 
 Encodes data to base64. Handles chunk boundaries correctly by buffering partial 3-byte groups.
 
+> **Note:** Input must be Latin1-encoded strings (code points 0-255). Use `charsetEncodeStream` to convert other encodings before base64 encoding.
+
 ### Example
 
 ```javascript

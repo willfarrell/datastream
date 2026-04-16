@@ -293,6 +293,25 @@ test(`${variant}: jsonFormatStream should handle pretty-print with space option`
 	deepStrictEqual(combined, '[{\n  "a": 1\n}\n]');
 });
 
+// *** maxValueSize raw check *** //
+test(`${variant}: jsonParseStream should enforce maxValueSize on raw value including whitespace`, async (_t) => {
+	const { ok, strictEqual } = await import("node:assert");
+	// Raw value with padding: "  123  " = 7 chars, trimmed "123" = 3 chars
+	// maxValueSize: 5 — raw exceeds, trimmed does not
+	const padded = `[  ${"1".repeat(4)}  ]`;
+	const streams = [
+		createReadableStream(padded),
+		jsonParseStream({ maxValueSize: 5 }),
+	];
+	try {
+		await pipeline(streams);
+		throw new Error("Expected maxValueSize error");
+	} catch (e) {
+		ok(e.message.includes("maxValueSize"));
+		strictEqual(e.message.includes("Expected"), false);
+	}
+});
+
 test(`${variant}: jsonFormatStream roundtrip with jsonParseStream`, async (_t) => {
 	const input = [{ a: 1 }, { b: "hello" }, { c: [1, 2, 3] }];
 	const streams = [

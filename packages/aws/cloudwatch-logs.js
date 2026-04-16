@@ -14,24 +14,26 @@ export const awsCloudWatchLogsSetClient = (cwlClient) => {
 
 export const awsCloudWatchLogsGetLogEventsStream = async (
 	options,
-	_streamOptions = {},
+	streamOptions = {},
 ) => {
 	const { pollingActive, pollingDelay = 1000, ...cwlOptions } = options;
 	cwlOptions.startFromHead ??= true;
-	async function* command(options) {
+	async function* command(opts) {
 		let previousToken;
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new GetLogEventsCommand(options));
+			const response = await client.send(new GetLogEventsCommand(opts), {
+				abortSignal: streamOptions.signal,
+			});
 			const events = response.events ?? [];
 			for (const item of events) {
 				yield item;
 			}
 			const tokenUnchanged =
 				response.nextForwardToken === previousToken ||
-				response.nextForwardToken === options.nextToken;
+				response.nextForwardToken === opts.nextToken;
 			previousToken = response.nextForwardToken;
-			options.nextToken = response.nextForwardToken;
+			opts.nextToken = response.nextForwardToken;
 
 			if (tokenUnchanged) {
 				if (pollingActive) {
@@ -44,25 +46,27 @@ export const awsCloudWatchLogsGetLogEventsStream = async (
 			}
 		}
 	}
-	return command(cwlOptions);
+	return command({ ...cwlOptions });
 };
 
 export const awsCloudWatchLogsFilterLogEventsStream = async (
 	options,
-	_streamOptions = {},
+	streamOptions = {},
 ) => {
-	async function* command(options) {
+	async function* command(opts) {
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new FilterLogEventsCommand(options));
+			const response = await client.send(new FilterLogEventsCommand(opts), {
+				abortSignal: streamOptions.signal,
+			});
 			for (const item of response.events ?? []) {
 				yield item;
 			}
-			options.nextToken = response.nextToken;
+			opts.nextToken = response.nextToken;
 			expectMore = !!response.nextToken;
 		}
 	}
-	return command(options);
+	return command({ ...options });
 };
 
 export default {

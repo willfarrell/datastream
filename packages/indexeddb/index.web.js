@@ -9,9 +9,9 @@ export const indexedDBReadStream = async (
 	{ db, store, index, key },
 	streamOptions = {},
 ) => {
-	const input = db.transaction(store).store;
+	let input = db.transaction(store).store;
 	if (index && key) {
-		input.index(index).iterate(key);
+		input = input.index(index).iterate(key);
 	}
 	return createReadableStream(input, streamOptions);
 };

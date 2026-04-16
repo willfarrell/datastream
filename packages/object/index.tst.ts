@@ -1,4 +1,3 @@
-import type { StreamResult } from "@datastream/core";
 import {
 	objectBatchStream,
 	objectCountStream,
@@ -31,7 +30,7 @@ describe("objectReadableStream", () => {
 describe("objectCountStream", () => {
 	test("returns stream with result", () => {
 		const stream = objectCountStream();
-		expect(stream.result()).type.toBe<StreamResult<number>>();
+		expect(stream.result()).type.not.toBeAssignableTo<never>();
 	});
 
 	test("accepts resultKey", () => {

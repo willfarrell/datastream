@@ -20,57 +20,57 @@ awsDynamoDBSetClient(client);
 // options = {TableName, ...}
 
 export const awsDynamoDBQueryStream = async (options, streamOptions = {}) => {
-	async function* command(options) {
+	async function* command(opts) {
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new QueryCommand(options), {
+			const response = await client.send(new QueryCommand(opts), {
 				abortSignal: streamOptions.signal,
 			});
 			for (const item of response.Items) {
 				yield item;
 			}
-			options.ExclusiveStartKey = response.LastEvaluatedKey;
+			opts.ExclusiveStartKey = response.LastEvaluatedKey;
 			expectMore = !!response.LastEvaluatedKey;
 		}
 	}
-	return command(options);
+	return command({ ...options });
 };
 
 export const awsDynamoDBScanStream = async (options, streamOptions = {}) => {
-	async function* command(options) {
+	async function* command(opts) {
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new ScanCommand(options), {
+			const response = await client.send(new ScanCommand(opts), {
 				abortSignal: streamOptions.signal,
 			});
 			for (const item of response.Items) {
 				yield item;
 			}
-			options.ExclusiveStartKey = response.LastEvaluatedKey;
+			opts.ExclusiveStartKey = response.LastEvaluatedKey;
 			expectMore = !!response.LastEvaluatedKey;
 		}
 	}
-	return command(options);
+	return command({ ...options });
 };
 
 export const awsDynamoDBExecuteStatementStream = async (
 	options,
 	streamOptions = {},
 ) => {
-	async function* command(options) {
+	async function* command(opts) {
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new ExecuteStatementCommand(options), {
+			const response = await client.send(new ExecuteStatementCommand(opts), {
 				abortSignal: streamOptions.signal,
 			});
 			for (const item of response.Items ?? []) {
 				yield item;
 			}
-			options.NextToken = response.NextToken;
+			opts.NextToken = response.NextToken;
 			expectMore = !!response.NextToken;
 		}
 	}
-	return command(options);
+	return command({ ...options });
 };
 
 export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {

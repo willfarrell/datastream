@@ -19,7 +19,14 @@ export const transpileSchema = (schema, ajvOptions) => {
 };
 
 export const validateStream = (
-	{ schema, idxStart, onErrorEnqueue, allowCoerceTypes, resultKey },
+	{
+		schema,
+		idxStart,
+		onErrorEnqueue,
+		allowCoerceTypes,
+		resultKey,
+		maxErrorRows = Infinity,
+	},
 	streamOptions = {},
 ) => {
 	idxStart ??= 0;
@@ -42,7 +49,9 @@ export const validateStream = (
 				if (!value[id]) {
 					value[id] = { id, keys, message, idx: [] };
 				}
-				value[id].idx.push(idx);
+				if (value[id].idx.length < maxErrorRows) {
+					value[id].idx.push(idx);
+				}
 			}
 		}
 		if (chunkValid || onErrorEnqueue) {

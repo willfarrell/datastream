@@ -188,3 +188,23 @@ test(`${variant}: awsKinesisPutRecordsStream should handle empty input`, async (
 
 	deepStrictEqual(result, {});
 });
+
+// *** AbortSignal *** //
+test(`${variant}: awsKinesisGetRecordsStream should pass signal to client`, async (_t) => {
+	const client = mockClient(KinesisClient);
+	awsKinesisSetClient(client);
+	client.on(GetRecordsCommand).resolves({
+		Records: [{ Data: "a" }],
+		NextShardIterator: null,
+	});
+
+	const controller = new AbortController();
+	const options = { ShardIterator: "iter-1" };
+	const stream = await awsKinesisGetRecordsStream(options, {
+		signal: controller.signal,
+	});
+	await streamToArray(stream);
+
+	const calls = client.commandCalls(GetRecordsCommand);
+	deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+});

@@ -534,3 +534,48 @@ test(`${variant}: objectKeyJoinStream should not mutate input chunks`, async (_t
 	await streamToArray(stream);
 	deepStrictEqual(input[0], original);
 });
+
+// *** objectBatchStream maxBatchSize *** //
+test(`${variant}: objectBatchStream should enforce maxBatchSize`, async (_t) => {
+	const { ok } = await import("node:assert");
+	const input = Array.from({ length: 10 }, (_, i) => ({ a: "same", b: i }));
+	const streams = [
+		createReadableStream(input),
+		objectBatchStream({ keys: ["a"], maxBatchSize: 3 }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	// All items share key "same", but batches should be split at size 3
+	for (const batch of output) {
+		ok(batch.length <= 3);
+	}
+	strictEqual(
+		output.reduce((sum, b) => sum + b.length, 0),
+		10,
+	);
+});
+
+// *** objectPivotLongToWideStream should not mutate input *** //
+test(`${variant}: objectPivotLongToWideStream should not mutate input chunks`, async (_t) => {
+	const input = [
+		[
+			{ region: "US", metric: "sales", value: 100 },
+			{ region: "US", metric: "cost", value: 50 },
+		],
+	];
+	const originalFirst = { ...input[0][0] };
+	const streams = [
+		createReadableStream(input),
+		objectPivotLongToWideStream({
+			keys: ["metric"],
+			valueParam: "value",
+		}),
+	];
+	const stream = pipejoin(streams);
+	await streamToArray(stream);
+
+	// Original input[0][0] should be unchanged
+	deepStrictEqual(input[0][0], originalFirst);
+});

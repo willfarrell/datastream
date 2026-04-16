@@ -201,3 +201,23 @@ test(`${variant}: awsCloudWatchLogsFilterLogEventsStream should handle empty eve
 
 	deepStrictEqual(output, []);
 });
+
+// *** AbortSignal *** //
+test(`${variant}: awsCloudWatchLogsGetLogEventsStream should pass signal to client`, async (_t) => {
+	const client = mockClient(CloudWatchLogsClient);
+	awsCloudWatchLogsSetClient(client);
+	client.on(GetLogEventsCommand).resolves({
+		events: [{ message: "log line" }],
+		nextForwardToken: "same-token",
+	});
+
+	const controller = new AbortController();
+	const options = { logGroupName: "g", logStreamName: "s" };
+	const stream = await awsCloudWatchLogsGetLogEventsStream(options, {
+		signal: controller.signal,
+	});
+	await streamToArray(stream);
+
+	const calls = client.commandCalls(GetLogEventsCommand);
+	deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+});

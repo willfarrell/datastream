@@ -426,6 +426,26 @@ test(`${variant}: validateStream should handle pre-compiled schema with no messa
 	strictEqual(result.validate[errorKey].message, "");
 });
 
+// *** maxErrorRows *** //
+test(`${variant}: validateStream should cap error indices with maxErrorRows`, async (_t) => {
+	const input = Array.from({ length: 100 }, (_, i) => ({ a: `bad${i}` }));
+	const schema = {
+		type: "object",
+		properties: {
+			a: { type: "number" },
+		},
+	};
+
+	const streams = [
+		createReadableStream(input),
+		validateStream({ schema, maxErrorRows: 10 }),
+	];
+	const result = await pipeline(streams);
+
+	const errorKey = Object.keys(result.validate)[0];
+	ok(result.validate[errorKey].idx.length <= 10);
+});
+
 // *** default export *** //
 test(`${variant}: default export should be validateStream`, (_t) => {
 	strictEqual(validateDefault, validateStream);

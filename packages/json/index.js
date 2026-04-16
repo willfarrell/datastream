@@ -16,6 +16,11 @@ export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const transform = (chunk, enqueue) => {
+		if (buffer.length + chunk.length > maxBufferSize) {
+			throw new Error(
+				`ndjsonParseStream buffer (${buffer.length + chunk.length}) exceeds maxBufferSize (${maxBufferSize})`,
+			);
+		}
 		buffer += chunk;
 		let pos = 0;
 		while (true) {
@@ -33,11 +38,6 @@ export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
 				trackError("ParseError", "Invalid JSON");
 			}
 			idx++;
-		}
-		if (buffer.length > maxBufferSize) {
-			throw new Error(
-				`ndjsonParseStream buffer (${buffer.length}) exceeds maxBufferSize (${maxBufferSize})`,
-			);
 		}
 	};
 
@@ -106,13 +106,13 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const emitElement = (text, enqueue) => {
-		const trimmed = text.trim();
-		if (trimmed.length === 0) return;
-		if (trimmed.length > maxValueSize) {
+		if (text.length > maxValueSize) {
 			throw new Error(
-				`jsonParseStream value size (${trimmed.length}) exceeds maxValueSize (${maxValueSize})`,
+				`jsonParseStream value size (${text.length}) exceeds maxValueSize (${maxValueSize})`,
 			);
 		}
+		const trimmed = text.trim();
+		if (trimmed.length === 0) return;
 		try {
 			enqueue(JSON.parse(trimmed));
 		} catch {
@@ -218,12 +218,12 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const transform = (chunk, enqueue) => {
-		buffer += chunk;
-		if (buffer.length > maxBufferSize) {
+		if (buffer.length + chunk.length > maxBufferSize) {
 			throw new Error(
-				`jsonParseStream buffer (${buffer.length}) exceeds maxBufferSize (${maxBufferSize})`,
+				`jsonParseStream buffer (${buffer.length + chunk.length}) exceeds maxBufferSize (${maxBufferSize})`,
 			);
 		}
+		buffer += chunk;
 		scan(enqueue);
 	};
 

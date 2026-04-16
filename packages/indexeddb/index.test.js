@@ -112,3 +112,41 @@ if (!isBrowser) {
 		}
 	});
 }
+
+// *** web variant: indexedDBReadStream with index *** //
+if (variant === "webstream") {
+	test(`${variant}: indexedDBReadStream should use index and key when provided`, async (_t) => {
+		const mockCursor = {
+			async *[Symbol.asyncIterator]() {
+				yield { id: 1, name: "a" };
+				yield { id: 2, name: "b" };
+			},
+		};
+		const mockIndex = {
+			iterate: (_key) => mockCursor,
+		};
+		const mockStore = {
+			index: (_name) => mockIndex,
+			[Symbol.asyncIterator]: async function* () {
+				yield { id: 1, name: "a" };
+				yield { id: 2, name: "b" };
+				yield { id: 3, name: "c" };
+			},
+		};
+		const mockDb = {
+			transaction: (_store) => ({ store: mockStore }),
+		};
+
+		const stream = await indexedDBReadStream({
+			db: mockDb,
+			store: "test",
+			index: "name",
+			key: "a",
+		});
+		const { streamToArray } = await import("@datastream/core");
+		const output = await streamToArray(stream);
+
+		// Should return filtered results (2 items from index), not all 3 from store
+		strictEqual(output.length, 2);
+	});
+}
