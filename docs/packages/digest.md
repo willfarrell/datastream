@@ -1,3 +1,0 @@
-# digest
-
-## digestStream (PassThrough)
