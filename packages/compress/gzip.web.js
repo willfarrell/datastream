@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-/* global CompressionStream, DecompressionStream, TransformStream */
+/* global CompressionStream, DecompressionStream */
 // CompressionStream
 // - https://caniuse.com/?search=CompressionStream
 // - not supported on firefox - https://bugzilla.mozilla.org/show_bug.cgi?id=1586639

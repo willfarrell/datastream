@@ -1,7 +1,7 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import { deepStrictEqual, strictEqual, throws } from "node:assert";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,12 +16,11 @@ for (const execArgv of process.execArgv) {
 	}
 }
 
-const testDir = join(tmpdir(), `datastream-file-test-${Date.now()}`);
+const testDir = mkdtempSync(join(tmpdir(), "datastream-file-test-"));
 const testFile = join(testDir, "test.csv");
 const testContent = "a,b,c\n1,2,3\n";
 
 test.before(() => {
-	mkdirSync(testDir, { recursive: true });
 	writeFileSync(testFile, testContent);
 });
 
