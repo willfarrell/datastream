@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/digest",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Cryptographic hash digest pass-through streams",
 	"type": "module",
 	"engines": {
@@ -60,7 +60,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.2.0",
+		"@datastream/core": "0.3.0",
 		"hash-wasm": "4.12.0"
 	}
 }
