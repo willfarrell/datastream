@@ -106,9 +106,22 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 		replacement,
 		maxBufferSize = 16_777_216, // 16MB
 	} = options;
+	if (
+		pattern instanceof RegExp &&
+		!pattern.flags.includes("g") &&
+		!pattern.flags.includes("y")
+	) {
+		throw new Error(
+			"RegExp pattern must include the global (g) or sticky (y) flag",
+		);
+	}
 	let previousChunk = "";
+	const useReplaceAll = typeof pattern === "string";
 	const transform = (chunk, enqueue) => {
-		const newChunk = (previousChunk + chunk).replace(pattern, replacement);
+		const combined = previousChunk + chunk;
+		const newChunk = useReplaceAll
+			? combined.replaceAll(pattern, replacement)
+			: combined.replace(pattern, replacement);
 		enqueue(newChunk.substring(0, previousChunk.length));
 		previousChunk = newChunk.substring(previousChunk.length);
 		if (previousChunk.length > maxBufferSize) {

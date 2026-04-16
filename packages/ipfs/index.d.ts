@@ -1,6 +1,11 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamWritable,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export interface IpfsNode {
 	get(cid: string): unknown;
@@ -13,7 +18,7 @@ export function ipfsGetStream(
 		cid: string;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function ipfsAddStream(
 	options?: {
@@ -22,7 +27,7 @@ export function ipfsAddStream(
 	},
 	streamOptions?: StreamOptions,
 ): Promise<
-	unknown & {
+	DatastreamWritable & {
 		result: () => StreamResult<string>;
 	}
 >;

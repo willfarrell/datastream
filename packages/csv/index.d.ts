@@ -1,6 +1,11 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamPassThrough,
+	DatastreamTransform,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export interface CsvDelimiters {
 	delimiterChar?: string;
@@ -45,7 +50,7 @@ export function csvDetectDelimitersStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamPassThrough & {
 	result: () => StreamResult<CsvDelimiters>;
 };
 
@@ -64,7 +69,7 @@ export function csvDetectHeaderStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamPassThrough & {
 	result: () => StreamResult<{ header: string[] }>;
 };
 
@@ -95,7 +100,7 @@ export function csvParseStream(
 		escapeChar?: string | (() => string);
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamTransform & {
 	result: () => StreamResult<Record<string, CsvError>>;
 };
 
@@ -106,7 +111,7 @@ export function csvRemoveMalformedRowsStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamTransform & {
 	result: () => StreamResult<Record<string, CsvError>>;
 };
 
@@ -116,7 +121,7 @@ export function csvRemoveEmptyRowsStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamTransform & {
 	result: () => StreamResult<Record<string, CsvError>>;
 };
 
@@ -128,7 +133,7 @@ export function csvCoerceValuesStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamTransform & {
 	result: () => StreamResult<Record<string, unknown>>;
 };
 
@@ -137,23 +142,23 @@ export function csvInjectHeaderStream(
 		header: string[];
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function csvFormatStream(
 	options?: CsvDelimiters,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function csvArrayToObject(
 	options: {
 		headers: string[] | (() => string[]);
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function csvObjectToArray(
 	options: {
 		headers: string[] | (() => string[]);
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;

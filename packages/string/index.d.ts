@@ -1,18 +1,24 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamTransform,
+	DatastreamPassThrough,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export function stringReadableStream(
 	input: string | string[],
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamReadable<string>;
 
 export function stringLengthStream(
 	options?: {
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamPassThrough<string> & {
 	result: () => StreamResult<number>;
 };
 
@@ -22,7 +28,7 @@ export function stringCountStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamPassThrough<string> & {
 	result: () => StreamResult<number>;
 };
 
@@ -31,19 +37,19 @@ export function stringMinimumFirstChunkSize(
 		chunkSize?: number;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform<string, string>;
 
 export function stringMinimumChunkSize(
 	options?: {
 		chunkSize?: number;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform<string, string>;
 
 export function stringSkipConsecutiveDuplicates(
-	options?: Record<string, unknown>,
+	options?: Record<string, never>,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform<string, string>;
 
 export function stringReplaceStream(
 	options: {
@@ -52,7 +58,7 @@ export function stringReplaceStream(
 		maxBufferSize?: number;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform<string, string>;
 
 export function stringSplitStream(
 	options: {
@@ -60,7 +66,7 @@ export function stringSplitStream(
 		maxBufferSize?: number;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform<string, string>;
 
 declare const _default: {
 	readableStream: typeof stringReadableStream;

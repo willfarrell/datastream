@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions } from "@datastream/core";
+import type { DatastreamReadable, StreamOptions } from "@datastream/core";
 
 export function awsCloudWatchLogsSetClient(cwlClient: unknown): void;
 
@@ -18,7 +18,7 @@ export function awsCloudWatchLogsGetLogEventsStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function awsCloudWatchLogsFilterLogEventsStream(
 	options: {
@@ -33,4 +33,4 @@ export function awsCloudWatchLogsFilterLogEventsStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;

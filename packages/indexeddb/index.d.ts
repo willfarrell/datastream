@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamWritable,
+	StreamOptions,
+} from "@datastream/core";
 
 export { openDB as indexedDBConnect } from "idb";
 
@@ -12,7 +16,7 @@ export function indexedDBReadStream(
 		key?: IDBKeyRange | IDBValidKey;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function indexedDBWriteStream(
 	options: {
@@ -20,4 +24,4 @@ export function indexedDBWriteStream(
 		store: string;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamWritable>;

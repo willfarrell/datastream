@@ -1,18 +1,24 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamTransform,
+	DatastreamPassThrough,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export function objectReadableStream<T = Record<string, unknown>>(
 	input?: T[],
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamReadable<T>;
 
 export function objectCountStream(
 	options?: {
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamPassThrough & {
 	result: () => StreamResult<number>;
 };
 
@@ -21,7 +27,7 @@ export function objectBatchStream<_T = Record<string, unknown>>(
 		keys: string[];
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectPivotLongToWideStream(
 	options: {
@@ -30,7 +36,7 @@ export function objectPivotLongToWideStream(
 		delimiter?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectPivotWideToLongStream(
 	options: {
@@ -40,7 +46,7 @@ export function objectPivotWideToLongStream(
 		isNestedObject?: boolean;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectKeyValueStream(
 	options: {
@@ -48,7 +54,7 @@ export function objectKeyValueStream(
 		value: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectKeyValuesStream(
 	options: {
@@ -56,7 +62,7 @@ export function objectKeyValuesStream(
 		values?: string[];
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectKeyJoinStream(
 	options: {
@@ -65,14 +71,14 @@ export function objectKeyJoinStream(
 		isNestedObject?: boolean;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectKeyMapStream(
 	options: {
 		keys: Record<string, string>;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectValueMapStream(
 	options: {
@@ -80,40 +86,40 @@ export function objectValueMapStream(
 		values: Record<string, unknown>;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectPickStream(
 	options: {
 		keys: string[];
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectOmitStream(
 	options: {
 		keys: string[];
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectFromEntriesStream(
 	options: {
 		keys: string[] | (() => string[]);
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectToEntriesStream(
 	options: {
 		keys: string[] | (() => string[]);
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 export function objectSkipConsecutiveDuplicatesStream(
-	options?: Record<string, unknown>,
+	options?: Record<string, never>,
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 declare const _default: {
 	readableStream: typeof objectReadableStream;

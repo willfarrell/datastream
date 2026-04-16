@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamTransform,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export interface ValidateError {
 	id: string;
@@ -23,7 +27,7 @@ export function validateStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamTransform & {
 	result: () => StreamResult<Record<string, ValidateError>>;
 };
 

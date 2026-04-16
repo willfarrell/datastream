@@ -121,6 +121,8 @@ export const makeOptions = ({
 
 export const createReadableStream = (input, streamOptions = {}) => {
 	const maxQueueSize = streamOptions.highWaterMark ?? 1024;
+	const chunkSize = streamOptions?.chunkSize ?? 16_384; // 16KB
+	if (chunkSize <= 0) throw new Error("chunkSize must be a positive number");
 	const queued = [];
 	const { readableStrategy } = makeOptions(streamOptions);
 	const stream = new ReadableStream(
@@ -131,7 +133,6 @@ export const createReadableStream = (input, streamOptions = {}) => {
 					controller.enqueue(chunk);
 				}
 				if (typeof input === "string") {
-					const chunkSize = streamOptions?.chunkSize ?? 16_384; // 16KB
 					let position = 0;
 					const length = input.length;
 					while (position < length) {
@@ -147,7 +148,6 @@ export const createReadableStream = (input, streamOptions = {}) => {
 					controller.close();
 				} else if (typeof input === "object" && input.byteLength) {
 					const bytes = new Uint8Array(input.buffer ?? input);
-					const chunkSize = streamOptions?.chunkSize ?? 16_384; // 16KB
 					let position = 0;
 					const length = bytes.byteLength;
 					while (position < length) {
@@ -300,13 +300,18 @@ export const timeout = (ms, { signal } = {}) => {
 		);
 	}
 	return new Promise((resolve, reject) => {
+		let settled = false;
 		const abortHandler = () => {
+			if (settled) return;
+			settled = true;
 			clearTimeout(timerId);
 			signal.removeEventListener("abort", abortHandler);
 			reject(new Error("Aborted", { cause: { code: "AbortError" } }));
 		};
 		if (signal) signal.addEventListener("abort", abortHandler);
 		const timerId = setTimeout(() => {
+			if (settled) return;
+			settled = true;
 			if (signal) signal.removeEventListener("abort", abortHandler);
 			resolve();
 		}, ms);

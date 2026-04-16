@@ -135,6 +135,26 @@ async function* generate() {
 const stream = createReadableStream(generate())
 ```
 
+### `createReadableStreamFromString(input, streamOptions)` <span class="badge">Readable</span>
+
+Creates a Readable stream from a string, chunking it at `chunkSize` (default 16KB). Useful when you need explicit control over string chunking separate from `createReadableStream`.
+
+```javascript
+import { createReadableStreamFromString } from '@datastream/core'
+
+const stream = createReadableStreamFromString(largeString, { chunkSize: 4096 })
+```
+
+### `createReadableStreamFromArrayBuffer(input, streamOptions)` <span class="badge">Readable</span>
+
+Creates a Readable stream from an `ArrayBuffer` or `Uint8Array`, chunking it at `chunkSize` (default 16KB).
+
+```javascript
+import { createReadableStreamFromArrayBuffer } from '@datastream/core'
+
+const stream = createReadableStreamFromArrayBuffer(buffer, { chunkSize: 8192 })
+```
+
 ### `createPassThroughStream(fn, flush?, streamOptions)` <span class="badge">Transform (PassThrough)</span>
 
 Creates a stream that observes each chunk without modifying it. The chunk is automatically passed through.

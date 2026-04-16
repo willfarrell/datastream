@@ -74,6 +74,52 @@ test(`${variant}: digestStream should use custom resultKey`, async (_t) => {
 	strictEqual(typeof result.checksum, "string");
 });
 
+// *** algorithm variants *** //
+test(`${variant}: digestStream should calculate SHA2-384`, async (_t) => {
+	const streams = [
+		createReadableStream("test"),
+		await digestStream({ algorithm: "SHA2-384" }),
+	];
+	const result = await pipeline(streams);
+	strictEqual(result.digest.startsWith("SHA2-384:"), true);
+});
+
+test(`${variant}: digestStream should calculate SHA2-512`, async (_t) => {
+	const streams = [
+		createReadableStream("test"),
+		await digestStream({ algorithm: "SHA2-512" }),
+	];
+	const result = await pipeline(streams);
+	strictEqual(result.digest.startsWith("SHA2-512:"), true);
+});
+
+test(`${variant}: digestStream should calculate SHA3-256`, async (_t) => {
+	const streams = [
+		createReadableStream("test"),
+		await digestStream({ algorithm: "SHA3-256" }),
+	];
+	const result = await pipeline(streams);
+	strictEqual(result.digest.startsWith("SHA3-256:"), true);
+});
+
+test(`${variant}: digestStream should calculate SHA3-384`, async (_t) => {
+	const streams = [
+		createReadableStream("test"),
+		await digestStream({ algorithm: "SHA3-384" }),
+	];
+	const result = await pipeline(streams);
+	strictEqual(result.digest.startsWith("SHA3-384:"), true);
+});
+
+test(`${variant}: digestStream should calculate SHA3-512`, async (_t) => {
+	const streams = [
+		createReadableStream("test"),
+		await digestStream({ algorithm: "SHA3-512" }),
+	];
+	const result = await pipeline(streams);
+	strictEqual(result.digest.startsWith("SHA3-512:"), true);
+});
+
 // *** default export *** //
 test(`${variant}: default export should be digestStream`, (_t) => {
 	strictEqual(digestDefault, digestStream);

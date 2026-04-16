@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions } from "@datastream/core";
+import type {
+	DatastreamReadable,
+	DatastreamWritable,
+	StreamOptions,
+} from "@datastream/core";
 
 export function awsSQSSetClient(sqsClient: unknown): void;
 
@@ -13,7 +17,7 @@ export function awsSQSReceiveMessageStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): Promise<unknown>;
+): Promise<DatastreamReadable>;
 
 export function awsSQSDeleteMessageStream(
 	options: {
@@ -22,7 +26,7 @@ export function awsSQSDeleteMessageStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamWritable;
 
 export function awsSQSSendMessageStream(
 	options: {
@@ -31,4 +35,4 @@ export function awsSQSSendMessageStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamWritable;

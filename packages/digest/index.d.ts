@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamPassThrough,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export type DigestAlgorithm =
 	| "SHA2-256"
@@ -10,7 +14,7 @@ export type DigestAlgorithm =
 	| "SHA3-384"
 	| "SHA3-512";
 
-type DigestStreamResult = unknown & {
+type DigestStreamResult = DatastreamPassThrough & {
 	result: () => StreamResult<string>;
 };
 

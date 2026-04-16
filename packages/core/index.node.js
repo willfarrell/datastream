@@ -28,7 +28,9 @@ export const pipeline = async (streams, streamOptions = {}) => {
 export const pipejoin = (
 	streams,
 	onError = (e) => {
-		throw e;
+		process.nextTick(() => {
+			throw e;
+		});
 	},
 ) => {
 	const pipeline = streams.reduce((pipeline, stream, idx) => {
@@ -62,7 +64,7 @@ export const backpressureGauge = (streams) => {
 		const value = values[i];
 		metrics[keys[i]] = { timeline: [], total: {} };
 		let timestamp;
-		let startTimestamp;
+		const startTimestamp = Date.now();
 		value.on("pause", () => {
 			timestamp = Date.now(); // process.hrtime.bigint()
 		});
@@ -71,8 +73,6 @@ export const backpressureGauge = (streams) => {
 				// Number.parseInt(  (process.hrtime.bigint() - pauseTimestamp).toString() , 10 ) / 1_000_000 // ms
 				const duration = Date.now() - timestamp;
 				metrics[keys[i]].timeline.push({ timestamp, duration });
-			} else {
-				startTimestamp = Date.now();
 			}
 		});
 		value.on("end", () => {
@@ -289,7 +289,6 @@ export const makeOptions = ({
 export const createReadableStream = (input, streamOptions = {}) => {
 	if (input === undefined) {
 		const maxQueueSize = streamOptions.highWaterMark ?? 1024;
-		let queueSize = 0;
 		const stream = new Readable({
 			objectMode: streamOptions.objectMode ?? true,
 			highWaterMark: streamOptions.highWaterMark,
@@ -297,12 +296,11 @@ export const createReadableStream = (input, streamOptions = {}) => {
 		});
 		const nativePush = Readable.prototype.push.bind(stream);
 		stream.push = (chunk) => {
-			if (chunk !== null && queueSize >= maxQueueSize) {
+			if (chunk !== null && stream.readableLength >= maxQueueSize) {
 				throw new Error(
-					`createReadableStream queue size (${queueSize}) exceeds limit (${maxQueueSize})`,
+					`createReadableStream queue size (${stream.readableLength}) exceeds limit (${maxQueueSize})`,
 				);
 			}
-			if (chunk !== null) queueSize++;
 			return nativePush(chunk);
 		};
 		return stream;
@@ -321,8 +319,9 @@ export const createReadableStream = (input, streamOptions = {}) => {
 };
 
 export const createReadableStreamFromString = (input, streamOptions = {}) => {
+	const size = streamOptions?.chunkSize ?? 16_384; // 16KB
+	if (size <= 0) throw new Error("chunkSize must be a positive number");
 	function* iterator(input) {
-		const size = streamOptions?.chunkSize ?? 16_384; // 16KB
 		let position = 0;
 		const length = input.length;
 		while (position < length) {
@@ -337,8 +336,9 @@ export const createReadableStreamFromArrayBuffer = (
 	input,
 	streamOptions = {},
 ) => {
+	const size = streamOptions?.chunkSize ?? 16_384; // 16KB
+	if (size <= 0) throw new Error("chunkSize must be a positive number");
 	function* iterator(input) {
-		const size = streamOptions?.chunkSize ?? 16_384; // 16KB
 		const bytes = new Uint8Array(input);
 		let position = 0;
 		const length = bytes.byteLength;
@@ -483,13 +483,18 @@ export const timeout = (ms, { signal } = {}) => {
 		);
 	}
 	return new Promise((resolve, reject) => {
+		let settled = false;
 		const abortHandler = () => {
+			if (settled) return;
+			settled = true;
 			clearTimeout(timerId);
 			signal.removeEventListener("abort", abortHandler);
 			reject(new Error("Aborted", { cause: { code: "AbortError" } }));
 		};
 		if (signal) signal.addEventListener("abort", abortHandler);
 		const timerId = setTimeout(() => {
+			if (settled) return;
+			settled = true;
 			if (signal) signal.removeEventListener("abort", abortHandler);
 			resolve();
 		}, ms);

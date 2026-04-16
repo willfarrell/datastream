@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions, StreamResult } from "@datastream/core";
+import type {
+	DatastreamTransform,
+	StreamOptions,
+	StreamResult,
+} from "@datastream/core";
 
 export interface JsonError {
 	id: string;
@@ -14,7 +18,7 @@ export function ndjsonParseStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamTransform<string, Record<string, unknown>> & {
 	result: () => StreamResult<Record<string, JsonError>>;
 };
 
@@ -24,7 +28,7 @@ export function ndjsonFormatStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform<Record<string, unknown>, string>;
 
 export function jsonParseStream(
 	options?: {
@@ -33,7 +37,7 @@ export function jsonParseStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): unknown & {
+): DatastreamTransform<string, Record<string, unknown>> & {
 	result: () => StreamResult<Record<string, JsonError>>;
 };
 
@@ -42,4 +46,4 @@ export function jsonFormatStream(
 		space?: number | string;
 	},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform<Record<string, unknown>, string>;

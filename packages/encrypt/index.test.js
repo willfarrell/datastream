@@ -273,6 +273,46 @@ test(`${variant}: encryptStream should handle empty input`, async (_t) => {
 	strictEqual(decrypted, "");
 });
 
+// *** maxInputSize *** //
+if (variant === "webstream") {
+	test(`${variant}: encryptStream AES-256-GCM should enforce maxInputSize`, async (_t) => {
+		const input = "a".repeat(200);
+		const enc = await encryptStream({ key, maxInputSize: 100 });
+		try {
+			const encStream = createReadableStream(input).pipeThrough(enc);
+			for await (const _chunk of encStream.readable) {
+				// should fail
+			}
+			throw new Error("Expected maxInputSize error");
+		} catch (e) {
+			strictEqual(e.message.includes("maxInputSize"), true);
+		}
+	});
+
+	test(`${variant}: encryptStream CHACHA20-POLY1305 should enforce maxInputSize`, async (_t) => {
+		const input = "a".repeat(200);
+		const enc = await encryptStream({
+			key,
+			algorithm: "CHACHA20-POLY1305",
+			maxInputSize: 100,
+		});
+		try {
+			const encStream = createReadableStream(input).pipeThrough(enc);
+			for await (const _chunk of encStream.readable) {
+				// should fail
+			}
+			throw new Error("Expected maxInputSize error");
+		} catch (e) {
+			strictEqual(e.message.includes("maxInputSize"), true);
+		}
+	});
+}
+
+// *** generateEncryptionKey error cases *** //
+test(`${variant}: generateEncryptionKey should throw for unsupported bits`, (_t) => {
+	throws(() => generateEncryptionKey({ bits: 512 }), /Unsupported key size/);
+});
+
 // *** default export *** //
 test(`${variant}: default export should include all functions`, (_t) => {
 	deepStrictEqual(Object.keys(encryptDefault).sort(), [

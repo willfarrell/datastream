@@ -1,15 +1,15 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import type { StreamOptions } from "@datastream/core";
+import type { DatastreamTransform, StreamOptions } from "@datastream/core";
 
 export function base64EncodeStream(
-	options?: Record<string, unknown>,
+	options?: {},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 export function base64DecodeStream(
-	options?: Record<string, unknown>,
+	options?: {},
 	streamOptions?: StreamOptions,
-): unknown;
+): DatastreamTransform;
 
 declare const _default: {
 	encodeStream: typeof base64EncodeStream;
