@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/encrypt",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"description": "Symmetric encryption/decryption streams",
 	"type": "module",
 	"engines": {
@@ -60,7 +60,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.3.1"
+		"@datastream/core": "0.3.2"
 	},
 	"peerDependencies": {
 		"libsodium-wrappers": ">=0.7.0"
