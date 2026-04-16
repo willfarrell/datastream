@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: MIT
 import { Readable, Transform, Writable } from "node:stream";
 import { pipeline as pipelinePromise } from "node:stream/promises";
-import { setTimeout } from "node:timers/promises";
+
+// Node.js streams interpret push(null) as EOF.
+// Use a sentinel so null values flow through object-mode streams.
+const NULL_SENTINEL = Symbol.for("@datastream/null");
+const toSafe = (v) => (v === null ? NULL_SENTINEL : v);
+const fromSafe = (v) => (v === NULL_SENTINEL ? null : v);
 
 export const pipeline = async (streams, streamOptions = {}) => {
 	for (let idx = 0, l = streams.length; idx < l; idx++) {
@@ -83,7 +88,7 @@ export const streamToArray = (stream) => {
 		return new Promise((resolve, reject) => {
 			const value = [];
 			stream.on("data", (chunk) => {
-				value.push(chunk);
+				value.push(fromSafe(chunk));
 			});
 			stream.on("end", () => {
 				resolve(value);
@@ -195,13 +200,36 @@ export const makeOptions = ({
 	};
 };
 
-export const createReadableStream = (input = "", streamOptions = {}) => {
+export const createReadableStream = (input, streamOptions = {}) => {
+	if (input === undefined) {
+		const maxQueueSize = streamOptions.highWaterMark ?? 1024;
+		let queueSize = 0;
+		const stream = new Readable({
+			objectMode: streamOptions.objectMode ?? true,
+			highWaterMark: streamOptions.highWaterMark,
+			read() {},
+		});
+		const nativePush = Readable.prototype.push.bind(stream);
+		stream.push = (chunk) => {
+			if (chunk !== null && queueSize >= maxQueueSize) {
+				throw new Error(
+					`createReadableStream queue size (${queueSize}) exceeds limit (${maxQueueSize})`,
+				);
+			}
+			if (chunk !== null) queueSize++;
+			return nativePush(chunk);
+		};
+		return stream;
+	}
 	// string doesn't chunk, and is slow
 	if (typeof input === "string") {
 		return createReadableStreamFromString(input, streamOptions);
 	}
 	if (typeof input === "object" && input.byteLength) {
 		return createReadableStreamFromArrayBuffer(input, streamOptions);
+	}
+	if (Array.isArray(input)) {
+		return Readable.from(input.map(toSafe), streamOptions);
 	}
 	return Readable.from(input, streamOptions);
 };
@@ -247,7 +275,7 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 		...makeOptions(streamOptions),
 		transform(chunk, _encoding, callback) {
 			try {
-				const result = passThrough(chunk);
+				const result = passThrough(fromSafe(chunk));
 				if (result != null && typeof result.then === "function") {
 					result.then(() => {
 						this.push(chunk);
@@ -290,7 +318,7 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		...makeOptions(streamOptions),
 		transform(chunk, _encoding, callback) {
 			try {
-				const result = transform(chunk, enqueue);
+				const result = transform(fromSafe(chunk), enqueue);
 				if (result != null && typeof result.then === "function") {
 					result.then(() => callback(), callback);
 				} else {
@@ -318,7 +346,7 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		},
 	});
 	const enqueue = (chunk, encoding) => {
-		stream.push(chunk, encoding);
+		stream.push(toSafe(chunk), encoding);
 	};
 	return stream;
 };
@@ -333,7 +361,7 @@ export const createWritableStream = (write, final, streamOptions) => {
 		...makeOptions(streamOptions),
 		write(chunk, _encoding, callback) {
 			try {
-				const result = write(chunk);
+				const result = write(fromSafe(chunk));
 				if (result != null && typeof result.then === "function") {
 					result.then(() => callback(), callback);
 				} else {
@@ -363,5 +391,21 @@ export const createWritableStream = (write, final, streamOptions) => {
 };
 
 export const timeout = (ms, { signal } = {}) => {
-	return setTimeout(ms, { signal });
+	if (signal?.aborted) {
+		return Promise.reject(
+			new Error("Aborted", { cause: { code: "AbortError" } }),
+		);
+	}
+	return new Promise((resolve, reject) => {
+		const abortHandler = () => {
+			clearTimeout(timerId);
+			signal.removeEventListener("abort", abortHandler);
+			reject(new Error("Aborted", { cause: { code: "AbortError" } }));
+		};
+		if (signal) signal.addEventListener("abort", abortHandler);
+		const timerId = setTimeout(() => {
+			if (signal) signal.removeEventListener("abort", abortHandler);
+			resolve();
+		}, ms);
+	});
 };

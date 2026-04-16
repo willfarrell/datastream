@@ -30,6 +30,7 @@ const nav = {
 		validate: "/docs/packages/validate",
 		compress: "/docs/packages/compress",
 		digest: "/docs/packages/digest",
+		encrypt: "/docs/packages/encrypt",
 	},
 	Examples: {
 		"CSV ETL": "/docs/examples/csv-etl",

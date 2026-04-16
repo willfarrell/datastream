@@ -23,6 +23,23 @@
   - `chunkSize`
   - `signal`
 
+## Null handling
+
+Node.js streams use `push(null)` to signal end-of-stream (EOF). To allow `null` values to flow through object-mode pipelines without terminating the stream, datastream wraps them with a sentinel Symbol (`Symbol.for("@datastream/null")`).
+
+This is handled automatically when using datastream's built-in functions (`createReadableStream`, `createTransformStream`, `createPassThroughStream`, `createWritableStream`, `streamToArray`). You only need to be aware of it when reading chunks directly from a stream, such as listening to `data` events or using `for await...of` on a mid-pipeline stream.
+
+```javascript
+// Handled automatically - null values round-trip correctly
+const output = await streamToArray(createReadableStream([1, null, 3]))
+// [1, null, 3]
+
+// Direct access - you may see the sentinel Symbol
+stream.on('data', (chunk) => {
+  // chunk may be Symbol.for("@datastream/null") instead of null
+})
+```
+
 ## Examples
 
 ```javascript
