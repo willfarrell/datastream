@@ -52,14 +52,26 @@ export function result(
 ): Promise<Record<string, unknown>>;
 
 // Stream converters
+export interface StreamCollectorOptions {
+	maxBufferSize?: number;
+}
+
 export function streamToArray<T = unknown>(
 	stream: DatastreamReadable<T>,
+	options?: StreamCollectorOptions,
 ): Promise<T[]>;
 export function streamToObject<T = Record<string, unknown>>(
 	stream: DatastreamReadable,
+	options?: StreamCollectorOptions,
 ): Promise<T>;
-export function streamToString(stream: DatastreamReadable): Promise<string>;
-export function streamToBuffer(stream: DatastreamReadable): Promise<Buffer>;
+export function streamToString(
+	stream: DatastreamReadable,
+	options?: StreamCollectorOptions,
+): Promise<string>;
+export function streamToBuffer(
+	stream: DatastreamReadable,
+	options?: StreamCollectorOptions,
+): Promise<Buffer>;
 
 // Type guards
 export function isReadable(stream: unknown): stream is ReadableStream;

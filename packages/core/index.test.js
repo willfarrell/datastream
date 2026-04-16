@@ -760,6 +760,48 @@ if (variant === "node") {
 		}
 	});
 
+	// *** maxBufferSize *** //
+	test(`${variant}: streamToArray should throw when exceeding maxBufferSize`, async (_t) => {
+		const stream = createReadableStream(["aaa", "bbb", "ccc"]);
+		try {
+			await streamToArray(stream, { maxBufferSize: 6 });
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxBufferSize"));
+		}
+	});
+
+	test(`${variant}: streamToArray should not throw when within maxBufferSize`, async (_t) => {
+		const stream = createReadableStream(["aaa", "bbb"]);
+		const result = await streamToArray(stream, { maxBufferSize: 6 });
+		deepStrictEqual(result, ["aaa", "bbb"]);
+	});
+
+	test(`${variant}: streamToString should throw when exceeding maxBufferSize`, async (_t) => {
+		const stream = createReadableStream(["aaa", "bbb", "ccc"]);
+		try {
+			await streamToString(stream, { maxBufferSize: 6 });
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxBufferSize"));
+		}
+	});
+
+	test(`${variant}: streamToObject should throw when exceeding maxBufferSize`, async (_t) => {
+		const stream = createReadableStream([
+			{ a: 1 },
+			{ b: 2 },
+			{ c: 3 },
+			{ d: 4 },
+		]);
+		try {
+			await streamToObject(stream, { maxBufferSize: 2 });
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxBufferSize"));
+		}
+	});
+
 	// *** createReadableStream queue limit regression *** //
 	test(`${variant}: createReadableStream should throw when queue exceeds limit`, async (_t) => {
 		const stream = createReadableStream(undefined, { highWaterMark: 3 });

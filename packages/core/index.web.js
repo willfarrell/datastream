@@ -121,6 +121,7 @@ export const makeOptions = ({
 export const createReadableStream = (input, streamOptions = {}) => {
 	const maxQueueSize = streamOptions.highWaterMark ?? 1024;
 	const queued = [];
+	const { readableStrategy } = makeOptions(streamOptions);
 	const stream = new ReadableStream(
 		{
 			async start(controller) {
@@ -171,7 +172,7 @@ export const createReadableStream = (input, streamOptions = {}) => {
 				}
 			},
 		},
-		makeOptions(streamOptions),
+		readableStrategy,
 	);
 	stream.push = (chunk) => {
 		if (queued.length >= maxQueueSize) {
@@ -266,6 +267,7 @@ export const createWritableStream = (write, close, streamOptions) => {
 		close = undefined;
 	}
 	const { signal } = streamOptions ?? {};
+	const { writableStrategy } = makeOptions(streamOptions);
 	return new WritableStream(
 		{
 			start(controller) {
@@ -286,7 +288,7 @@ export const createWritableStream = (write, close, streamOptions) => {
 				}
 			},
 		},
-		makeOptions(streamOptions),
+		writableStrategy,
 	);
 };
 
