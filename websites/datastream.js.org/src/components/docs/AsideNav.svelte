@@ -20,6 +20,7 @@ const nav = {
 	},
 	"Data Formats": {
 		csv: "/docs/packages/csv",
+		json: "/docs/packages/json",
 		string: "/docs/packages/string",
 		object: "/docs/packages/object",
 		base64: "/docs/packages/base64",
