@@ -29,7 +29,8 @@ export const awsKinesisGetRecordsStream = async (
 				yield item;
 			}
 			opts.ShardIterator = response.NextShardIterator;
-			expectMore = pollingActive || records.length > 0;
+			expectMore =
+				opts.ShardIterator !== null && (pollingActive || records.length > 0);
 			if (pollingActive && records.length === 0 && pollingDelay > 0) {
 				await new Promise((resolve) => setTimeout(resolve, pollingDelay));
 			}

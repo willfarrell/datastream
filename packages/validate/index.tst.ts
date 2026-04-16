@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+/// <reference types="node" />
 import type { ValidateError } from "@datastream/validate";
 import { transpileSchema, validateStream } from "@datastream/validate";
 import { describe, expect, test } from "tstyche";

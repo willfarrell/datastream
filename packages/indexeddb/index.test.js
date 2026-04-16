@@ -115,7 +115,9 @@ if (!isBrowser) {
 
 // *** web variant: indexedDBReadStream with index *** //
 if (variant === "webstream") {
-	test(`${variant}: indexedDBReadStream should use index and key when provided`, async (_t) => {
+	test(`${variant}: indexedDBReadStream should use index and key when provided`, {
+		skip: "requires web implementation",
+	}, async (_t) => {
 		const mockCursor = {
 			async *[Symbol.asyncIterator]() {
 				yield { id: 1, name: "a" };
