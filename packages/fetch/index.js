@@ -7,6 +7,21 @@ import {
 	timeout,
 } from "@datastream/core";
 
+const validatePaginationUrl = (nextUrl, origin) => {
+	if (!nextUrl) return;
+	let url;
+	try {
+		url = new URL(nextUrl);
+	} catch {
+		throw new Error(`Invalid pagination URL: ${nextUrl}`);
+	}
+	if (url.origin !== origin) {
+		throw new Error(
+			`Pagination URL origin (${url.origin}) does not match initial URL origin (${origin})`,
+		);
+	}
+};
+
 let defaults = {
 	// custom
 	rateLimit: 0.01, // 100 per sec
@@ -83,6 +98,7 @@ async function* fetchGenerator(fetchOptions, streamOptions) {
 				"%20",
 			);
 		}
+		options.__origin = new URL(options.url).origin;
 		const response = await fetchUnknown(options, streamOptions);
 		for await (const chunk of response) {
 			yield chunk;
@@ -117,6 +133,7 @@ async function* fetchJson(options, streamOptions) {
 		url = parseLinkFromHeader(response.headers);
 		url ??= parseNextPath(body, nextPath);
 		url ??= paginateUsingQuery(options);
+		validatePaginationUrl(url, options.__origin);
 		options.url = url;
 		const data = pickPath(body, dataPath);
 		if (Array.isArray(data)) {

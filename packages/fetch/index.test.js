@@ -504,6 +504,147 @@ test(`${variant}: fetchRateLimit should throw after max retries on persistent 42
 	}
 });
 
+// *** SSRF protection: same-origin pagination *** //
+test(`${variant}: fetchResponseStream should reject Link header with cross-origin URL`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url === "https://example.org/ssrf-link") {
+			return new Response(JSON.stringify({ data: [{ id: 1 }] }), {
+				status: 200,
+				headers: new Headers({
+					"Content-Type": "application/json",
+					Link: '<http://169.254.169.254/metadata>; rel="next"',
+				}),
+			});
+		}
+		return originalFetch(url);
+	};
+	fetchSetDefaults({ dataPath: "data" });
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/ssrf-link",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("does not match initial URL origin"));
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+test(`${variant}: fetchResponseStream should reject nextPath with cross-origin URL`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url === "https://example.org/ssrf-next") {
+			return new Response(
+				JSON.stringify({
+					data: [{ id: 1 }],
+					next: "http://127.0.0.1:8080/internal",
+				}),
+				{
+					status: 200,
+					headers: new Headers({
+						"Content-Type": "application/json",
+					}),
+				},
+			);
+		}
+		return originalFetch(url);
+	};
+	fetchSetDefaults({});
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/ssrf-next",
+			dataPath: "data",
+			nextPath: "next",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("does not match initial URL origin"));
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+test(`${variant}: fetchResponseStream should reject nextPath with different protocol`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url === "https://example.org/ssrf-proto") {
+			return new Response(
+				JSON.stringify({
+					data: [{ id: 1 }],
+					next: "file:///etc/passwd",
+				}),
+				{
+					status: 200,
+					headers: new Headers({
+						"Content-Type": "application/json",
+					}),
+				},
+			);
+		}
+		return originalFetch(url);
+	};
+	fetchSetDefaults({});
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/ssrf-proto",
+			dataPath: "data",
+			nextPath: "next",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("does not match initial URL origin"));
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+test(`${variant}: fetchResponseStream should reject Link header with different port`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url === "https://example.org/ssrf-port") {
+			return new Response(JSON.stringify({ data: [{ id: 1 }] }), {
+				status: 200,
+				headers: new Headers({
+					"Content-Type": "application/json",
+					Link: '<https://example.org:8443/admin>; rel="next"',
+				}),
+			});
+		}
+		return originalFetch(url);
+	};
+	fetchSetDefaults({ dataPath: "data" });
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/ssrf-port",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("does not match initial URL origin"));
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+test(`${variant}: fetchResponseStream should allow same-origin pagination`, async (_t) => {
+	// Existing Link header tests (json-obj/2 → json-obj/3) already verify this,
+	// but adding an explicit test for clarity.
+	fetchSetDefaults({ dataPath: "", headers: { Accept: "application/json" } });
+	const config = [{ url: "https://example.org/json-obj/2" }];
+	const stream = fetchResponseStream(config);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		{ key: "item", value: 2 },
+		{ key: "item", value: 3 },
+	]);
+});
+
 // *** default export *** //
 test(`${variant}: default export should include all stream functions`, (_t) => {
 	deepStrictEqual(Object.keys(fetchDefault).sort(), [

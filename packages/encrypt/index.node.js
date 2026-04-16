@@ -10,6 +10,36 @@ const algorithmMap = {
 
 const authAlgorithms = ["AES-256-GCM", "CHACHA20-POLY1305"];
 
+const validateKey = (key) => {
+	if (!key || key.length !== 32) {
+		throw new Error(
+			`Encryption key must be 32 bytes (256 bits), got ${key?.length ?? 0}`,
+		);
+	}
+};
+
+const validateIv = (iv, expectedSize, algorithm) => {
+	if (!iv || iv.length !== expectedSize) {
+		throw new Error(
+			`IV for ${algorithm} must be ${expectedSize} bytes, got ${iv?.length ?? 0}`,
+		);
+	}
+};
+
+const validateAuthTag = (authTag, algorithm) => {
+	if (!authTag || authTag.length !== 16) {
+		throw new Error(
+			`authTag for ${algorithm} must be 16 bytes, got ${authTag?.length ?? 0}`,
+		);
+	}
+};
+
+const validateAad = (aad) => {
+	if (aad != null && !Buffer.isBuffer(aad) && !(aad instanceof Uint8Array)) {
+		throw new Error("aad must be a Buffer or Uint8Array");
+	}
+};
+
 export const encryptStream = (
 	{ algorithm = "AES-256-GCM", key, iv, aad } = {},
 	streamOptions = {},
@@ -19,7 +49,10 @@ export const encryptStream = (
 		throw new Error(`Unsupported algorithm: ${algorithm}`);
 	}
 	const { cipher: cipherName, ivSize } = config;
+	validateKey(key);
 	iv ??= randomBytes(ivSize);
+	validateIv(iv, ivSize, algorithm);
+	validateAad(aad);
 	const authTagLength = authAlgorithms.includes(algorithm) ? 16 : undefined;
 	const stream = createCipheriv(cipherName, key, iv, {
 		...streamOptions,
@@ -49,13 +82,19 @@ export const decryptStream = (
 	if (!config) {
 		throw new Error(`Unsupported algorithm: ${algorithm}`);
 	}
-	const { cipher: cipherName } = config;
+	const { cipher: cipherName, ivSize } = config;
+	validateKey(key);
+	validateIv(iv, ivSize, algorithm);
+	validateAad(aad);
 	const authTagLength = authAlgorithms.includes(algorithm) ? 16 : undefined;
+	if (authAlgorithms.includes(algorithm)) {
+		validateAuthTag(authTag, algorithm);
+	}
 	const stream = createDecipheriv(cipherName, key, iv, {
 		...streamOptions,
 		authTagLength,
 	});
-	if (authTag && authAlgorithms.includes(algorithm)) {
+	if (authTag) {
 		stream.setAuthTag(authTag);
 	}
 	if (aad && authAlgorithms.includes(algorithm)) {
@@ -83,6 +122,9 @@ export const decryptStream = (
 };
 
 export const generateEncryptionKey = ({ bits = 256 } = {}) => {
+	if (![128, 256].includes(bits)) {
+		throw new Error(`Unsupported key size: ${bits}. Must be 128 or 256.`);
+	}
 	return randomBytes(bits / 8);
 };
 

@@ -39,25 +39,52 @@ export const result = async (streams) => {
 	return output;
 };
 
-export const streamToArray = async (stream) => {
+export const streamToArray = async (stream, { maxBufferSize } = {}) => {
 	const value = [];
+	let size = 0;
 	for await (const chunk of stream) {
+		if (maxBufferSize != null) {
+			size += chunk?.length ?? chunk?.byteLength ?? 1;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
+			}
+		}
 		value.push(chunk);
 	}
 	return value;
 };
 
-export const streamToObject = async (stream) => {
+export const streamToObject = async (stream, { maxBufferSize } = {}) => {
 	const value = Object.create(null);
+	let size = 0;
 	for await (const chunk of stream) {
+		if (maxBufferSize != null) {
+			size += chunk?.length ?? chunk?.byteLength ?? 1;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
+			}
+		}
 		Object.assign(value, chunk);
 	}
 	return { ...value };
 };
 
-export const streamToString = async (stream) => {
+export const streamToString = async (stream, { maxBufferSize } = {}) => {
 	const chunks = [];
+	let size = 0;
 	for await (const chunk of stream) {
+		if (maxBufferSize != null) {
+			size += chunk?.length ?? chunk?.byteLength ?? 0;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
+			}
+		}
 		chunks.push(chunk);
 	}
 	return chunks.join("");

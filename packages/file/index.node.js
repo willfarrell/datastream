@@ -1,6 +1,12 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import { createReadStream, createWriteStream, lstatSync } from "node:fs";
+import {
+	constants,
+	createReadStream,
+	createWriteStream,
+	lstatSync,
+	openSync,
+} from "node:fs";
 import { extname, resolve } from "node:path";
 import { makeOptions } from "@datastream/core";
 
@@ -10,6 +16,11 @@ export const fileReadStream = (
 ) => {
 	enforcePath(path, basePath);
 	enforceType(path, types);
+	if (basePath != null) {
+		// Open with O_NOFOLLOW to prevent TOCTOU symlink race
+		const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+		return createReadStream(null, { ...makeOptions(streamOptions), fd });
+	}
 	return createReadStream(path, makeOptions(streamOptions));
 };
 
@@ -19,6 +30,16 @@ export const fileWriteStream = (
 ) => {
 	enforcePath(path, basePath);
 	enforceType(path, types);
+	if (basePath != null) {
+		const fd = openSync(
+			path,
+			constants.O_WRONLY |
+				constants.O_CREAT |
+				constants.O_TRUNC |
+				constants.O_NOFOLLOW,
+		);
+		return createWriteStream(null, { ...makeOptions(streamOptions), fd });
+	}
 	return createWriteStream(path, makeOptions(streamOptions));
 };
 
@@ -36,7 +57,10 @@ const enforcePath = (path, basePath) => {
 			}
 		} catch (e) {
 			if (e.message === "Symbolic links are not allowed") throw e;
-			throw new Error("Path not found", { cause: e });
+			// File may not exist yet (for writes), that's ok
+			if (e.code !== "ENOENT") {
+				throw new Error("Path not found", { cause: e });
+			}
 		}
 	}
 };

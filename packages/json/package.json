@@ -62,6 +62,6 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.1.6"
+		"@datastream/core": "0.2.0"
 	}
 }

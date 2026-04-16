@@ -5,6 +5,47 @@ import { createTransformStream } from "@datastream/core";
 
 const DEFAULT_MAX_INPUT_SIZE = 64 * 1024 * 1024; // 64MB
 
+const expectedIvSize = {
+	"AES-256-GCM": 12,
+	"AES-256-CTR": 16,
+	"CHACHA20-POLY1305": 12,
+};
+
+const validateKey = (key) => {
+	if (!key || key.byteLength !== 32) {
+		throw new Error(
+			`Encryption key must be 32 bytes (256 bits), got ${key?.byteLength ?? 0}`,
+		);
+	}
+};
+
+const validateIv = (iv, algorithm) => {
+	const expected = expectedIvSize[algorithm];
+	if (!iv || iv.byteLength !== expected) {
+		throw new Error(
+			`IV for ${algorithm} must be ${expected} bytes, got ${iv?.byteLength ?? 0}`,
+		);
+	}
+};
+
+const validateAuthTag = (authTag, algorithm) => {
+	if (!authTag || authTag.byteLength !== 16) {
+		throw new Error(
+			`authTag for ${algorithm} must be 16 bytes, got ${authTag?.byteLength ?? 0}`,
+		);
+	}
+};
+
+const validateAad = (aad) => {
+	if (
+		aad != null &&
+		!(aad instanceof Uint8Array) &&
+		!(aad instanceof ArrayBuffer)
+	) {
+		throw new Error("aad must be a Uint8Array or ArrayBuffer");
+	}
+};
+
 const concatBuffers = (chunks) => {
 	let totalLength = 0;
 	const buffers = chunks.map((chunk) => {
@@ -22,7 +63,16 @@ const concatBuffers = (chunks) => {
 	return result;
 };
 
+// Max safe counter: 2^64 blocks = 2^68 bytes (256 EB).
+// Beyond this, keystream reuse breaks confidentiality.
+const MAX_CTR_BLOCKS = 2 ** 64;
+
 const incrementCounter = (iv, blockOffset) => {
+	if (blockOffset >= MAX_CTR_BLOCKS) {
+		throw new Error(
+			"AES-CTR counter overflow: data exceeds safe limit. Use a new key/IV pair.",
+		);
+	}
 	const counter = new Uint8Array(iv);
 	let carry = blockOffset;
 	for (let i = counter.length - 1; i >= 0 && carry > 0; i--) {
@@ -35,7 +85,10 @@ const incrementCounter = (iv, blockOffset) => {
 
 // AES-GCM: buffer all chunks, encrypt on flush
 const aesGcmEncrypt = async ({ key, iv, aad, maxInputSize }, streamOptions) => {
+	validateKey(key);
 	iv ??= crypto.getRandomValues(new Uint8Array(12));
+	validateIv(iv, "AES-256-GCM");
+	validateAad(aad);
 	maxInputSize ??= DEFAULT_MAX_INPUT_SIZE;
 	const chunks = [];
 	let inputSize = 0;
@@ -82,6 +135,10 @@ const aesGcmDecrypt = async (
 	{ key, iv, authTag, aad, maxOutputSize },
 	streamOptions,
 ) => {
+	validateKey(key);
+	validateIv(iv, "AES-256-GCM");
+	validateAuthTag(authTag, "AES-256-GCM");
+	validateAad(aad);
 	const chunks = [];
 	const transform = (chunk) => {
 		const buf =
@@ -119,7 +176,9 @@ const aesGcmDecrypt = async (
 
 // AES-CTR: true streaming (counter mode is chunk-friendly)
 const aesCtrEncrypt = async ({ key, iv }, streamOptions) => {
+	validateKey(key);
 	iv ??= crypto.getRandomValues(new Uint8Array(16));
+	validateIv(iv, "AES-256-CTR");
 	const cryptoKey = await crypto.subtle.importKey(
 		"raw",
 		key,
@@ -149,6 +208,8 @@ const aesCtrEncrypt = async ({ key, iv }, streamOptions) => {
 };
 
 const aesCtrDecrypt = async ({ key, iv, maxOutputSize }, streamOptions) => {
+	validateKey(key);
+	validateIv(iv, "AES-256-CTR");
 	const cryptoKey = await crypto.subtle.importKey(
 		"raw",
 		key,
@@ -184,6 +245,8 @@ const aesCtrDecrypt = async ({ key, iv, maxOutputSize }, streamOptions) => {
 
 // ChaCha20-Poly1305: requires optional peer dep
 const chacha20Encrypt = async ({ key, iv, aad }, streamOptions) => {
+	validateKey(key);
+	validateAad(aad);
 	let sodium;
 	try {
 		sodium = await import("libsodium-wrappers");
@@ -194,6 +257,7 @@ const chacha20Encrypt = async ({ key, iv, aad }, streamOptions) => {
 		);
 	}
 	iv ??= sodium.randombytes_buf(12);
+	validateIv(iv, "CHACHA20-POLY1305");
 	const chunks = [];
 	let authTag;
 	const transform = (chunk) => {
@@ -226,6 +290,9 @@ const chacha20Decrypt = async (
 	{ key, iv, authTag, aad, maxOutputSize },
 	streamOptions,
 ) => {
+	validateKey(key);
+	validateAuthTag(authTag, "CHACHA20-POLY1305");
+	validateAad(aad);
 	let sodium;
 	try {
 		sodium = await import("libsodium-wrappers");
@@ -235,6 +302,7 @@ const chacha20Decrypt = async (
 			"CHACHA20-POLY1305 requires libsodium-wrappers. Install it: npm install libsodium-wrappers",
 		);
 	}
+	validateIv(iv, "CHACHA20-POLY1305");
 	const chunks = [];
 	const transform = (chunk) => {
 		const buf =
@@ -303,6 +371,9 @@ export const decryptStream = async (
 };
 
 export const generateEncryptionKey = ({ bits = 256 } = {}) => {
+	if (![128, 256].includes(bits)) {
+		throw new Error(`Unsupported key size: ${bits}. Must be 128 or 256.`);
+	}
 	return crypto.getRandomValues(new Uint8Array(bits / 8));
 };
 
