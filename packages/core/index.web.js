@@ -164,6 +164,7 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 		flush = undefined;
 	}
 	const { signal } = streamOptions ?? {};
+	const { writableStrategy, readableStrategy } = makeOptions(streamOptions);
 	return new TransformStream(
 		{
 			start(controller) {
@@ -186,7 +187,8 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 				controller.terminate();
 			},
 		},
-		makeOptions(streamOptions),
+		writableStrategy,
+		readableStrategy,
 	);
 };
 
@@ -197,6 +199,7 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		flush = undefined;
 	}
 	const { signal } = streamOptions ?? {};
+	const { writableStrategy, readableStrategy } = makeOptions(streamOptions);
 	return new TransformStream(
 		{
 			start(controller) {
@@ -224,7 +227,8 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 				controller.terminate();
 			},
 		},
-		makeOptions(streamOptions),
+		writableStrategy,
+		readableStrategy,
 	);
 };
 
