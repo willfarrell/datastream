@@ -36,6 +36,7 @@ const nav = {
 		"S3 to S3": "/docs/examples/s3-transform",
 		"Browser files": "/docs/examples/browser-file-processing",
 		"Checksum & compress": "/docs/examples/checksum-compress",
+		Parquet: "/docs/examples/parquet",
 	},
 };
 </script>
