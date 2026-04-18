@@ -17,7 +17,7 @@
 		"lint": "biome check --write --no-errors-on-unmatched",
 		"build": "bin/esbuild",
 		"test": "npm run test:lint && npm run test:unit && npm run test:types && npm run test:sast && npm run test:perf && npm run test:dast",
-		"test:lint": "biome check --no-errors-on-unmatched",
+		"test:lint": "biome ci --no-errors-on-unmatched",
 		"test:lint:staged": "biome check --staged --no-errors-on-unmatched",
 		"test:unit": "npm run test:unit:node && npm run test:unit:web",
 		"test:unit:node": "node --test --conditions=node",
