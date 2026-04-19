@@ -312,6 +312,18 @@ test(`${variant}: charsetDecodeStream should handle empty chunks`, async (_t) =>
 	deepStrictEqual(output, "test");
 });
 
+// *** charsetDetectStream identifies known encodings *** //
+test(`${variant}: charsetDetectStream should identify UTF-8 for multibyte input`, async (_t) => {
+	const input = [Buffer.from("测试 Hello 世界 Bonjour", "utf8")];
+	const streams = [createReadableStream(input), charsetDetectStream()];
+
+	await pipeline(streams);
+	const { value } = streams[1].result();
+
+	strictEqual(value.charset, "UTF-8");
+	ok(value.confidence > 0, `confidence ${value.confidence} should be > 0`);
+});
+
 // *** charsetDetectStream concurrent isolation regression *** //
 test(`${variant}: charsetDetectStream instances should not share state`, async (_t) => {
 	const input1 = [Buffer.from("Hello World")];

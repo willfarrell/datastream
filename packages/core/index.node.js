@@ -476,6 +476,43 @@ export const createWritableStream = (write, final, streamOptions) => {
 	});
 };
 
+// *** Shared helpers ***
+export const resolveLazy = (value) =>
+	typeof value === "function" ? value() : value;
+
+export const shallowClone = (obj) => ({ ...obj });
+
+export const deepClone = (obj) => {
+	try {
+		return structuredClone(obj);
+	} catch (e) {
+		throw new Error("Failed to clone chunk, possibly circular reference", {
+			cause: e,
+		});
+	}
+};
+
+export const shallowEqual = (a, b) => {
+	if (a === b) return true;
+	if (a == null || b == null) return false;
+	const keysA = Object.keys(a);
+	if (keysA.length !== Object.keys(b).length) return false;
+	for (const key of keysA) {
+		if (a[key] !== b[key]) return false;
+	}
+	return true;
+};
+
+export const deepEqual = (a, b) => {
+	try {
+		return JSON.stringify(a) === JSON.stringify(b);
+	} catch (e) {
+		throw new Error("Failed to stringify chunk, possibly circular reference", {
+			cause: e,
+		});
+	}
+};
+
 export const timeout = (ms, { signal } = {}) => {
 	if (signal?.aborted) {
 		return Promise.reject(

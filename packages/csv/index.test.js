@@ -222,6 +222,29 @@ test(`${variant}: csvParseStream should preserve formula triggers in unquoted fi
 	deepStrictEqual(output, [["=1+2", "+1", "-1", "@SUM"]]);
 });
 
+test(`${variant}: csvParseStream should accumulate error idx across chunks (custom parser)`, async (_t) => {
+	let call = 0;
+	const customParser = (_text, _ctx, _isFlushing) => {
+		call += 1;
+		// Each call reports a SyntheticError on the same id with a different idx
+		return {
+			rows: [],
+			tail: "",
+			numCols: 1,
+			idx: call,
+			errors: { Synthetic: { id: "Synthetic", message: "syn", idx: [call] } },
+		};
+	};
+	const streams = [
+		createReadableStream(["aaaaaaaaa", "bbbbbbbbb", "ccccccccc"]),
+		csvParseStream({ parser: customParser, chunkSize: 1 }),
+	];
+	const result = await pipeline(streams);
+
+	// All three call indices should appear, not just the last one
+	deepStrictEqual(result.csvErrors.Synthetic.idx, [1, 2, 3]);
+});
+
 test(`${variant}: csvParseStream should track unterminated quote on flush`, async (_t) => {
 	const streams = [
 		createReadableStream('"ok",val\r\n"unterminated'),

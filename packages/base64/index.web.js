@@ -1,27 +1,54 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
+/* global btoa, atob */
 import { createTransformStream } from "@datastream/core";
 
+const utf8Encoder = new TextEncoder();
+
+const toBytes = (chunk) => {
+	if (chunk instanceof Uint8Array) return chunk;
+	if (chunk instanceof ArrayBuffer) return new Uint8Array(chunk);
+	if (typeof chunk === "string") return utf8Encoder.encode(chunk);
+	return new Uint8Array(chunk);
+};
+
+const concat = (a, b) => {
+	const out = new Uint8Array(a.length + b.length);
+	out.set(a, 0);
+	out.set(b, a.length);
+	return out;
+};
+
+const bytesToBinaryString = (bytes) => {
+	let s = "";
+	for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+	return s;
+};
+
+const binaryStringToBytes = (s) => {
+	const out = new Uint8Array(s.length);
+	for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0xff;
+	return out;
+};
+
 export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
-	let extra = "";
+	let extra; // Uint8Array | undefined
 	const transform = (chunk, enqueue) => {
+		let bytes = toBytes(chunk);
 		if (extra) {
-			chunk = extra + chunk;
-			extra = "";
+			bytes = concat(extra, bytes);
+			extra = undefined;
 		}
-
-		// 3 bytes == 4 char
-		const remaining = chunk.length % 3;
+		const remaining = bytes.length % 3;
 		if (remaining > 0) {
-			extra = chunk.slice(chunk.length - remaining);
-			chunk = chunk.slice(0, chunk.length - remaining);
+			extra = bytes.slice(bytes.length - remaining);
+			bytes = bytes.subarray(0, bytes.length - remaining);
 		}
-
-		enqueue(btoa(chunk));
+		if (bytes.length > 0) enqueue(btoa(bytesToBinaryString(bytes)));
 	};
 	const flush = (enqueue) => {
-		if (extra) {
-			enqueue(btoa(extra));
+		if (extra && extra.length > 0) {
+			enqueue(btoa(bytesToBinaryString(extra)));
 		}
 	};
 	return createTransformStream(transform, flush, streamOptions);
@@ -30,22 +57,22 @@ export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
 export const base64DecodeStream = (_options = {}, streamOptions = {}) => {
 	let extra = "";
 	const transform = (chunk, enqueue) => {
-		chunk = extra + chunk;
-
-		// 4 char == 3 bytes
-		const remaining = chunk.length % 4;
-
-		extra = chunk.slice(chunk.length - remaining);
-		chunk = chunk.slice(0, chunk.length - remaining);
-
-		enqueue(atob(chunk));
+		const str =
+			typeof chunk === "string" ? chunk : bytesToBinaryString(toBytes(chunk));
+		let s = extra.length > 0 ? extra + str : str;
+		extra = "";
+		const remaining = s.length % 4;
+		if (remaining > 0) {
+			extra = s.slice(s.length - remaining);
+			s = s.slice(0, s.length - remaining);
+		}
+		if (s.length > 0) enqueue(binaryStringToBytes(atob(s)));
 	};
 	const flush = (enqueue) => {
-		if (extra) {
-			enqueue(atob(extra));
+		if (extra.length > 0) {
+			enqueue(binaryStringToBytes(atob(extra)));
 		}
 	};
-	streamOptions.decodeStrings = false;
 	return createTransformStream(transform, flush, streamOptions);
 };
 

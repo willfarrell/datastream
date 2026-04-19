@@ -65,7 +65,8 @@ const concatBuffers = (chunks) => {
 
 // Max safe counter: 2^64 blocks = 2^68 bytes (256 EB).
 // Beyond this, keystream reuse breaks confidentiality.
-const MAX_CTR_BLOCKS = 2 ** 64;
+// BigInt so the comparison stays meaningful past 2^53.
+const MAX_CTR_BLOCKS = 1n << 64n;
 
 const incrementCounter = (iv, blockOffset) => {
 	if (blockOffset >= MAX_CTR_BLOCKS) {
@@ -75,10 +76,10 @@ const incrementCounter = (iv, blockOffset) => {
 	}
 	const counter = new Uint8Array(iv);
 	let carry = blockOffset;
-	for (let i = counter.length - 1; i >= 0 && carry > 0; i--) {
-		const sum = counter[i] + (carry & 0xff);
-		counter[i] = sum & 0xff;
-		carry = (carry >> 8) + (sum >> 8);
+	for (let i = counter.length - 1; i >= 0 && carry > 0n; i--) {
+		const sum = BigInt(counter[i]) + (carry & 0xffn);
+		counter[i] = Number(sum & 0xffn);
+		carry = (carry >> 8n) + (sum >> 8n);
 	}
 	return counter;
 };
@@ -186,7 +187,7 @@ const aesCtrEncrypt = async ({ key, iv }, streamOptions) => {
 		false,
 		["encrypt"],
 	);
-	let blockOffset = 0;
+	let blockOffset = 0n;
 	const transform = async (chunk, enqueue) => {
 		const buf =
 			chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk);
@@ -196,7 +197,7 @@ const aesCtrEncrypt = async ({ key, iv }, streamOptions) => {
 			cryptoKey,
 			buf,
 		);
-		blockOffset += Math.ceil(buf.byteLength / 16);
+		blockOffset += BigInt(Math.ceil(buf.byteLength / 16));
 		enqueue(new Uint8Array(encrypted));
 	};
 	const stream = createTransformStream(transform, streamOptions);
@@ -217,7 +218,7 @@ const aesCtrDecrypt = async ({ key, iv, maxOutputSize }, streamOptions) => {
 		false,
 		["decrypt"],
 	);
-	let blockOffset = 0;
+	let blockOffset = 0n;
 	let outputSize = 0;
 	const transform = async (chunk, enqueue) => {
 		const buf =
@@ -228,7 +229,7 @@ const aesCtrDecrypt = async ({ key, iv, maxOutputSize }, streamOptions) => {
 			cryptoKey,
 			buf,
 		);
-		blockOffset += Math.ceil(buf.byteLength / 16);
+		blockOffset += BigInt(Math.ceil(buf.byteLength / 16));
 		const result = new Uint8Array(decrypted);
 		if (maxOutputSize != null) {
 			outputSize += result.byteLength;

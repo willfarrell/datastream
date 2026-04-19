@@ -3,6 +3,7 @@
 import {
 	// createPassThroughStream,
 	createTransformStream,
+	resolveLazy,
 } from "@datastream/core";
 import {
 	objectFromEntriesStream,
@@ -32,8 +33,6 @@ const defaultQuoteChar = doubleQuote;
 const stripBOM = (str) => {
 	return str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
 };
-
-const resolveLazy = (value) => (typeof value === "function" ? value() : value);
 
 export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 	const {
@@ -659,6 +658,20 @@ const csvSteamifyParser = (options = {}) => {
 	let buffer = "";
 	const errors = {};
 
+	const mergeErrors = (incoming) => {
+		for (const id in incoming) {
+			if (errors[id]) {
+				errors[id].idx.push(...incoming[id].idx);
+			} else {
+				errors[id] = {
+					id: incoming[id].id,
+					message: incoming[id].message,
+					idx: [...incoming[id].idx],
+				};
+			}
+		}
+	};
+
 	const resolveOptions = () => {
 		delimiterChar = resolveLazy(delimiterChar) ?? defaultDelimiterChar;
 		newlineChar = resolveLazy(newlineChar) ?? defaultNewlineChar;
@@ -700,7 +713,7 @@ const csvSteamifyParser = (options = {}) => {
 			ctx.numCols = result.numCols;
 			ctx.idx = result.idx;
 			buffer = result.tail;
-			if (result.errors) Object.assign(errors, result.errors);
+			if (result.errors) mergeErrors(result.errors);
 			const rows = result.rows;
 			for (let i = 0; i < rows.length; i++) enqueue(rows[i]);
 		} else {
@@ -708,7 +721,7 @@ const csvSteamifyParser = (options = {}) => {
 			ctx.errors = null;
 			csvParseInline(text, ctx, false, enqueue);
 			buffer = ctx.tail;
-			if (ctx.errors !== null) Object.assign(errors, ctx.errors);
+			if (ctx.errors !== null) mergeErrors(ctx.errors);
 		}
 	};
 
@@ -721,14 +734,14 @@ const csvSteamifyParser = (options = {}) => {
 				const result = parser(remaining, ctx, true);
 				ctx.numCols = result.numCols;
 				ctx.idx = result.idx;
-				if (result.errors) Object.assign(errors, result.errors);
+				if (result.errors) mergeErrors(result.errors);
 				const rows = result.rows;
 				for (let i = 0; i < rows.length; i++) enqueue(rows[i]);
 			} else {
 				ctx.tail = "";
 				ctx.errors = null;
 				csvParseInline(remaining, ctx, true, enqueue);
-				if (ctx.errors !== null) Object.assign(errors, ctx.errors);
+				if (ctx.errors !== null) mergeErrors(ctx.errors);
 			}
 		}
 	};

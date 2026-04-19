@@ -1,7 +1,7 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import { createPassThroughStream } from "@datastream/core";
-import detect from "charset-detector";
+import { analyse } from "chardet";
 
 const charsetKeys = [
 	"UTF-8",
@@ -37,11 +37,15 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 	const charsets = Object.fromEntries(charsetKeys.map((k) => [k, 0]));
 	let chunkCount = 0;
 	const passThrough = (chunk) => {
-		const matches = detect(chunk);
+		const matches = analyse(
+			typeof chunk === "string" ? Buffer.from(chunk) : chunk,
+		);
 		chunkCount++;
 		if (matches.length) {
 			for (const match of matches) {
-				charsets[match.charsetName] += match.confidence;
+				if (match.name in charsets) {
+					charsets[match.name] += match.confidence;
+				}
 			}
 		}
 	};

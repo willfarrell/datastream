@@ -307,6 +307,76 @@ test(`${variant}: generateEncryptionKey should throw for unsupported bits`, (_t)
 	throws(() => generateEncryptionKey({ bits: 512 }), /Unsupported key size/);
 });
 
+// *** validation error cases *** //
+test(`${variant}: encryptStream should throw for invalid key length`, (_t) => {
+	throws(() => encryptStream({ key: randomBytes(16) }), /32 bytes/);
+	throws(() => encryptStream({}), /32 bytes/);
+});
+
+test(`${variant}: encryptStream should throw for invalid IV length`, (_t) => {
+	throws(
+		() => encryptStream({ key, iv: randomBytes(8) }),
+		/IV for AES-256-GCM/,
+	);
+});
+
+test(`${variant}: encryptStream should throw for invalid aad`, (_t) => {
+	throws(() => encryptStream({ key, aad: "not-a-buffer" }), /aad must be/);
+});
+
+test(`${variant}: decryptStream should throw for invalid key length`, (_t) => {
+	throws(
+		() => decryptStream({ key: randomBytes(16), iv: randomBytes(12) }),
+		/32 bytes/,
+	);
+});
+
+test(`${variant}: decryptStream should throw for invalid IV length`, (_t) => {
+	throws(
+		() => decryptStream({ key, iv: randomBytes(8) }),
+		/IV for AES-256-GCM/,
+	);
+});
+
+test(`${variant}: decryptStream should throw for missing authTag on GCM`, (_t) => {
+	throws(
+		() => decryptStream({ key, iv: randomBytes(12) }),
+		/authTag for AES-256-GCM/,
+	);
+});
+
+// *** within-limit paths *** //
+test(`${variant}: encryptStream maxInputSize within limit should succeed`, async (_t) => {
+	const input = "a".repeat(50);
+	const enc = encryptStream({ key, maxInputSize: 100 });
+	const streams = [createReadableStream(input), enc];
+	await pipeline(streams);
+	strictEqual(enc.result().value.algorithm, "AES-256-GCM");
+});
+
+test(`${variant}: decryptStream maxOutputSize within limit should succeed`, async (_t) => {
+	const input = "small";
+	const enc = encryptStream({ key, algorithm: "AES-256-CTR" });
+	const encryptedChunks = [];
+	const encStream = createReadableStream(input).pipe(enc);
+	for await (const chunk of encStream) {
+		encryptedChunks.push(chunk);
+	}
+	const { iv } = enc.result().value;
+	const dec = decryptStream({
+		key,
+		iv,
+		algorithm: "AES-256-CTR",
+		maxOutputSize: 1000,
+	});
+	const decStream = createReadableStream(encryptedChunks).pipe(dec);
+	const decryptedChunks = [];
+	for await (const chunk of decStream) {
+		decryptedChunks.push(chunk);
+	}
+	strictEqual(Buffer.concat(decryptedChunks).toString("utf8"), input);
+});
+
 // *** default export *** //
 test(`${variant}: default export should include all functions`, (_t) => {
 	deepStrictEqual(Object.keys(encryptDefault).sort(), [

@@ -133,3 +133,10 @@ export function timeout(
 	ms: number,
 	options?: { signal?: AbortSignal },
 ): Promise<void>;
+
+// Shared helpers
+export function resolveLazy<T>(value: T | (() => T)): T;
+export function shallowClone<T extends object>(obj: T): T;
+export function deepClone<T>(obj: T): T;
+export function shallowEqual(a: unknown, b: unknown): boolean;
+export function deepEqual(a: unknown, b: unknown): boolean;

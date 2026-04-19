@@ -110,7 +110,7 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 				});
 			}
 
-			await timeout(3 ** retryCount); // 3^10 == 59sec
+			await timeout(3 ** retryCount, { signal: streamOptions.signal }); // 3^10 == 59sec
 			retryCount++;
 			keys = UnprocessedKeys;
 		}
@@ -183,7 +183,7 @@ const dynamodbBatchWrite = async (
 			});
 		}
 
-		await timeout(3 ** retryCount); // 3^10 == 59sec
+		await timeout(3 ** retryCount, { signal: streamOptions?.signal }); // 3^10 == 59sec
 		return dynamodbBatchWrite(
 			options,
 			UnprocessedItems[options.TableName],
