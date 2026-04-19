@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/aws",
-	"version": "0.3.2",
+	"version": "0.4.0",
 	"description": "AWS service streaming integrations for CloudWatch Logs, DynamoDB, Kinesis, Lambda, S3, SNS, and SQS",
 	"type": "module",
 	"engines": {
@@ -148,7 +148,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.3.2"
+		"@datastream/core": "0.4.0"
 	},
 	"peerDependencies": {
 		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",

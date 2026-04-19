@@ -37,10 +37,12 @@ for (const execArgv of process.execArgv) {
 
 const compressibleBody = JSON.stringify(new Array(1024).fill(0));
 
+let zstdCompressStream;
+let zstdDecompressStream;
 if (variant === "node") {
-	const { zstdCompressStream, zstdDecompressStream } = await import(
+	({ zstdCompressStream, zstdDecompressStream } = await import(
 		"@datastream/compress/zstd"
-	);
+	));
 
 	// *** zstd *** //
 	test(`${variant}: zstdCompressStream should compress`, async (_t) => {
@@ -153,6 +155,111 @@ if (variant === "node") {
 		const streams = [createReadableStream(input), gzipDecompressStream()];
 		const output = await streamToString(pipejoin(streams));
 		strictEqual(output, compressibleBody);
+	});
+
+	// *** maxOutputSize within limit (covers normal-path push) *** //
+	test(`${variant}: gzipDecompressStream should pass through within maxOutputSize`, async (_t) => {
+		const input = gzipSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			gzipDecompressStream({ maxOutputSize: 1024 * 1024 }),
+		];
+		const output = await streamToString(pipejoin(streams));
+		strictEqual(output, compressibleBody);
+	});
+
+	test(`${variant}: deflateDecompressStream should pass through within maxOutputSize`, async (_t) => {
+		const input = deflateSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			deflateDecompressStream({ maxOutputSize: 1024 * 1024 }),
+		];
+		const output = await streamToString(pipejoin(streams));
+		strictEqual(output, compressibleBody);
+	});
+
+	test(`${variant}: brotliDecompressStream should pass through within maxOutputSize`, async (_t) => {
+		const input = brotliCompressSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			brotliDecompressStream({ maxOutputSize: 1024 * 1024 }),
+		];
+		const output = await streamToString(pipejoin(streams));
+		strictEqual(output, compressibleBody);
+	});
+
+	// *** zstd decompress maxOutputSize *** //
+	test(`${variant}: zstdDecompressStream should enforce maxOutputSize`, async (_t) => {
+		const input = zstdCompressSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			zstdDecompressStream({ maxOutputSize: 100 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: zstdDecompressStream should pass through within maxOutputSize`, async (_t) => {
+		const input = zstdCompressSync(compressibleBody);
+		const streams = [
+			createReadableStream(input),
+			zstdDecompressStream({ maxOutputSize: 1024 * 1024 }),
+		];
+		const output = await streamToString(pipejoin(streams));
+		strictEqual(output, compressibleBody);
+	});
+
+	// *** compress maxOutputSize *** //
+	test(`${variant}: gzipCompressStream should enforce maxOutputSize`, async (_t) => {
+		const input = compressibleBody;
+		const streams = [
+			createReadableStream(input),
+			gzipCompressStream({ maxOutputSize: 5 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: gzipCompressStream should pass through within maxOutputSize`, async (_t) => {
+		const input = compressibleBody;
+		const streams = [
+			createReadableStream(input),
+			gzipCompressStream({ maxOutputSize: 1024 * 1024 }),
+		];
+		const output = await streamToString(pipejoin(streams));
+		strictEqual(output, gzipSync(compressibleBody).toString());
+	});
+
+	test(`${variant}: deflateCompressStream should enforce maxOutputSize`, async (_t) => {
+		const input = compressibleBody;
+		const streams = [
+			createReadableStream(input),
+			deflateCompressStream({ maxOutputSize: 5 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: deflateCompressStream should pass through within maxOutputSize`, async (_t) => {
+		const input = compressibleBody;
+		const streams = [
+			createReadableStream(input),
+			deflateCompressStream({ maxOutputSize: 1024 * 1024 }),
+		];
+		const output = await streamToString(pipejoin(streams));
+		strictEqual(output, deflateSync(compressibleBody).toString());
 	});
 }
 

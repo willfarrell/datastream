@@ -224,7 +224,7 @@ test(`${variant}: csvParseStream should preserve formula triggers in unquoted fi
 
 test(`${variant}: csvParseStream should accumulate error idx across chunks (custom parser)`, async (_t) => {
 	let call = 0;
-	const customParser = (text, _ctx, _isFlushing) => {
+	const customParser = (_text, _ctx, _isFlushing) => {
 		call += 1;
 		// Each call reports a SyntheticError on the same id with a different idx
 		return {

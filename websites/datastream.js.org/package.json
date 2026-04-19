@@ -2,7 +2,7 @@
 	"name": "datastream.js.org",
 	"description": "SvelteKit SSR",
 	"private": true,
-	"version": "0.3.2",
+	"version": "0.4.0",
 	"type": "module",
 	"scripts": {
 		"start": "vite dev",
