@@ -1,8 +1,9 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
+
+import { getSupportedEncoding } from "@datastream/charset/detect";
 import { createTransformStream } from "@datastream/core";
 import iconv from "iconv-lite";
-import { getSupportedEncoding } from "./detect.js";
 
 export const charsetEncodeStream = ({ charset } = {}, streamOptions = {}) => {
 	charset = getSupportedEncoding(charset);

@@ -732,91 +732,86 @@ if (variant === "node") {
 			signal: undefined,
 		});
 	});
-} else if (variant === "webstream") {
-	// test(`${variant}: makeOptions should return interoperable structure`, async (_t) => {
-	//   // Web Stream always is in object mode
-	//   const options = makeOptions({ highWaterMark: 1, chunkSize: 2 })
-	//   deepStrictEqual(options, {
-	//     writableStrategy: {
-	//       highWaterMark: 1,
-	//       size: { chunk: 2 }
-	//     },
-	//     readableStrategy: {
-	//       highWaterMark: 1,
-	//       size: { chunk: 2 }
-	//     },
-	//     signal: undefined
-	//   })
-	// })
+}
 
-	// *** timeout abort cleanup regression *** //
-	test(`${variant}: timeout should clear timer when aborted`, async (_t) => {
-		const controller = new AbortController();
-		const promise = timeout(60_000, { signal: controller.signal });
-		controller.abort();
-		try {
-			await promise;
-			throw new Error("Should have thrown");
-		} catch (e) {
-			strictEqual(e.message, "Aborted");
-			deepStrictEqual(e.cause, { code: "AbortError" });
-		}
-	});
+// *** timeout abort cleanup regression *** //
+test(`${variant}: timeout should clear timer when aborted`, async (_t) => {
+	const controller = new AbortController();
+	const promise = timeout(60_000, { signal: controller.signal });
+	controller.abort();
+	try {
+		await promise;
+		throw new Error("Should have thrown");
+	} catch (e) {
+		strictEqual(e.message, "Aborted");
+		deepStrictEqual(e.cause, { code: "AbortError" });
+	}
+});
 
-	test(`${variant}: timeout should reject immediately if signal already aborted`, async (_t) => {
-		const controller = new AbortController();
-		controller.abort();
-		try {
-			await timeout(60_000, { signal: controller.signal });
-			throw new Error("Should have thrown");
-		} catch (e) {
-			strictEqual(e.message, "Aborted");
-		}
-	});
+test(`${variant}: timeout should reject immediately if signal already aborted`, async (_t) => {
+	const controller = new AbortController();
+	controller.abort();
+	try {
+		await timeout(60_000, { signal: controller.signal });
+		throw new Error("Should have thrown");
+	} catch (e) {
+		strictEqual(e.message, "Aborted");
+	}
+});
 
-	// *** maxBufferSize *** //
-	test(`${variant}: streamToArray should throw when exceeding maxBufferSize`, async (_t) => {
-		const stream = createReadableStream(["aaa", "bbb", "ccc"]);
-		try {
-			await streamToArray(stream, { maxBufferSize: 6 });
-			throw new Error("Should have thrown");
-		} catch (e) {
-			ok(e.message.includes("maxBufferSize"));
-		}
-	});
+// *** maxBufferSize *** //
+test(`${variant}: streamToArray should throw when exceeding maxBufferSize`, async (_t) => {
+	const stream = createReadableStream(["aaa", "bbb", "ccc"]);
+	try {
+		await streamToArray(stream, { maxBufferSize: 6 });
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("maxBufferSize"));
+	}
+});
 
-	test(`${variant}: streamToArray should not throw when within maxBufferSize`, async (_t) => {
-		const stream = createReadableStream(["aaa", "bbb"]);
-		const result = await streamToArray(stream, { maxBufferSize: 6 });
-		deepStrictEqual(result, ["aaa", "bbb"]);
-	});
+test(`${variant}: streamToArray should not throw when within maxBufferSize`, async (_t) => {
+	const stream = createReadableStream(["aaa", "bbb"]);
+	const result = await streamToArray(stream, { maxBufferSize: 6 });
+	deepStrictEqual(result, ["aaa", "bbb"]);
+});
 
-	test(`${variant}: streamToString should throw when exceeding maxBufferSize`, async (_t) => {
-		const stream = createReadableStream(["aaa", "bbb", "ccc"]);
-		try {
-			await streamToString(stream, { maxBufferSize: 6 });
-			throw new Error("Should have thrown");
-		} catch (e) {
-			ok(e.message.includes("maxBufferSize"));
-		}
-	});
+test(`${variant}: streamToString should throw when exceeding maxBufferSize`, async (_t) => {
+	const stream = createReadableStream(["aaa", "bbb", "ccc"]);
+	try {
+		await streamToString(stream, { maxBufferSize: 6 });
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("maxBufferSize"));
+	}
+});
 
-	test(`${variant}: streamToObject should throw when exceeding maxBufferSize`, async (_t) => {
-		const stream = createReadableStream([
-			{ a: 1 },
-			{ b: 2 },
-			{ c: 3 },
-			{ d: 4 },
-		]);
-		try {
-			await streamToObject(stream, { maxBufferSize: 2 });
-			throw new Error("Should have thrown");
-		} catch (e) {
-			ok(e.message.includes("maxBufferSize"));
-		}
-	});
+test(`${variant}: streamToObject should throw when exceeding maxBufferSize`, async (_t) => {
+	const stream = createReadableStream([{ a: 1 }, { b: 2 }, { c: 3 }, { d: 4 }]);
+	try {
+		await streamToObject(stream, { maxBufferSize: 2 });
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("maxBufferSize"));
+	}
+});
 
-	// *** createReadableStream queue limit regression *** //
+test(`${variant}: streamToBuffer should throw when exceeding maxBufferSize`, async (_t) => {
+	const stream = createReadableStream([
+		Buffer.from("aaa"),
+		Buffer.from("bbb"),
+		Buffer.from("ccc"),
+	]);
+	try {
+		await streamToBuffer(stream, { maxBufferSize: 6 });
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("maxBufferSize"));
+	}
+});
+
+// *** createReadableStream queue limit regression *** //
+if (variant === "node") {
 	test(`${variant}: createReadableStream should throw when queue exceeds limit`, async (_t) => {
 		const stream = createReadableStream(undefined, { highWaterMark: 3 });
 		stream.push("a");
@@ -830,6 +825,27 @@ if (variant === "node") {
 		}
 	});
 }
+
+// *** deepClone / deepEqual error paths *** //
+test(`${variant}: deepClone throws for non-cloneable values`, () => {
+	try {
+		deepClone({ fn: () => {} });
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("clone chunk"));
+	}
+});
+
+test(`${variant}: deepEqual throws for circular references`, () => {
+	const a = {};
+	a.self = a;
+	try {
+		deepEqual(a, a);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("stringify chunk"));
+	}
+});
 
 // *** shared helpers *** //
 test(`${variant}: resolveLazy passes through values and calls thunks`, () => {
