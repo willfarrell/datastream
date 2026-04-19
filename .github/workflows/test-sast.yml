@@ -73,6 +73,28 @@ jobs:
   #         ort-cli-args: "-P ort.analyzer.enabledPackageManagers=NPM"
   #         fail-on: "violations"
 
+  license:
+    name: "License headers"
+    runs-on: ubuntu-latest
+    if: (github.actor != 'dependabot[bot]')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts
+      - name: License check
+        run: |
+          npm run test:sast:license
+
   lockfile:
     name: "lockfile-lint: SAST package-lock.json"
     runs-on: ubuntu-latest

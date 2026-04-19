@@ -4,6 +4,10 @@ import {
 	createPassThroughStream,
 	createReadableStream,
 	createTransformStream,
+	deepClone,
+	deepEqual,
+	shallowClone,
+	shallowEqual,
 } from "@datastream/core";
 
 export const objectReadableStream = (input = [], streamOptions = {}) => {
@@ -218,38 +222,6 @@ export const objectToEntriesStream = ({ keys }, streamOptions = {}) => {
 		enqueue(value);
 	};
 	return createTransformStream(transform, streamOptions);
-};
-
-const deepClone = (obj) => {
-	try {
-		return structuredClone(obj);
-	} catch (e) {
-		throw new Error("Failed to clone chunk, possibly circular reference", {
-			cause: e,
-		});
-	}
-};
-const shallowClone = (obj) => ({ ...obj });
-
-const shallowEqual = (a, b) => {
-	if (a === b) return true;
-	if (a == null || b == null) return false;
-	const keysA = Object.keys(a);
-	if (keysA.length !== Object.keys(b).length) return false;
-	for (const key of keysA) {
-		if (a[key] !== b[key]) return false;
-	}
-	return true;
-};
-
-const deepEqual = (a, b) => {
-	try {
-		return JSON.stringify(a) === JSON.stringify(b);
-	} catch (e) {
-		throw new Error("Failed to stringify chunk, possibly circular reference", {
-			cause: e,
-		});
-	}
 };
 
 export const objectSkipConsecutiveDuplicatesStream = (

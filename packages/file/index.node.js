@@ -7,7 +7,7 @@ import {
 	lstatSync,
 	openSync,
 } from "node:fs";
-import { extname, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 import { makeOptions } from "@datastream/core";
 
 export const fileReadStream = (
@@ -47,7 +47,8 @@ const enforcePath = (path, basePath) => {
 	if (basePath != null) {
 		const resolvedPath = resolve(path);
 		const resolvedBase = resolve(basePath);
-		if (!resolvedPath.startsWith(resolvedBase)) {
+		const rel = relative(resolvedBase, resolvedPath);
+		if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
 			throw new Error("Path traversal detected");
 		}
 		try {

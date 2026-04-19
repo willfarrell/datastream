@@ -62,6 +62,15 @@ test(`${variant}: fileWriteStream should reject path traversal`, () => {
 	});
 });
 
+test(`${variant}: fileReadStream should reject sibling-prefix bypass`, () => {
+	// basePath '/tmp/foo' must not contain '/tmp/foobar/secret'
+	throws(
+		() =>
+			fileReadStream({ path: `${testDir}-sibling/x.csv`, basePath: testDir }),
+		{ message: "Path traversal detected" },
+	);
+});
+
 // *** Symlink rejection *** //
 test(`${variant}: fileReadStream should reject symlinks`, () => {
 	const linkPath = join(testDir, "link.csv");

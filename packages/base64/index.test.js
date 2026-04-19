@@ -1,4 +1,5 @@
 import { deepStrictEqual } from "node:assert";
+import { Buffer } from "node:buffer";
 import test from "node:test";
 import base64Default, {
 	base64DecodeStream,
@@ -7,8 +8,11 @@ import base64Default, {
 import {
 	createReadableStream,
 	pipejoin,
+	streamToBuffer,
 	streamToString,
 } from "@datastream/core";
+
+const decoder = new TextDecoder();
 
 let variant = "unknown";
 for (const execArgv of process.execArgv) {
@@ -31,7 +35,7 @@ test(`${variant}: base64EncodeStream should encode`, async (_t) => {
 test(`${variant}: base64DecodeStream should decode`, async (_t) => {
 	const input = "decode";
 	const streams = [createReadableStream(btoa(input)), base64DecodeStream()];
-	const output = await streamToString(pipejoin(streams));
+	const output = decoder.decode(await streamToBuffer(pipejoin(streams)));
 
 	deepStrictEqual(output, input);
 });
@@ -45,7 +49,7 @@ test(`${variant}: base64Stream should encode/decode`, async (_t) => {
 			base64EncodeStream(),
 			base64DecodeStream(),
 		];
-		const output = await streamToString(pipejoin(streams));
+		const output = decoder.decode(await streamToBuffer(pipejoin(streams)));
 
 		deepStrictEqual(output, input);
 	}
@@ -65,7 +69,7 @@ test(`${variant}: base64DecodeStream should handle multiple chunks with remainde
 	const input = btoa("aaaabbbbcccc");
 	const chunks = [input.slice(0, 4), input.slice(4, 8), input.slice(8)]; // 4 chars each, 4 % 4 = 0, but test chunking
 	const streams = [createReadableStream(chunks), base64DecodeStream()];
-	const output = await streamToString(pipejoin(streams));
+	const output = decoder.decode(await streamToBuffer(pipejoin(streams)));
 
 	deepStrictEqual(output, "aaaabbbbcccc");
 });
@@ -93,29 +97,50 @@ test(`${variant}: base64DecodeStream should decode partial base64`, async (_t) =
 	const input = btoa("hello");
 	const chunks = [input.slice(0, 2), input.slice(2)]; // 2 and rest
 	const streams = [createReadableStream(chunks), base64DecodeStream()];
-	const output = await streamToString(pipejoin(streams));
+	const output = decoder.decode(await streamToBuffer(pipejoin(streams)));
 
 	deepStrictEqual(output, "hello");
 });
 
 // Test decode flush with remaining characters
 test(`${variant}: base64DecodeStream should flush remaining characters`, async (_t) => {
-	// btoa("a") = "YQ==" (4 chars), btoa("ab") = "YWI=" (4 chars)
-	// Split so last chunk has 2 chars (not multiple of 4)
 	const input = btoa("ab"); // "YWI="
-	const chunks = [input.slice(0, 2)]; // Only send "YW" - leaves 2 chars in extra
-	// The stream should end with extra = "I=" and flush should decode it
+	const chunks = [input.slice(0, 2)]; // Only send "YW"
 	const streams = [createReadableStream(chunks), base64DecodeStream()];
-	const output = await streamToString(pipejoin(streams));
+	const output = await streamToBuffer(pipejoin(streams));
 
-	// "YW" + "I=" would decode to "ab", but since we only sent "YW",
-	// extra becomes "YW" (2 % 4 = 2), then flush decodes it
-	// Actually "YW" is incomplete base64 - let's think again
-	// When chunk = "YW", remaining = 2 % 4 = 2, extra = "YW" (last 2 chars)
-	// chunk becomes "" (first 0 chars), so nothing enqueued in transform
-	// Then flush is called with extra = "YW"
-	// Buffer.from("YW", "base64") decodes to "a" (partial decode)
-	deepStrictEqual(output.length, 1);
+	deepStrictEqual(output.byteLength, 1);
+});
+
+// *** Binary correctness *** //
+test(`${variant}: base64EncodeStream should encode all 256 byte values`, async (_t) => {
+	const bytes = new Uint8Array(256);
+	for (let i = 0; i < 256; i++) bytes[i] = i;
+	const streams = [createReadableStream([bytes]), base64EncodeStream()];
+	const output = await streamToString(pipejoin(streams));
+	deepStrictEqual(output, Buffer.from(bytes).toString("base64"));
+});
+
+test(`${variant}: base64DecodeStream should round-trip all 256 byte values`, async (_t) => {
+	const bytes = new Uint8Array(256);
+	for (let i = 0; i < 256; i++) bytes[i] = i;
+	const b64 = Buffer.from(bytes).toString("base64");
+	const streams = [createReadableStream([b64]), base64DecodeStream()];
+	const output = await streamToBuffer(pipejoin(streams));
+	deepStrictEqual(Uint8Array.from(output), bytes);
+});
+
+test(`${variant}: base64EncodeStream should encode Uint8Array chunks across boundary`, async (_t) => {
+	// 4 bytes per chunk, 4%3 = 1 remainder per chunk
+	const chunks = [
+		new Uint8Array([1, 2, 3, 4]),
+		new Uint8Array([5, 6, 7, 8]),
+		new Uint8Array([9, 10, 11, 12]),
+	];
+	const streams = [createReadableStream(chunks), base64EncodeStream()];
+	const output = await streamToString(pipejoin(streams));
+	const flat = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+	deepStrictEqual(output, Buffer.from(flat).toString("base64"));
 });
 
 // *** default export *** //

@@ -1,17 +1,22 @@
 import { deepStrictEqual, ok, strictEqual } from "node:assert";
-import test from "node:test";
+import test, { mock } from "node:test";
 import {
 	backpressureGauge,
 	createPassThroughStream,
 	createReadableStream,
 	createTransformStream,
 	createWritableStream,
+	deepClone,
+	deepEqual,
 	isReadable,
 	isWritable,
 	makeOptions,
 	pipejoin,
 	pipeline,
+	resolveLazy,
 	result,
+	shallowClone,
+	shallowEqual,
 	streamToArray,
 	streamToBuffer,
 	streamToObject,
@@ -19,7 +24,16 @@ import {
 	timeout,
 } from "@datastream/core";
 import { objectCountStream } from "@datastream/object";
-import sinon from "sinon";
+
+const spy = (impl) => {
+	const fn = mock.fn(impl);
+	Object.defineProperty(fn, "callCount", {
+		get() {
+			return fn.mock.callCount();
+		},
+	});
+	return fn;
+};
 
 let variant = "unknown";
 for (const execArgv of process.execArgv) {
@@ -296,7 +310,7 @@ if (variant === "node") {
 // *** createPassThroughStream *** //
 test(`${variant}: createPassThroughStream should create a pass through stream`, async (_t) => {
 	const input = ["a", "b", "c"];
-	const transform = sinon.spy();
+	const transform = spy();
 	const streams = [
 		createReadableStream(input),
 		createPassThroughStream(transform, {}),
@@ -312,8 +326,8 @@ test(`${variant}: createPassThroughStream should create a pass through stream`, 
 
 test(`${variant}: createPassThroughStream should create a pass through stream with flush`, async (_t) => {
 	const input = ["a", "b", "c"];
-	const transform = sinon.spy();
-	const flush = sinon.spy();
+	const transform = spy();
+	const flush = spy();
 	const streams = [
 		createReadableStream(input),
 		createPassThroughStream(transform, flush, {}),
@@ -390,7 +404,7 @@ test(`${variant}: createPassThroughStream should catch flush error`, async (_t) 
 // *** createTransformStream *** //
 test(`${variant}: createTransformStream should create a transform stream`, async (_t) => {
 	const input = ["a", "b", "c"];
-	const transform = sinon.spy();
+	const transform = spy();
 	const streams = [
 		createReadableStream(input),
 		createTransformStream(transform, {}),
@@ -406,8 +420,8 @@ test(`${variant}: createTransformStream should create a transform stream`, async
 
 test(`${variant}: createTransformStream should create a transform stream with flush`, async (_t) => {
 	const input = ["a", "b", "c"];
-	const transform = sinon.spy();
-	const flush = sinon.spy();
+	const transform = spy();
+	const flush = spy();
 	const streams = [
 		createReadableStream(input),
 		createTransformStream(transform, flush, {}),
@@ -486,7 +500,7 @@ test(`${variant}: createTransformStream should catch flush error`, async (_t) =>
 // *** createWritableStream *** //
 test(`${variant}: createWritableStream should create a writable stream`, async (_t) => {
 	const input = ["a", "b", "c"];
-	const transform = sinon.spy();
+	const transform = spy();
 	const streams = [
 		createReadableStream(input),
 		createWritableStream(transform, {}),
@@ -503,8 +517,8 @@ test(`${variant}: createWritableStream should create a writable stream`, async (
 
 test(`${variant}: createWritableStream should create a writable stream with final`, async (_t) => {
 	const input = ["a", "b", "c"];
-	const transform = sinon.spy();
-	const final = sinon.spy();
+	const transform = spy();
+	const final = spy();
 	const streams = [
 		createReadableStream(input),
 		createWritableStream(transform, final, {}),
@@ -587,7 +601,7 @@ test(`${variant}: createWritableStream should catch final error`, async (_t) => 
 /*if (variant === "node") {
 	test(`${variant}: createBranchStream should create a branch stream`, async (_t) => {
 		const input = ["a", "b", "c"];
-		const transform = sinon.spy();
+		const transform = spy();
 
 		const stream = createWritableStream(transform);
 		stream.result = () => ({ key: "a", value: 1 });
@@ -611,7 +625,7 @@ test(`${variant}: createWritableStream should catch final error`, async (_t) => 
 // *** pipeline *** //
 test(`${variant}: pipeline should add writable to end of streams array`, async (_t) => {
 	const input = ["a", "b", "c"];
-	const transform = sinon.spy();
+	const transform = spy();
 	const streams = [
 		createReadableStream(input),
 		objectCountStream(),
@@ -627,7 +641,7 @@ test(`${variant}: pipeline should add writable to end of streams array`, async (
 
 test(`${variant}: pipeline should throw error when promise passed in`, async (_t) => {
 	const input = ["a", "b", "c"];
-	const transform = sinon.spy();
+	const transform = spy();
 	const streams = [
 		createReadableStream(input),
 		Promise.resolve(objectCountStream()),
@@ -661,7 +675,7 @@ test(`${variant}: pipeline should throw error when a stream thrown an error`, as
 // *** pipejoin *** //
 test(`${variant}: pipejoin should throw error when promise passed in`, async (_t) => {
 	const input = ["a", "b", "c"];
-	const transform = sinon.spy();
+	const transform = spy();
 	const streams = [
 		createReadableStream(input),
 		Promise.resolve(objectCountStream()),
@@ -816,3 +830,41 @@ if (variant === "node") {
 		}
 	});
 }
+
+// *** shared helpers *** //
+test(`${variant}: resolveLazy passes through values and calls thunks`, () => {
+	strictEqual(resolveLazy(5), 5);
+	strictEqual(resolveLazy("x"), "x");
+	strictEqual(
+		resolveLazy(() => 42),
+		42,
+	);
+});
+
+test(`${variant}: shallowClone copies own enumerable properties`, () => {
+	const src = { a: 1, b: { c: 2 } };
+	const copy = shallowClone(src);
+	deepStrictEqual(copy, src);
+	strictEqual(copy === src, false);
+	strictEqual(copy.b === src.b, true);
+});
+
+test(`${variant}: deepClone deep-copies via structuredClone`, () => {
+	const src = { a: 1, b: { c: 2 } };
+	const copy = deepClone(src);
+	deepStrictEqual(copy, src);
+	strictEqual(copy.b === src.b, false);
+});
+
+test(`${variant}: shallowEqual compares own keys`, () => {
+	strictEqual(shallowEqual({ a: 1 }, { a: 1 }), true);
+	strictEqual(shallowEqual({ a: 1 }, { a: 2 }), false);
+	strictEqual(shallowEqual({ a: 1 }, { a: 1, b: 2 }), false);
+	strictEqual(shallowEqual(null, null), true);
+	strictEqual(shallowEqual(null, { a: 1 }), false);
+});
+
+test(`${variant}: deepEqual via JSON serialization`, () => {
+	strictEqual(deepEqual({ a: { b: 1 } }, { a: { b: 1 } }), true);
+	strictEqual(deepEqual({ a: { b: 1 } }, { a: { b: 2 } }), false);
+});

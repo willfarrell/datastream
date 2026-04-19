@@ -1,27 +1,33 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
+import { Buffer } from "node:buffer";
 import { createTransformStream } from "@datastream/core";
 
+const toBuffer = (chunk) =>
+	Buffer.isBuffer(chunk)
+		? chunk
+		: chunk instanceof Uint8Array
+			? Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+			: Buffer.from(chunk);
+
 export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
-	let extra = "";
+	let extra; // Buffer | undefined
 	const transform = (chunk, enqueue) => {
+		let buf = toBuffer(chunk);
 		if (extra) {
-			chunk = extra + chunk;
-			extra = "";
+			buf = Buffer.concat([extra, buf]);
+			extra = undefined;
 		}
-
-		// 3 bytes == 4 char
-		const remaining = chunk.length % 3;
+		const remaining = buf.length % 3;
 		if (remaining > 0) {
-			extra = chunk.slice(chunk.length - remaining);
-			chunk = chunk.slice(0, chunk.length - remaining);
+			extra = Buffer.from(buf.subarray(buf.length - remaining));
+			buf = buf.subarray(0, buf.length - remaining);
 		}
-
-		enqueue(btoa(chunk));
+		if (buf.length > 0) enqueue(buf.toString("base64"));
 	};
 	const flush = (enqueue) => {
-		if (extra) {
-			enqueue(btoa(extra));
+		if (extra && extra.length > 0) {
+			enqueue(extra.toString("base64"));
 		}
 	};
 	return createTransformStream(transform, flush, streamOptions);
@@ -30,22 +36,22 @@ export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
 export const base64DecodeStream = (_options = {}, streamOptions = {}) => {
 	let extra = "";
 	const transform = (chunk, enqueue) => {
-		chunk = extra + chunk;
-
-		// 4 char == 3 bytes
-		const remaining = chunk.length % 4;
-
-		extra = chunk.slice(chunk.length - remaining);
-		chunk = chunk.slice(0, chunk.length - remaining);
-
-		enqueue(atob(chunk));
+		const str =
+			typeof chunk === "string" ? chunk : toBuffer(chunk).toString("ascii");
+		let s = extra.length > 0 ? extra + str : str;
+		extra = "";
+		const remaining = s.length % 4;
+		if (remaining > 0) {
+			extra = s.slice(s.length - remaining);
+			s = s.slice(0, s.length - remaining);
+		}
+		if (s.length > 0) enqueue(Buffer.from(s, "base64"));
 	};
 	const flush = (enqueue) => {
-		if (extra) {
-			enqueue(atob(extra));
+		if (extra.length > 0) {
+			enqueue(Buffer.from(extra, "base64"));
 		}
 	};
-	streamOptions.decodeStrings = false;
 	return createTransformStream(transform, flush, streamOptions);
 };
 

@@ -96,6 +96,7 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 	let inString = false;
 	let escaped = false;
 	let started = false;
+	let sawNonWhitespace = false;
 	let elementStart = -1;
 	let idx = 0;
 	const errors = {};
@@ -223,6 +224,7 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 				`jsonParseStream buffer (${buffer.length + chunk.length}) exceeds maxBufferSize (${maxBufferSize})`,
 			);
 		}
+		if (!sawNonWhitespace && /\S/.test(chunk)) sawNonWhitespace = true;
 		buffer += chunk;
 		scan(enqueue);
 	};
@@ -233,6 +235,9 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 			if (trimmed.length > 0 && trimmed !== "]") {
 				emitElement(trimmed, enqueue);
 			}
+		}
+		if (!started && sawNonWhitespace) {
+			trackError("NoArrayStart", "Input did not contain a top-level array");
 		}
 		buffer = "";
 	};

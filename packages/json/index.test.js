@@ -246,6 +246,26 @@ test(`${variant}: jsonParseStream should track parse errors in result`, async (_
 	deepStrictEqual(value.ParseError.idx, [1]);
 });
 
+test(`${variant}: jsonParseStream should track NoArrayStart when no '[' seen`, async (_t) => {
+	const parse = jsonParseStream();
+	const streams = [createReadableStream('{"a":1}'), parse];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, []);
+	const { value } = parse.result();
+	deepStrictEqual(value.NoArrayStart?.id, "NoArrayStart");
+	deepStrictEqual(value.NoArrayStart?.idx, [0]);
+});
+
+test(`${variant}: jsonParseStream should not flag NoArrayStart for empty input`, async (_t) => {
+	const parse = jsonParseStream();
+	const streams = [createReadableStream(""), parse];
+	await streamToArray(pipejoin(streams));
+	const { value } = parse.result();
+	deepStrictEqual(value.NoArrayStart, undefined);
+});
+
 test(`${variant}: jsonParseStream should throw when buffer exceeds maxBufferSize`, async (_t) => {
 	let error;
 	try {

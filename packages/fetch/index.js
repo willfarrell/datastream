@@ -246,9 +246,11 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 			}
 			await response.body?.cancel();
 			const retryAfter = response.headers.get("Retry-After");
-			const backoffMs = retryAfter
+			// Full jitter (AWS architecture blog) avoids retry-storm sync-up.
+			const baseMs = retryAfter
 				? Number.parseInt(retryAfter, 10) * 1000 || 1000
 				: Math.min(1000 * 2 ** (options.retryCount - 1), 30_000);
+			const backoffMs = retryAfter ? baseMs : Math.random() * baseMs;
 			await timeout(backoffMs, streamOptions);
 			return fetchRateLimit(options, streamOptions);
 		}
