@@ -83,7 +83,7 @@
 		"@willfarrell-ds/cli": {
 			"mathjs": ">=15.2.0"
 		},
-		"fast-xml-parser": ">=5.5.12",
+		"fast-xml-parser": ">=5.7.1",
 		"license-check-and-add": {
 			"minimatch": "^10.2.5"
 		}
