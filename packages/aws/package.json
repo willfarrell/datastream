@@ -1,7 +1,7 @@
 {
 	"name": "@datastream/aws",
 	"version": "0.4.0",
-	"description": "AWS service streaming integrations for CloudWatch Logs, DynamoDB, Kinesis, Lambda, S3, SNS, and SQS",
+	"description": "AWS service streaming integrations for CloudWatch Logs, DynamoDB, DynamoDB Streams, Kinesis, Lambda, S3, SNS, and SQS",
 	"type": "module",
 	"engines": {
 		"node": ">=24"
@@ -35,6 +35,18 @@
 			"import": {
 				"types": "./dynamodb.d.ts",
 				"default": "./dynamodb.web.mjs"
+			}
+		},
+		"./dynamodb-streams": {
+			"node": {
+				"import": {
+					"types": "./dynamodb-streams.d.ts",
+					"default": "./dynamodb-streams.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./dynamodb-streams.d.ts",
+				"default": "./dynamodb-streams.web.mjs"
 			}
 		},
 		"./lambda": {
@@ -126,6 +138,7 @@
 		"AWS",
 		"CloudWatch",
 		"DynamoDB",
+		"DynamoDB Streams",
 		"Kinesis",
 		"Lambda",
 		"S3",
@@ -153,6 +166,7 @@
 	"peerDependencies": {
 		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
+		"@aws-sdk/client-dynamodb-streams": "^3.0.0",
 		"@aws-sdk/client-kinesis": "^3.0.0",
 		"@aws-sdk/client-lambda": "^3.0.0",
 		"@aws-sdk/client-s3": "^3.0.0",
@@ -166,6 +180,9 @@
 			"optional": true
 		},
 		"@aws-sdk/client-dynamodb": {
+			"optional": true
+		},
+		"@aws-sdk/client-dynamodb-streams": {
 			"optional": true
 		},
 		"@aws-sdk/client-kinesis": {
@@ -193,6 +210,7 @@
 	"devDependencies": {
 		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
+		"@aws-sdk/client-dynamodb-streams": "^3.0.0",
 		"@aws-sdk/client-kinesis": "^3.0.0",
 		"@aws-sdk/client-lambda": "^3.0.0",
 		"@aws-sdk/client-s3": "^3.0.0",
