@@ -23,6 +23,7 @@ import {
 	createReadableStream,
 	pipejoin,
 	pipeline,
+	streamToArray,
 	streamToBuffer,
 	streamToString,
 } from "@datastream/core";
@@ -263,18 +264,15 @@ if (variant === "node") {
 	});
 }
 
-// *** web variant decompression bomb protection *** //
 // *** protobuf *** //
-let hasProtobuf = false;
+let protobuf;
 try {
-	const protobuf = await import("protobufjs");
-	hasProtobuf = !!protobuf;
+	protobuf = (await import("protobufjs")).default;
 } catch {
 	// protobufjs not installed
 }
 
-if (hasProtobuf) {
-	const protobuf = await import("protobufjs");
+if (protobuf) {
 	const { protobufSerializeStream, protobufDeserializeStream } = await import(
 		"@datastream/compress/protobuf"
 	);
@@ -292,8 +290,38 @@ if (hasProtobuf) {
 		const serialize = protobufSerializeStream({ Type: TestType });
 		const deserialize = protobufDeserializeStream({ Type: TestType });
 		const streams = [createReadableStream(input), serialize, deserialize];
-		const output = await streamToString(pipejoin(streams));
-		ok(output.includes("a"));
+		const output = await streamToArray(pipejoin(streams));
+		strictEqual(output.length, 2);
+		strictEqual(output[0].name, "a");
+		strictEqual(output[1].name, "b");
+	});
+
+	test(`${variant}: protobufDeserializeStream should enforce maxOutputSize`, async (_t) => {
+		const input = [{ name: "long-name-here", value: 12345 }];
+		const serialize = protobufSerializeStream({ Type: TestType });
+		const deserialize = protobufDeserializeStream({
+			Type: TestType,
+			maxOutputSize: 5,
+		});
+		const streams = [createReadableStream(input), serialize, deserialize];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	test(`${variant}: protobufDeserializeStream should pass through within maxOutputSize`, async (_t) => {
+		const input = [{ name: "a", value: 1 }];
+		const serialize = protobufSerializeStream({ Type: TestType });
+		const deserialize = protobufDeserializeStream({
+			Type: TestType,
+			maxOutputSize: 1024,
+		});
+		const streams = [createReadableStream(input), serialize, deserialize];
+		const output = await streamToArray(pipejoin(streams));
+		strictEqual(output[0].name, "a");
 	});
 }
 

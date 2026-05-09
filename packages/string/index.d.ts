@@ -1,9 +1,9 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import type {
+	DatastreamPassThrough,
 	DatastreamReadable,
 	DatastreamTransform,
-	DatastreamPassThrough,
 	StreamOptions,
 	StreamResult,
 } from "@datastream/core";

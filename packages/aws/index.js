@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 export * from "@datastream/aws/cloudwatch-logs";
 export * from "@datastream/aws/dynamodb";
+export * from "@datastream/aws/dynamodb-streams";
 export * from "@datastream/aws/kinesis";
 export * from "@datastream/aws/lambda";
 export * from "@datastream/aws/s3";
