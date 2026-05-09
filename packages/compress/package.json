@@ -142,6 +142,11 @@
 	"dependencies": {
 		"@datastream/core": "0.4.0"
 	},
+	"devDependencies": {
+		"brotli-wasm": "^3.0.0",
+		"protobufjs": "^8.0.0",
+		"zstd-codec": "^0.1.0"
+	},
 	"peerDependencies": {
 		"brotli-wasm": "^3.0.0",
 		"protobufjs": "^8.0.0",
