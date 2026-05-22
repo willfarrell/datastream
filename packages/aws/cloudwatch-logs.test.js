@@ -124,6 +124,7 @@ test(`${variant}: awsCloudWatchLogsGetLogEventsStream should delay polling when 
 	client
 		.on(GetLogEventsCommand)
 		.resolvesOnce({ events: [], nextForwardToken: "token1" })
+		.resolvesOnce({ events: [], nextForwardToken: "token1" })
 		.resolvesOnce({ events: [{ message: "log1" }], nextForwardToken: "token2" })
 		.resolves({ events: [], nextForwardToken: "token2" });
 

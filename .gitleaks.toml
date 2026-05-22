@@ -1,0 +1,22 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore build artifacts and generated output"
+paths = [
+  '''\.svelte-kit/''',
+]
+
+[[allowlists]]
+description = "CHACHA20-POLY1305 is an algorithm name, not a secret"
+targetRules = ["generic-api-key"]
+regexes = [
+  '''CHACHA20-POLY1305''',
+]
+
+[[allowlists]]
+description = "Hello, World! base64 documentation example"
+targetRules = ["generic-api-key"]
+regexes = [
+  '''SGVsbG8sIFdvcmxkIQ==''',
+]

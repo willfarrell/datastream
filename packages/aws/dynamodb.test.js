@@ -613,6 +613,19 @@ test(`${variant}: awsDynamoDBQueryStream should not mutate caller options`, asyn
 	deepStrictEqual(options, optionsCopy);
 });
 
+test(`${variant}: awsDynamoDBGetItemStream should reject when Keys.length exceeds 100`, async (_t) => {
+	const client = mockClient(DynamoDBClient);
+	awsDynamoDBSetClient(client);
+	const options = {
+		TableName: "TableName",
+		Keys: new Array(101).fill({ key: "x" }),
+	};
+	await rejects(
+		() => awsDynamoDBGetItemStream(options),
+		/exceeds BatchGetItem limit of 100/,
+	);
+});
+
 test(`${variant}: default export should include all stream functions`, (_t) => {
 	deepStrictEqual(Object.keys(dynamodbDefault).sort(), [
 		"deleteItemStream",
