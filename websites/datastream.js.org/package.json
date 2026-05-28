@@ -34,12 +34,12 @@
 		"mdsvex": "^0.12.0",
 		"svelte": "^5.55.7",
 		"svgo": "^4.0.0",
-		"vite": "^8.0.0",
+		"vite": "^8.0.12",
 		"vite-plugin-llms": "^1.0.0",
 		"vite-plugin-mkcert": "^2.0.0",
 		"vite-plugin-sitemap": "^0.8.0",
 		"vite-plugin-sri": "^0.0.2",
-		"wrangler": "^4.0.0"
+		"wrangler": "^4.90.1"
 	},
 	"overrides": {
 		"@sveltejs/kit": {
