@@ -29,6 +29,12 @@ export function ipfsAddStream(
 ): Promise<
 	DatastreamWritable & {
 		result: () => StreamResult<string>;
+		/**
+		 * Diagnostic: the error (if any) that teardown injected into the source
+		 * when the stream was destroyed/aborted before completion. Stays
+		 * `undefined` after a clean completion.
+		 */
+		injectedError: () => Error | undefined;
 	}
 >;
 

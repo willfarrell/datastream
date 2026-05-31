@@ -242,6 +242,26 @@ if (variant === "node") {
 		strictEqual(output, compressibleBody);
 	});
 
+	// Covers `maxOutputSize === null ? void 0 :` true-branch in zstdDecompressStream.
+	test(`${variant}: zstdDecompressStream maxOutputSize:null should NOT throw`, async (_t) => {
+		const input = zstdCompressSync(compressibleBody);
+		const output = await streamToString(
+			pipejoin([
+				createReadableStream(input),
+				zstdDecompressStream({ maxOutputSize: null }),
+			]),
+		);
+		strictEqual(output, compressibleBody);
+	});
+
+	// guardOutput Buffer.byteLength(chunk) fallback for zstd (node-only): push a
+	// string directly into the guarded stream so .byteLength is undefined.
+	test(`${variant}: zstdDecompressStream guardOutput sizes string chunks via Buffer.byteLength`, (_t) => {
+		const stream = zstdDecompressStream({ maxOutputSize: 1024 });
+		ok(stream.push("abc") === true);
+		stream.destroy();
+	});
+
 	// *** compress maxOutputSize *** //
 	test(`${variant}: gzipCompressStream should enforce maxOutputSize`, async (_t) => {
 		const input = compressibleBody;
@@ -922,6 +942,78 @@ if (variant === "node") {
 	});
 }
 
+// *** maxOutputSize:null on decompress streams (ungated — works under both runs) *** //
+// Covers the `maxOutputSize === null ? void 0 :` true-branch in each decompressor.
+// The gzip variant is also covered inside the node-only block; these ungated
+// copies ensure the branch fires in the webstream run too.
+test(`${variant}: gzipDecompressStream maxOutputSize:null should NOT throw`, async (_t) => {
+	const input = gzipSync(compressibleBody);
+	const output = await streamToString(
+		pipejoin([
+			createReadableStream(input),
+			gzipDecompressStream({ maxOutputSize: null }),
+		]),
+	);
+	strictEqual(output, compressibleBody);
+});
+
+test(`${variant}: deflateDecompressStream maxOutputSize:null should NOT throw`, async (_t) => {
+	const input = deflateSync(compressibleBody);
+	const output = await streamToString(
+		pipejoin([
+			createReadableStream(input),
+			deflateDecompressStream({ maxOutputSize: null }),
+		]),
+	);
+	strictEqual(output, compressibleBody);
+});
+
+test(`${variant}: brotliDecompressStream maxOutputSize:null should NOT throw`, async (_t) => {
+	const input = brotliCompressSync(compressibleBody);
+	const output = await streamToString(
+		pipejoin([
+			createReadableStream(input),
+			brotliDecompressStream({ maxOutputSize: null }),
+		]),
+	);
+	strictEqual(output, compressibleBody);
+});
+
+// *** guardOutput Buffer.byteLength(chunk) fallback (ungated — both runs) *** //
+// guardOutput overrides stream.push and sizes each chunk via
+// `chunk.byteLength ?? Buffer.byteLength(chunk)`. zlib only ever pushes Buffers
+// (which have .byteLength), so the Buffer.byteLength fallback is reached only
+// when a non-BufferSource (a string) is pushed. We grab the guarded stream and
+// push a string directly: byteLength is undefined, so the fallback runs.
+test(`${variant}: gzipDecompressStream guardOutput sizes string chunks via Buffer.byteLength`, (_t) => {
+	const stream = gzipDecompressStream({ maxOutputSize: 1024 });
+	ok(stream.push("abc") === true);
+	stream.destroy();
+});
+
+test(`${variant}: deflateDecompressStream guardOutput sizes string chunks via Buffer.byteLength`, (_t) => {
+	const stream = deflateDecompressStream({ maxOutputSize: 1024 });
+	ok(stream.push("abc") === true);
+	stream.destroy();
+});
+
+test(`${variant}: brotliDecompressStream guardOutput sizes string chunks via Buffer.byteLength`, (_t) => {
+	const stream = brotliDecompressStream({ maxOutputSize: 1024 });
+	ok(stream.push("abc") === true);
+	stream.destroy();
+});
+
+// String chunk larger than maxOutputSize must trip the guard: this exercises
+// Buffer.byteLength(chunk) on the string-sizing path together with the
+// `outputSize > maxOutputSize` true branch. push() returns false synchronously.
+test(`${variant}: gzipDecompressStream guardOutput rejects oversized string chunk`, (_t) => {
+	const stream = gzipDecompressStream({ maxOutputSize: 2 });
+	// Swallow the destroy() error so it does not surface as an unhandled error.
+	stream.on("error", () => {});
+	strictEqual(stream.push("abcdef"), false);
+	stream.destroy();
+});
+
 if (variant === "webstream") {
 	test(`${variant}: gzipDecompressStream should enforce maxOutputSize`, async (_t) => {
 		const input = gzipSync(compressibleBody);
@@ -975,6 +1067,38 @@ if (variant === "webstream") {
 		} catch (e) {
 			ok(e.message.includes("maxOutputSize"));
 		}
+	});
+
+	// Brotli compress maxOutputSize — covers guardOutput invocation on the
+	// compress path (lines 39-41 in brotli.node.mjs) which is gated to node-only
+	// in the decompression-bomb block but must also fire in the webstream run.
+	test(`${variant}: brotliCompressStream should enforce maxOutputSize`, async (_t) => {
+		const streams = [
+			createReadableStream(compressibleBody),
+			brotliCompressStream({ maxOutputSize: 5 }),
+		];
+		try {
+			await pipeline(streams);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			ok(e.message.includes("maxOutputSize"));
+		}
+	});
+
+	// brotliDecompressStream with params — covers the `params ?` branch in
+	// brotliDecompressStream (line 46 in brotli.node.mjs).
+	test(`${variant}: brotliDecompressStream with params should round-trip`, async (_t) => {
+		const { constants: zlibConst } = await import("node:zlib");
+		const input = brotliCompressSync(compressibleBody);
+		const output = await streamToString(
+			pipejoin([
+				createReadableStream(input),
+				brotliDecompressStream({
+					params: { [zlibConst.BROTLI_PARAM_MODE]: 0 },
+				}),
+			]),
+		);
+		strictEqual(output, compressibleBody);
 	});
 }
 

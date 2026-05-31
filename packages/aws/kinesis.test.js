@@ -1051,6 +1051,33 @@ test(`${variant}: awsKinesisPutRecordsStream keeps a batch summing exactly to th
 	deepStrictEqual(calls[1].args[0].input.Records.length, 1);
 });
 
+// *** PutRecords response.Records undefined fallback (`?? []`) *** //
+test(`${variant}: awsKinesisPutRecordsStream falls back to empty array when response.Records is undefined`, async (_t) => {
+	const client = mockClient(KinesisClient);
+	awsKinesisSetClient(client);
+	// FailedRecordCount is truthy but Records is absent (undefined) -> `?? []` must
+	// produce an empty array so the failed.length check returns [] and returns early.
+	// A missing `?? []` would call .filter() on undefined and throw a TypeError.
+	client
+		.on(PutRecordsCommand)
+		.resolvesOnce({
+			FailedRecordCount: 1,
+			// Records intentionally absent
+		})
+		.resolves({ FailedRecordCount: 0 });
+
+	const input = [{ Data: "a", PartitionKey: "a" }];
+	const stream = [
+		createReadableStream(input),
+		awsKinesisPutRecordsStream({ StreamName: "test-stream" }),
+	];
+	await pipeline(stream);
+
+	// The first response had no ErrorCode entries (empty array after fallback),
+	// so no retry. Only one PutRecords call.
+	deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 1);
+});
+
 // *** putRecords backoff is abortable (signal forwarded to the timeout) *** //
 test(`${variant}: awsKinesisPutRecordsStream aborts during retry backoff`, async (_t) => {
 	const client = mockClient(KinesisClient);

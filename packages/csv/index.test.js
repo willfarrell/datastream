@@ -3298,3 +3298,48 @@ test(`${variant}: csvDetectDelimitersStream defaults to double-quote when none p
 	await pipeline([createReadableStream("a,b,c\n1,2,3\n"), detect]);
 	strictEqual(detect.result().value.quoteChar, '"');
 });
+
+// --- csvFormatStream: formatRowSlow null and empty-string branches ---
+test(`${variant}: csvFormatStream should format null field alongside a number (formatRowSlow null branch)`, async (_t) => {
+	// null alongside a number forces isSimpleRow to return false (number is non-string),
+	// so formatRowSlow is called; the null field hits the val==null branch (parts[i]="")
+	const streams = [createReadableStream([[null, 42]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, ",42\r\n");
+});
+
+test(`${variant}: csvFormatStream should format empty-string field alongside a quoting-required value (formatRowSlow empty-string branch)`, async (_t) => {
+	// A field needing quoting makes isSimpleRow return false, so formatRowSlow is called;
+	// the empty-string field hits the val.length===0 branch (parts[i]="")
+	const streams = [
+		createReadableStream([["hello, world", ""]]),
+		csvFormatStream(),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"hello, world",\r\n');
+});
+
+// --- csvCoerceValuesStream: coerceToType date with invalid date string ---
+test(`${variant}: csvCoerceValuesStream explicit date type should return original string for invalid date`, async (_t) => {
+	// coerceToType(val, "date") path: Number.isNaN(d.getTime()) === true → return val
+	const streams = [
+		createReadableStream([{ val: "not-a-date" }]),
+		csvCoerceValuesStream({ columns: { val: "date" } }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+	deepStrictEqual(output, [{ val: "not-a-date" }]);
+});
+
+// --- csvFormatStream: custom escape wrapQuote with no escape char in value ---
+test(`${variant}: csvFormatStream custom escape should quote value with delimiter but no escape char`, async (_t) => {
+	// wrapQuote custom-escape path: value contains delimiter (needs quoting)
+	// but does NOT contain escapeChar → takes the "value" branch of the includes check
+	const streams = [
+		createReadableStream([["a,b", "ok"]]),
+		csvFormatStream({ escapeChar: "\\" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	// No backslash in "a,b", so no escapeChar escaping; only quoteChar wrapping
+	strictEqual(output, '"a,b",ok\r\n');
+});

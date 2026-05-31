@@ -316,6 +316,20 @@ test(`${variant}: createReadableStream should allow pushing values onto it`, asy
 	deepStrictEqual(output, ["a"]);
 });
 
+test(`${variant}: createReadableStream read() is invoked when consumer requests data before push`, async (_t) => {
+	// Start consuming BEFORE pushing so the Readable's _read() hook is triggered
+	// when the stream is in flowing mode but the buffer is empty.
+	const source = createReadableStream();
+	const outputPromise = streamToArray(source);
+	// Push data asynchronously so _read() fires first.
+	process.nextTick(() => {
+		source.push("x");
+		source.push(null);
+	});
+	const output = await outputPromise;
+	deepStrictEqual(output, ["x"]);
+});
+
 if (variant === "node") {
 	const { backpressureGauge } = await import("@datastream/core");
 	test(`${variant}: backpressureGauge should chunk really long strings`, async (_t) => {
@@ -841,20 +855,18 @@ test(`${variant}: streamToBuffer should throw when exceeding maxBufferSize`, asy
 });
 
 // *** createReadableStream queue limit regression *** //
-if (variant === "node") {
-	test(`${variant}: createReadableStream should throw when queue exceeds limit`, async (_t) => {
-		const stream = createReadableStream(undefined, { highWaterMark: 3 });
-		stream.push("a");
-		stream.push("b");
-		stream.push("c");
-		try {
-			stream.push("d");
-			throw new Error("Should have thrown");
-		} catch (e) {
-			ok(e.message.includes("exceeds limit"));
-		}
-	});
-}
+test(`${variant}: createReadableStream should throw when queue exceeds limit`, async (_t) => {
+	const stream = createReadableStream(undefined, { highWaterMark: 3 });
+	stream.push("a");
+	stream.push("b");
+	stream.push("c");
+	try {
+		stream.push("d");
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("exceeds limit"));
+	}
+});
 
 // *** deepClone / deepEqual error paths *** //
 test(`${variant}: deepClone throws for non-cloneable values`, () => {
@@ -1459,6 +1471,43 @@ test(`${variant}: streamToString counts a byteLength-only chunk by its byteLengt
 	}
 });
 
+// --- async path `?? N` size fallbacks when chunks have neither length nor
+// byteLength (kills `?? 1` / `?? 0` in the for-await branch of each collector). ---
+
+test(`${variant}: streamToArray async path ?? 1 fallback counts no-size chunks`, async (_t) => {
+	// A plain object has no length/byteLength; ?? 1 makes it count as 1.
+	// 4 such chunks -> size 4 > 3 must throw (kills the ?? 1 deletion mutant).
+	try {
+		await streamToArray(asyncGen([{}, {}, {}, {}]), { maxBufferSize: 3 });
+		throw new Error("Should have thrown");
+	} catch (e) {
+		ok(e.message.includes("maxBufferSize"));
+	}
+	// 3 chunks -> size 3, boundary passes.
+	const out = await streamToArray(asyncGen([{}, {}, {}]), { maxBufferSize: 3 });
+	strictEqual(out.length, 3);
+});
+
+test(`${variant}: streamToString async path ?? 0 fallback does not count no-size chunks`, async (_t) => {
+	// streamToString uses ?? 0 for chunks without length/byteLength.
+	// Even with maxBufferSize: 0, plain-object chunks must NOT trip the limit.
+	const out = await streamToString(asyncGen([{}, {}]), { maxBufferSize: 0 });
+	strictEqual(typeof out, "string");
+});
+
+test(`${variant}: streamToBuffer async path handles null-sentinel chunk`, async (_t) => {
+	// The async path of streamToBuffer wraps each chunk with fromSafe(...) ?? [].
+	// Yielding the NULL_SENTINEL symbol triggers fromSafe -> null -> [] -> empty Buffer.
+	const NULL_SENTINEL = Symbol.for("@datastream/null");
+	async function* gen() {
+		yield "hi";
+		yield NULL_SENTINEL;
+	}
+	const out = await streamToBuffer(gen());
+	// Only "hi" contributes bytes; the null-sentinel chunk becomes an empty buffer.
+	strictEqual(out.toString(), "hi");
+});
+
 // --- NULL_SENTINEL round-trip: a transform enqueue(null) flows through as null,
 // AND a literal pushed null is treated as EOF (does not appear). ---
 test(`${variant}: createReadableStream array null becomes a flowing null value`, async (_t) => {
@@ -1546,36 +1595,34 @@ test(`${variant}: pipejoin error handler receives error on the right event`, asy
 // pipejoin's DEFAULT onError rethrows asynchronously via process.nextTick.
 // Deleting that body would silently swallow stream errors. Capture the rethrow
 // through an uncaughtException listener (kills the onError default-block and the
-// process.nextTick block deletions). Node only restored when done.
-if (variant === "node") {
-	test(`${variant}: pipejoin default onError rethrows the error`, async (_t) => {
-		let caught;
-		const handler = (e) => {
-			caught = e.message;
-		};
-		// Temporarily own uncaughtException so the async rethrow is observable
-		// without crashing the test process.
-		const prior = process.listeners("uncaughtException");
-		for (const l of prior) process.removeListener("uncaughtException", l);
-		process.on("uncaughtException", handler);
-		try {
-			const streams = [
-				createReadableStream(["a"]),
-				createTransformStream(() => {
-					throw new Error("default-rethrow");
-				}),
-			];
-			const joined = pipejoin(streams); // default onError
-			joined.on("error", () => {});
-			joined.resume();
-			await timeout(100);
-			strictEqual(caught, "default-rethrow");
-		} finally {
-			process.removeListener("uncaughtException", handler);
-			for (const l of prior) process.on("uncaughtException", l);
-		}
-	});
-}
+// process.nextTick block deletions). Listeners are restored when done.
+test(`${variant}: pipejoin default onError rethrows the error`, async (_t) => {
+	let caught;
+	const handler = (e) => {
+		caught = e.message;
+	};
+	// Temporarily own uncaughtException so the async rethrow is observable
+	// without crashing the test process.
+	const prior = process.listeners("uncaughtException");
+	for (const l of prior) process.removeListener("uncaughtException", l);
+	process.on("uncaughtException", handler);
+	try {
+		const streams = [
+			createReadableStream(["a"]),
+			createTransformStream(() => {
+				throw new Error("default-rethrow");
+			}),
+		];
+		const joined = pipejoin(streams); // default onError
+		joined.on("error", () => {});
+		joined.resume();
+		await timeout(100);
+		strictEqual(caught, "default-rethrow");
+	} finally {
+		process.removeListener("uncaughtException", handler);
+		for (const l of prior) process.on("uncaughtException", l);
+	}
+});
 
 // --- createReadableStream branch coverage ---
 
@@ -2005,58 +2052,54 @@ test(`${variant}: backpressureGauge pause/resume duration is a small subtraction
 	ok(duration < 1e6, `duration should be small, got ${duration}`);
 });
 
-if (variant === "node") {
-	// total recorded via 'finish'/'close' for writable sinks, AND the
-	// double-record guard means total.timestamp is set exactly once.
-	test(`${variant}: backpressureGauge records writable total exactly once`, async (_t) => {
-		const writable = createWritableStream();
-		const metrics = backpressureGauge({ writable });
-		// Fire all three terminal events; guard must record total exactly once.
-		writable.emit("finish");
-		const first = metrics.writable.total.timestamp;
-		const firstDuration = metrics.writable.total.duration;
-		strictEqual(typeof first, "number");
-		await timeout(30);
-		writable.emit("close");
-		writable.emit("end");
-		// Both timestamp AND duration must be unchanged by the later events. The
-		// recorded timestamp is always startTimestamp (so it can't move), but
-		// duration is Date.now()-start, so a re-record after a 30ms wait would
-		// bump duration. The `!= null` guard must prevent that (kills it -> false).
-		strictEqual(metrics.writable.total.timestamp, first);
-		strictEqual(metrics.writable.total.duration, firstDuration);
-		ok(metrics.writable.total.duration >= 0);
-		ok(metrics.writable.total.duration < 1e6);
-	});
+// total recorded via 'finish'/'close' for writable sinks, AND the
+// double-record guard means total.timestamp is set exactly once.
+test(`${variant}: backpressureGauge records writable total exactly once`, async (_t) => {
+	const writable = createWritableStream();
+	const metrics = backpressureGauge({ writable });
+	// Fire all three terminal events; guard must record total exactly once.
+	writable.emit("finish");
+	const first = metrics.writable.total.timestamp;
+	const firstDuration = metrics.writable.total.duration;
+	strictEqual(typeof first, "number");
+	await timeout(30);
+	writable.emit("close");
+	writable.emit("end");
+	// Both timestamp AND duration must be unchanged by the later events. The
+	// recorded timestamp is always startTimestamp (so it can't move), but
+	// duration is Date.now()-start, so a re-record after a 30ms wait would
+	// bump duration. The `!= null` guard must prevent that (kills it -> false).
+	strictEqual(metrics.writable.total.timestamp, first);
+	strictEqual(metrics.writable.total.duration, firstDuration);
+	ok(metrics.writable.total.duration >= 0);
+	ok(metrics.writable.total.duration < 1e6);
+});
 
-	// 'finish' and 'close' events are both wired (kills on("") string mutants):
-	// a writable that emits only 'finish' (no 'end') must still get a total.
-	test(`${variant}: backpressureGauge records total on the finish event`, async (_t) => {
-		const writable = createWritableStream();
-		const metrics = backpressureGauge({ writable });
-		writable.emit("finish");
-		strictEqual(typeof metrics.writable.total.timestamp, "number");
-	});
+// 'finish' and 'close' events are both wired (kills on("") string mutants):
+// a writable that emits only 'finish' (no 'end') must still get a total.
+test(`${variant}: backpressureGauge records total on the finish event`, async (_t) => {
+	const writable = createWritableStream();
+	const metrics = backpressureGauge({ writable });
+	writable.emit("finish");
+	strictEqual(typeof metrics.writable.total.timestamp, "number");
+});
 
-	test(`${variant}: backpressureGauge records total on the close event`, async (_t) => {
-		const writable = createWritableStream();
-		const metrics = backpressureGauge({ writable });
-		writable.emit("close");
-		strictEqual(typeof metrics.writable.total.timestamp, "number");
-	});
-}
+test(`${variant}: backpressureGauge records total on the close event`, async (_t) => {
+	const writable = createWritableStream();
+	const metrics = backpressureGauge({ writable });
+	writable.emit("close");
+	strictEqual(typeof metrics.writable.total.timestamp, "number");
+});
 
 // --- pipeline derives objectMode from a trailing readable's state and pushes a
 // sink built from a (non-empty) streamOptions object. With the readable-last
 // case, object chunks must drain without a non-buffer-chunk error. (covers the
 // isReadable branch and the streamOptions object literal.) ---
-if (variant === "node") {
-	test(`${variant}: pipeline drains an object-mode readable-last stream`, async (_t) => {
-		const streams = [
-			createReadableStream([{ a: 1 }, { b: 2 }]),
-			createTransformStream((c, enqueue) => enqueue(c)),
-		];
-		const out = await withTimeout(pipeline(streams));
-		deepStrictEqual(out, {});
-	});
-}
+test(`${variant}: pipeline drains an object-mode readable-last stream`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: 1 }, { b: 2 }]),
+		createTransformStream((c, enqueue) => enqueue(c)),
+	];
+	const out = await withTimeout(pipeline(streams));
+	deepStrictEqual(out, {});
+});

@@ -6,6 +6,10 @@ on:
     - cron: "43 3 * * 5"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: 24.x
 
@@ -17,6 +21,7 @@ jobs:
   trivy-vuln:
     name: "Trivy: SCA"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner
@@ -31,17 +36,20 @@ jobs:
       - name: Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          # Scan the whole repo (matching the local `test:sast:trivy` script,
+          # `trivy fs ... .`) instead of only package-lock.json, and do not
+          # ignore unfixed advisories, so green CI implies green local SCA.
           scanners: vuln
           scan-type: fs
-          scan-ref: package-lock.json
+          scan-ref: .
           hide-progress: true
-          ignore-unfixed: true
           exit-code: 1
           format: github
 
   trivy-license:
     name: "Trivy: Licensing"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner
@@ -90,6 +98,7 @@ jobs:
   license:
     name: "License headers"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner
@@ -117,6 +126,7 @@ jobs:
   lockfile:
     name: "lockfile-lint: SAST package-lock.json"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: (github.actor != 'dependabot[bot]')
 
     steps:
@@ -146,6 +156,7 @@ jobs:
   codeql:
     name: "CodeQL: SAST"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
@@ -185,6 +196,7 @@ jobs:
   semgrep:
     name: "semgrep: SAST"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     container:
       # https://hub.docker.com/r/semgrep/semgrep/tags
@@ -204,6 +216,7 @@ jobs:
   actionlint:
     name: "actionlint: GitHub Actions lint"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
@@ -221,6 +234,7 @@ jobs:
   zizmor:
     name: "zizmor: GitHub Actions SAST"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read
@@ -242,6 +256,7 @@ jobs:
   trufflehog:
     name: 'TruffleHog: secrets'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner
@@ -263,6 +278,7 @@ jobs:
   gitleaks:
     name: 'gitleaks: secrets'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner

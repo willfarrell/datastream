@@ -117,6 +117,31 @@ test(`${variant}: ipfsAddStream should pipe data through and call node.add`, asy
 	deepStrictEqual(receivedChunks, input);
 });
 
+// Kill: ConditionalExpression survivor `if (error) reject(error)` → `if (true)` in
+// the resolvePulled callback. When a parked chunk is pulled with no error, the
+// producer's transform callback must RESOLVE so the Transform pushes the chunk
+// downstream. With the mutant it rejects with `undefined`, which the core
+// Transform treats as a (falsy) non-error and therefore skips `this.push(chunk)`
+// — so the passed-through output is dropped. Asserting the full passthrough
+// output catches that.
+test(`${variant}: ipfsAddStream should pass every chunk through to downstream`, async () => {
+	const input = ["chunk1", "chunk2", "chunk3"];
+	const node = {
+		async add(source) {
+			for await (const _chunk of source) {
+			}
+			return { cid: "QmPassthrough" };
+		},
+	};
+	const streams = [createReadableStream(input), await ipfsAddStream({ node })];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+	// The add transform is a pass-through: every input chunk must reach
+	// downstream in order, not be dropped.
+	deepStrictEqual(output, input);
+	deepStrictEqual(streams[1].result().value, "QmPassthrough");
+});
+
 test(`${variant}: ipfsAddStream should feed node.add an async iterable, not a buffered array`, async () => {
 	let source;
 	const node = {
@@ -160,7 +185,9 @@ test(`${variant}: ipfsAddStream should propagate node.add errors through the pip
 
 test(`${variant}: ipfsAddStream should use custom resultKey`, async () => {
 	const node = {
-		async add(_data) {
+		async add(source) {
+			for await (const _chunk of source) {
+			}
 			return { cid: "QmResult123" };
 		},
 	};
@@ -175,7 +202,9 @@ test(`${variant}: ipfsAddStream should use custom resultKey`, async () => {
 
 test(`${variant}: ipfsAddStream result should be collected by pipeline`, async () => {
 	const node = {
-		async add(_data) {
+		async add(source) {
+			for await (const _chunk of source) {
+			}
 			return { cid: "bafyResult456" };
 		},
 	};
@@ -597,10 +626,22 @@ test(`${variant}: ipfsAddStream teardown after done should not set error`, async
 	// Complete the pipeline successfully; this sets done=true then awaits addPromise.
 	const res = await pipeline(streams);
 	strictEqual(res.cid, "QmDoneFirst");
-	// After done=true the "close" event fires naturally; emit it again to simulate
-	// teardown being called post-completion. If `if (done) return` is removed,
-	// error gets set to a synthetic Error, which would corrupt state.
-	addStream.emit("close"); // should be a no-op
+	// A clean completion must leave no injected teardown error: the "close" event
+	// fired naturally during teardown, and with `if (done) return` intact that
+	// teardown is a no-op. If the guard is dropped (`if (false) return`), teardown
+	// fabricates an "ipfsAddStream destroyed" error here.
+	strictEqual(
+		addStream.injectedError(),
+		undefined,
+		"a clean completion must not inject a teardown error",
+	);
+	// Emitting "close" again must likewise stay a no-op.
+	addStream.emit("close");
+	strictEqual(
+		addStream.injectedError(),
+		undefined,
+		"teardown after done must remain a no-op on a repeated close",
+	);
 	// result must still be valid
 	strictEqual(addStream.result().value, "QmDoneFirst");
 });
@@ -704,6 +745,10 @@ test(`${variant}: ipfsAddStream should settle node.add source when stream is clo
 		"node.add source must settle when stream is closed without error (close event)",
 	);
 	strictEqual(iterationError instanceof Error, true);
+	// teardown ran (stream was destroyed before completion), so the injected
+	// error must be exposed — it is the very error source() threw into node.add.
+	strictEqual(addStream.injectedError() instanceof Error, true);
+	strictEqual(addStream.injectedError(), iterationError);
 });
 
 // *** default export *** //

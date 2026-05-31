@@ -113,7 +113,6 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 			);
 		}
 		const trimmed = text.trim();
-		if (trimmed.length === 0) return;
 		try {
 			enqueue(JSON.parse(trimmed));
 		} catch {

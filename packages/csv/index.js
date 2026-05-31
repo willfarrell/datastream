@@ -5,10 +5,7 @@ import {
 	createTransformStream,
 	resolveLazy,
 } from "@datastream/core";
-import {
-	objectFromEntriesStream,
-	objectToEntriesStream,
-} from "@datastream/object";
+import { objectToEntriesStream } from "@datastream/object";
 
 const comma = ",";
 const quote = "'";
@@ -32,6 +29,71 @@ const defaultQuoteChar = doubleQuote;
 
 const stripBOM = (str) => {
 	return str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
+};
+
+// Quote/escape-aware scan for the end of the first record (row). Returns the
+// index of the newline that terminates row 0, or -1 if no complete row is
+// present. Newlines inside quoted fields are skipped so a quoted newline does
+// not split the row. Mirrors the field-start quoting rules of the parser.
+const findRowEnd = (
+	text,
+	delimiterChar,
+	newlineChar,
+	quoteChar,
+	escapeChar,
+) => {
+	const len = text.length;
+	const quoteCode = quoteChar.charCodeAt(0);
+	const escapeCode = escapeChar.charCodeAt(0);
+	const escapeIsQuote = escapeChar === quoteChar;
+	const delimiterLength = delimiterChar.length;
+	let pos = 0;
+	let fieldStart = 0;
+	while (pos < len) {
+		if (text.charCodeAt(pos) === quoteCode && pos === fieldStart) {
+			// Quoted field: scan to the matching closing quote.
+			pos++;
+			while (pos < len) {
+				if (text.charCodeAt(pos) === quoteCode) {
+					if (escapeIsQuote) {
+						// "" is an escaped quote; a single " closes the field.
+						if (pos + 1 < len && text.charCodeAt(pos + 1) === quoteCode) {
+							pos += 2;
+							continue;
+						}
+						pos++;
+						break;
+					}
+					// Custom escape: odd run of escapeChar before quote => escaped.
+					let run = 0;
+					let k = pos - 1;
+					while (k >= 0 && text.charCodeAt(k) === escapeCode) {
+						run++;
+						k--;
+					}
+					if ((run & 1) === 1) {
+						pos++;
+						continue;
+					}
+					pos++;
+					break;
+				}
+				pos++;
+			}
+			fieldStart = pos;
+			continue;
+		}
+		if (text.startsWith(newlineChar, pos)) {
+			return pos;
+		}
+		if (text.startsWith(delimiterChar, pos)) {
+			pos += delimiterLength;
+			fieldStart = pos;
+			continue;
+		}
+		pos++;
+	}
+	return -1;
 };
 
 export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
@@ -66,9 +128,41 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 				(delimiter) => headerString.indexOf(delimiter) > -1,
 			) ?? defaultDelimiterChar;
 
+		// A char is only the quote char when it actually BRACKETS a field: it
+		// opens at a field-start (text start, or right after a delimiter or a
+		// newline) AND a matching quote closes the field right before the next
+		// delimiter/newline/end. A bare apostrophe/quote inside ordinary data
+		// (e.g. "'twas the night", which opens but never closes a field) must
+		// NOT be mistaken for the quote char.
+		const delimiterChar = value.delimiterChar;
+		const cr = carageReturn.charCodeAt(0);
+		const lf = lineFeed.charCodeAt(0);
+		const isFieldStart = (i) =>
+			i === 0 ||
+			text.startsWith(delimiterChar, i - delimiterChar.length) ||
+			text.charCodeAt(i - 1) === cr ||
+			text.charCodeAt(i - 1) === lf;
+		const isFieldEnd = (i) =>
+			i >= text.length ||
+			text.startsWith(delimiterChar, i) ||
+			text.charCodeAt(i) === cr ||
+			text.charCodeAt(i) === lf;
 		value.quoteChar =
-			detectQuoteChars.find((delimiter) => text.indexOf(delimiter) > -1) ??
-			defaultQuoteChar;
+			detectQuoteChars.find((candidate) => {
+				let i = text.indexOf(candidate);
+				while (i > -1) {
+					if (isFieldStart(i)) {
+						// Look for a closing quote that ends the field.
+						let close = text.indexOf(candidate, i + 1);
+						while (close > -1) {
+							if (isFieldEnd(close + 1)) return true;
+							close = text.indexOf(candidate, close + 1);
+						}
+					}
+					i = text.indexOf(candidate, i + 1);
+				}
+				return false;
+			}) ?? defaultQuoteChar;
 		value.escapeChar = value.quoteChar;
 		return true;
 	};
@@ -127,28 +221,19 @@ export const csvDetectHeaderStream = (options = {}, streamOptions = {}) => {
 		buffer = "";
 		headerDetected = true;
 
-		const headerEndOfRow = text.indexOf(newlineChar);
-		if (headerEndOfRow === -1) {
-			// Entire input is header, no data rows
-			const parserFn = parser ?? csvQuotedParser;
-			const result = parserFn(
-				text,
-				{
-					delimiterChar,
-					newlineChar,
-					quoteChar,
-					escapeChar,
-					numCols: 0,
-					idx: 0,
-				},
-				true,
-			);
-			value.header = result.rows[0] ?? [];
-			return;
-		}
+		// Find the end of the first row with a quote/escape-aware scan so a
+		// newline inside a quoted header field does NOT split the header.
+		const headerEndOfRow = findRowEnd(
+			text,
+			delimiterChar,
+			newlineChar,
+			quoteChar,
+			escapeChar,
+		);
 
-		const headerChunk = text.slice(0, headerEndOfRow);
 		const parserFn = parser ?? csvQuotedParser;
+		const headerChunk =
+			headerEndOfRow === -1 ? text : text.slice(0, headerEndOfRow);
 		const result = parserFn(
 			headerChunk,
 			{
@@ -162,6 +247,11 @@ export const csvDetectHeaderStream = (options = {}, streamOptions = {}) => {
 			true,
 		);
 		value.header = result.rows[0] ?? [];
+
+		if (headerEndOfRow === -1) {
+			// Entire input is header, no data rows
+			return;
+		}
 
 		const rest = text.slice(headerEndOfRow + newlineChar.length);
 		if (rest.length > 0) {
@@ -194,6 +284,29 @@ export const csvDetectHeaderStream = (options = {}, streamOptions = {}) => {
 // --- Parsers ---
 // Both return { rows: string[][], tail: string, numCols: number, idx: number, errors?: {} }
 // Options can include pre-computed char codes (from csvSteamifyParser) or raw config strings.
+
+// Inverse of csvFormatStream's custom-escape encoding (escapeChar !== quoteChar):
+// the formatter escapes escapeChar -> escapeChar+escapeChar and quoteChar ->
+// escapeChar+quoteChar. Reverse both in a single left-to-right pass so an
+// escapeChar consumes the following char literally (handling escaped escapes
+// and escaped quotes together), keeping format/parse a faithful round-trip.
+const unescapeCustom = (text, escapeCharCode) => {
+	const len = text.length;
+	let out = "";
+	let i = 0;
+	let start = 0;
+	while (i < len) {
+		if (text.charCodeAt(i) === escapeCharCode && i + 1 < len) {
+			out += text.substring(start, i);
+			out += text[i + 1];
+			i += 2;
+			start = i;
+		} else {
+			i++;
+		}
+	}
+	return out + text.substring(start);
+};
 
 // Internal hot-path parser. Writes results directly to ctx and calls enqueue(fields) per row.
 // ctx must have all pre-computed char codes + numCols, idx, tail, errors fields.
@@ -319,7 +432,7 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					enqueue(fields);
 					idx++;
 					fi = 0;
-					fields = rowTpl ? rowTpl.slice() : [];
+					fields = rowTpl.slice();
 					pos += newlineCharLength;
 					rowStart = pos;
 					fieldStart = pos;
@@ -332,22 +445,28 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 				continue;
 			}
 
-			// escapeChar !== quoteChar — use indexOf with lookback
+			// escapeChar !== quoteChar — use indexOf with run-length lookback.
+			// A quote is only escaped when the run of escapeChar immediately
+			// before it is ODD; an even run (e.g. "\\" => an escaped escape)
+			// leaves the following quote as a real closing quote.
 			let closeQ = text.indexOf(quoteChar, pos);
 			let hasEscape = false;
-			while (
-				closeQ !== -1 &&
-				closeQ > 0 &&
-				text.charCodeAt(closeQ - 1) === escapeCharCode
-			) {
-				hasEscape = true;
+			while (closeQ !== -1) {
+				let run = 0;
+				let k = closeQ - 1;
+				while (k >= contentStart && text.charCodeAt(k) === escapeCharCode) {
+					run++;
+					k--;
+				}
+				if (run > 0) hasEscape = true;
+				if ((run & 1) === 0) break; // even run => real closing quote
 				closeQ = text.indexOf(quoteChar, closeQ + 1);
 			}
 
 			if (closeQ === -1) {
 				// Unterminated quote
 				const raw = text.substring(contentStart);
-				const field = hasEscape ? raw.replaceAll(escapedQuote, quoteChar) : raw;
+				const field = hasEscape ? unescapeCustom(raw, escapeCharCode) : raw;
 				if (isFlushing) {
 					trackError("UnterminatedQuote", "Unterminated quoted field");
 					fields[fi++] = field;
@@ -363,12 +482,10 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 				return;
 			}
 
-			// Extract field value: single slice + conditional replaceAll
+			// Extract field value: single slice + conditional unescape
 			{
 				const field = hasEscape
-					? text
-							.substring(contentStart, closeQ)
-							.replaceAll(escapedQuote, quoteChar)
+					? unescapeCustom(text.substring(contentStart, closeQ), escapeCharCode)
 					: text.substring(contentStart, closeQ);
 				if (field.length > fieldMaxSize) {
 					throw new Error(
@@ -411,7 +528,7 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					enqueue(fields);
 					idx++;
 					fi = 0;
-					fields = rowTpl ? rowTpl.slice() : [];
+					fields = rowTpl.slice();
 					pos += newlineCharLength;
 					rowStart = pos;
 					fieldStart = pos;
@@ -445,7 +562,7 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					for (fi = 0; fi < lastFi; fi++) {
 						const d = text.indexOf(delimiterChar, fieldStart);
 						if (d === -1 || d > rowEnd) {
-							// Malformed row: split fallback
+							// Malformed row (too few columns): split fallback
 							fields = text.substring(pos, rowEnd).split(delimiterChar);
 							fi = numCols; // sentinel: skip lastFi assign
 							break;
@@ -454,7 +571,17 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 						fieldStart = d + delimiterCharLength;
 					}
 					if (fi === lastFi) {
-						fields[lastFi] = text.substring(fieldStart, rowEnd);
+						// Surplus columns: a delimiter still remains before rowEnd, so
+						// the last field would otherwise absorb the extra columns.
+						// Fall back to split so over-long rows keep every field
+						// separate (matching the slow path and keeping malformed rows
+						// detectable).
+						const extra = text.indexOf(delimiterChar, fieldStart);
+						if (extra !== -1 && extra < rowEnd) {
+							fields = text.substring(pos, rowEnd).split(delimiterChar);
+						} else {
+							fields[lastFi] = text.substring(fieldStart, rowEnd);
+						}
 					}
 					enqueue(fields);
 					idx++;
@@ -510,7 +637,7 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					enqueue(fields);
 					idx++;
 					fi = 0;
-					fields = rowTpl ? rowTpl.slice() : [];
+					fields = rowTpl.slice();
 					pos = nextNl + newlineCharLength;
 					rowStart = pos;
 					fieldStart = pos;
@@ -693,7 +820,7 @@ const csvSteamifyParser = (options = {}) => {
 		ctx.escapeCharCode = escapeChar.charCodeAt(0);
 		ctx.escapeIsQuote = escapeChar === quoteChar;
 		ctx.escapedQuote = escapeChar + quoteChar;
-		ctx.fieldMaxSize = fieldMaxSize ?? 16_777_216;
+		ctx.fieldMaxSize = fieldMaxSize;
 		resolved = true;
 	};
 
@@ -721,7 +848,6 @@ const csvSteamifyParser = (options = {}) => {
 			ctx.errors = null;
 			csvParseInline(text, ctx, false, enqueue);
 			buffer = ctx.tail;
-			if (ctx.errors !== null) mergeErrors(ctx.errors);
 		}
 	};
 
@@ -760,7 +886,7 @@ export const csvParseStream = (options = {}, streamOptions = {}) => {
 		...parserOptions
 	} = options;
 	parserOptions.fieldMaxSize = fieldMaxSize;
-	streamOptions.highWaterMark ??= 16384;
+	streamOptions = { highWaterMark: 16384, ...streamOptions };
 
 	const streamParse = csvSteamifyParser(parserOptions);
 
@@ -907,7 +1033,10 @@ const autoCoerce = (val) => {
 		c0 === 45 // '-'
 	) {
 		if (numberRe.test(val)) return Number(val);
-		if (iso8601Re.test(val)) return new Date(val);
+		if (iso8601Re.test(val)) {
+			const d = new Date(val);
+			if (!Number.isNaN(d.getTime())) return d;
+		}
 		return val;
 	}
 	// ISO date: starts with digit (already handled above)
@@ -1129,7 +1258,31 @@ export const csvFormatStream = (options = {}, streamOptions = {}) => {
 	return createTransformStream(transform, flush, streamOptions);
 };
 
-export const csvArrayToObject = ({ headers }, streamOptions) =>
-	objectFromEntriesStream({ keys: headers }, streamOptions);
+export const csvArrayToObject = ({ headers }, streamOptions = {}) => {
+	let resolvedKeys;
+	const transform = (chunk, enqueue) => {
+		resolvedKeys ??= resolveLazy(headers);
+		const value = {};
+		for (let i = 0; i < resolvedKeys.length; i++) {
+			const key = resolvedKeys[i];
+			// Reserved keys like "__proto__" must be stored as own data
+			// properties: a plain `value[key] = ...` assignment would set the
+			// object's prototype instead, silently dropping the column. Use
+			// defineProperty so the column is always an enumerable own property.
+			if (key === "__proto__" || key === "constructor") {
+				Object.defineProperty(value, key, {
+					value: chunk[i],
+					writable: true,
+					enumerable: true,
+					configurable: true,
+				});
+			} else {
+				value[key] = chunk[i];
+			}
+		}
+		enqueue(value);
+	};
+	return createTransformStream(transform, streamOptions);
+};
 export const csvObjectToArray = ({ headers }, streamOptions) =>
 	objectToEntriesStream({ keys: headers }, streamOptions);

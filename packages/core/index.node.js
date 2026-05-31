@@ -559,18 +559,13 @@ export const timeout = (ms, { signal } = {}) => {
 		);
 	}
 	return new Promise((resolve, reject) => {
-		let settled = false;
 		const abortHandler = () => {
-			if (settled) return;
-			settled = true;
 			clearTimeout(timerId);
 			signal.removeEventListener("abort", abortHandler);
 			reject(new Error("Aborted", { cause: { code: "AbortError" } }));
 		};
 		if (signal) signal.addEventListener("abort", abortHandler);
 		const timerId = setTimeout(() => {
-			if (settled) return;
-			settled = true;
 			if (signal) signal.removeEventListener("abort", abortHandler);
 			resolve();
 		}, ms);

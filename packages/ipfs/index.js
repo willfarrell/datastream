@@ -84,9 +84,12 @@ export const ipfsAddStream = async (
 		},
 		(e) => {
 			// Record the consumer failure so a still-blocked producer is released
-			// with the error instead of hanging.
+			// with the error instead of hanging. `error` is now truthy, so the
+			// transform's `if (error)` guard short-circuits before it ever reads
+			// `consumerDone`; setting consumerDone here would be dead (the
+			// `if (consumerDone)` branch is unreachable once error is set), so we
+			// deliberately leave it untouched.
 			error ??= e;
-			consumerDone = true;
 			onPulled();
 			throw e;
 		},
@@ -131,9 +134,18 @@ export const ipfsAddStream = async (
 	// pipeline error tears it down), neither transform() nor flush() will run
 	// again. Inject the error into source() so the generator throws and
 	// node.add settles instead of stranding forever on a parked promise.
+	//
+	// `done` (set by flush) means source() has already returned and no producer
+	// is parked, so a late teardown has nothing to wake — and, crucially, must
+	// not fabricate an error after a clean completion. We record whatever error a
+	// teardown injects so callers can confirm a successful run left none behind;
+	// dropping the `if (done) return` guard would record a spurious
+	// "ipfsAddStream destroyed" here on the close that always follows success.
+	let injectedError;
 	const teardown = (e) => {
 		if (done) return;
 		error ??= e ?? new Error("ipfsAddStream destroyed");
+		injectedError = error;
 		// Wake both sides: source() so it throws, and any parked producer so its
 		// transform() callback rejects.
 		onProduced();
@@ -146,6 +158,10 @@ export const ipfsAddStream = async (
 		key: resultKey ?? "cid",
 		value: cid,
 	});
+	// Diagnostic seam: the error (if any) that teardown injected into the
+	// source. After a clean completion this stays undefined, because teardown is
+	// a no-op once `done` is set; an aborted/destroyed run exposes the cause.
+	stream.injectedError = () => injectedError;
 	return stream;
 };
 

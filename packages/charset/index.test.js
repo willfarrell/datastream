@@ -642,6 +642,16 @@ test(`${variant}: web charsetDetectStream should signal unknown for empty input`
 	strictEqual(value.confidence, 0);
 });
 
+// *** getSupportedEncoding via detect.js direct import: the function must be
+// exported from the shared source so both node and web builds expose it. *** //
+test(`${variant}: detect.js getSupportedEncoding should convert ISO-8859-8-I to ISO-8859-8`, (_t) => {
+	strictEqual(detectSource.getSupportedEncoding("ISO-8859-8-I"), "ISO-8859-8");
+});
+
+test(`${variant}: detect.js getSupportedEncoding should pass through other charsets unchanged`, (_t) => {
+	strictEqual(detectSource.getSupportedEncoding("UTF-8"), "UTF-8");
+});
+
 // *** charset key string mutations: each charset name in the allowlist must be
 // correct so that chardet results are stored under the right key and the
 // top-confidence charset is reported accurately. Mutating any name to "" means

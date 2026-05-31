@@ -166,6 +166,32 @@ global.fetch = (url, _request) => {
 	throw new Error("mock missing");
 };
 
+// *** built-in default Accept header (literal, before any pollution) *** //
+// MUST run before any fetchSetDefaults({headers:{Accept:...}}) call below so it
+// observes the un-overridden literal default `Accept: "application/json"`.
+// Kills the StringLiteral mutant that empties the literal to "".
+test(`${variant}: built-in default Accept header is non-empty application/json`, async (_t) => {
+	const originalFetch = global.fetch;
+	let capturedHeaders;
+	global.fetch = async (_url, init) => {
+		capturedHeaders = init.headers;
+		return new Response(JSON.stringify({ ok: true }), {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/json" }),
+		});
+	};
+	try {
+		// Do NOT touch Accept anywhere: rely entirely on the literal default.
+		const stream = fetchResponseStream([
+			{ url: "https://example.org/builtin-accept", dataPath: "" },
+		]);
+		await streamToArray(stream);
+		strictEqual(capturedHeaders.Accept, "application/json");
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
 // *** fetchResponseStream *** //
 test(`${variant}: fetchResponseStream should fetch csv`, async (_t) => {
 	fetchSetDefaults({ headers: { Accept: "text/csv" } });
@@ -850,6 +876,110 @@ test(`${variant}: fetchResponseStream should stop JSON pagination when consumer 
 	}
 });
 
+// *** Binary branch cleanup on downstream error ***
+// When the response is NON-JSON, fetchGenerator iterates the raw ReadableStream
+// (response.body), which has .cancel() but NO .return(). A downstream consumer
+// error must propagate; the catch block calls response?.cancel?.() then
+// response?.return?.(). The ReadableStream lacks .return, so the inner optional
+// chaining on `.return` MUST be preserved — a mutant turning `response?.return?.()`
+// into `response?.return()` would throw "response.return is not a function" and
+// mask the real "downstream boom" error.
+test(`${variant}: fetchResponseStream binary branch cleanup on read error preserves original error`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url === "https://example.org/binary-cancel") {
+			// text/csv → non-JSON → binary branch: fetchGenerator iterates
+			// response.body directly. We install a body that HAS .cancel()
+			// (resolving cleanly) but NO .return(), and whose async iterator
+			// throws — so the catch runs, response?.cancel?.() succeeds, and we
+			// reach response?.return?.() with response lacking .return.
+			const r = new Response("ignored", {
+				status: 200,
+				headers: new Headers({ "Content-Type": "text/csv" }),
+			});
+			const fakeBody = {
+				cancel: async () => {},
+				[Symbol.asyncIterator]() {
+					return {
+						next: async () => {
+							throw new Error("binary read boom");
+						},
+					};
+				},
+			};
+			Object.defineProperty(r, "body", {
+				value: fakeBody,
+				configurable: true,
+			});
+			return r;
+		}
+		return originalFetch(url);
+	};
+	fetchSetDefaults({ headers: { Accept: "text/csv" } });
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/binary-cancel",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		// Original code: response?.return?.() no-ops (stream lacks .return), so the
+		// ORIGINAL read error surfaces. Mutant `response?.return()` calls a
+		// non-function and throws "response.return is not a function", masking it.
+		ok(
+			e.message.includes("binary read boom"),
+			`expected original read error, got: ${e.message}`,
+		);
+		ok(
+			!e.message.includes("is not a function"),
+			`cleanup called a non-existent .return(): ${e.message}`,
+		);
+	} finally {
+		global.fetch = originalFetch;
+		fetchSetDefaults({ headers: { Accept: "application/json" } });
+	}
+});
+
+// *** Null response cleanup: catch fires with response === null/undefined ***
+// A non-JSON response whose body is null makes fetchUnknown return null, so
+// `for await (const chunk of null)` throws and the catch block runs with
+// `response === null`. The outer optional chaining `response?.cancel?.()` and
+// `response?.return?.()` MUST be preserved: a mutant removing the first `?.`
+// (response.cancel?.() / response.return()) dereferences null and throws a
+// "Cannot read properties of null" TypeError, replacing the genuine iteration
+// error. We assert the surfaced error is the iteration error, not the null deref.
+test(`${variant}: fetchResponseStream null response body surfaces iteration error not null-deref`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async () => {
+		const r = new Response("ignored", {
+			status: 200,
+			headers: new Headers({ "Content-Type": "text/csv" }),
+		});
+		// Force a null body so fetchUnknown returns null and iteration throws.
+		Object.defineProperty(r, "body", { value: null, configurable: true });
+		return r;
+	};
+	fetchSetDefaults({ headers: { Accept: "text/csv" } });
+	try {
+		const stream = fetchResponseStream({
+			url: "https://example.org/null-binary-body",
+		});
+		await streamToArray(stream);
+		throw new Error("Should have thrown");
+	} catch (e) {
+		// Original code: re-throws the iteration error (null is not iterable).
+		// Mutant (response.cancel?.()): throws "Cannot read properties of null
+		// (reading 'cancel')" BEFORE reaching `throw error`.
+		ok(
+			!/reading 'cancel'|reading 'return'/.test(e.message),
+			`cleanup dereferenced null instead of guarding it: ${e.message}`,
+		);
+	} finally {
+		global.fetch = originalFetch;
+		fetchSetDefaults({ headers: { Accept: "application/json" } });
+	}
+});
+
 // *** SSRF protection: same-origin pagination *** //
 test(`${variant}: fetchResponseStream should reject Link header with cross-origin URL`, async (_t) => {
 	const originalFetch = global.fetch;
@@ -1184,6 +1314,33 @@ test(`${variant}: fetchResponseStream treats text/application-json (non-JSON) as
 		ok(
 			output[0] instanceof Uint8Array,
 			`Expected binary output for non-JSON content type, got: ${typeof output[0]}`,
+		);
+	} finally {
+		global.fetch = originalFetch;
+	}
+});
+
+// *** JSON content-type regex: json must be followed by end-of-string or `;` ***
+// `application/jsonl` (JSON Lines) shares the `application/json` prefix but is a
+// distinct, line-delimited (binary) format. The trailing `($|;)` group ensures
+// it is NOT mis-detected as a single JSON document. Kills a mutant that drops
+// the group (matching any `application/json...` suffix).
+test(`${variant}: fetchResponseStream treats application/jsonl (no separator) as binary`, async (_t) => {
+	const originalFetch = global.fetch;
+	global.fetch = async () => {
+		return new Response('{"a":1}\n{"a":2}', {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/jsonl" }),
+		});
+	};
+	fetchSetDefaults({ dataPath: "" });
+	try {
+		const stream = fetchResponseStream([{ url: "https://example.org/jsonl" }]);
+		const output = await streamToArray(stream);
+		ok(output.length > 0);
+		ok(
+			output[0] instanceof Uint8Array,
+			`Expected binary output for application/jsonl, got: ${typeof output[0]}`,
 		);
 	} finally {
 		global.fetch = originalFetch;
@@ -1750,6 +1907,78 @@ test(`${variant}: fetchResponseStream stops pagination cleanly when nextPath ret
 	} finally {
 		global.fetch = originalFetch;
 		fetchSetDefaults({ dataPath: undefined, nextPath: undefined });
+	}
+});
+
+// *** rateLimit gate: `if (now < ts)` must NOT always-enter and `<` not `<=` ***
+// Timing alone cannot distinguish the mutants (the wait amount is <= 0 when the
+// gate would be wrongly entered, so setTimeout fires immediately). Instead we
+// pass an ALREADY-ABORTED signal: `timeout()` rejects synchronously on an
+// aborted signal, so any *unwanted* entry into the wait branch surfaces as an
+// "Aborted" rejection. Original code (gate false) skips the wait entirely.
+test(`${variant}: fetchRateLimit does not enter wait branch when timestamp is in the past (if(true) mutant)`, async (_t) => {
+	const { fetchRateLimit } = await import("@datastream/fetch");
+	const originalFetch = global.fetch;
+	global.fetch = async () =>
+		new Response(JSON.stringify({ ok: true }), {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/json" }),
+		});
+	fetchSetDefaults({ rateLimit: 0 });
+	const aborted = AbortSignal.abort();
+	try {
+		// rateLimitTimestamp strictly in the past → `now < ts` is false → no wait.
+		// Mutant `if (true)` would call timeout({signal: aborted}) and REJECT.
+		const response = await fetchRateLimit(
+			{
+				url: "https://example.org/rl-gate-past",
+				rateLimitTimestamp: Date.now() - 5000,
+				rateLimit: 0,
+			},
+			{ signal: aborted },
+		);
+		ok(
+			response.ok,
+			"gate wrongly entered the wait branch (if(true) or aborted signal)",
+		);
+	} finally {
+		global.fetch = originalFetch;
+		fetchSetDefaults({ rateLimit: 0.01 });
+	}
+});
+
+test(`${variant}: fetchRateLimit uses strict < (not <=) at the now===timestamp boundary`, async (_t) => {
+	const { fetchRateLimit } = await import("@datastream/fetch");
+	const originalFetch = global.fetch;
+	const originalNow = Date.now;
+	const fixed = 1_000_000_000_000;
+	Date.now = () => fixed;
+	global.fetch = async () =>
+		new Response(JSON.stringify({ ok: true }), {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/json" }),
+		});
+	fetchSetDefaults({ rateLimit: 0 });
+	const aborted = AbortSignal.abort();
+	try {
+		// now === rateLimitTimestamp exactly. Original `<` → false → no wait.
+		// Mutant `<=` → true → timeout({signal: aborted}) → REJECT.
+		const response = await fetchRateLimit(
+			{
+				url: "https://example.org/rl-gate-equal",
+				rateLimitTimestamp: fixed,
+				rateLimit: 0,
+			},
+			{ signal: aborted },
+		);
+		ok(
+			response.ok,
+			"gate entered wait branch at now===timestamp boundary (<= mutant)",
+		);
+	} finally {
+		Date.now = originalNow;
+		global.fetch = originalFetch;
+		fetchSetDefaults({ rateLimit: 0.01 });
 	}
 });
 

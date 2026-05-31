@@ -97,7 +97,7 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 				// means that if the membership guard is ever dropped an unsupported
 				// name folds in at its real confidence (not NaN) and outranks the
 				// real winner, so the allowlist-filter test fails on that mutant.
-				charsets[name] = Math.max(charsets[name] ?? 0, match.confidence);
+				charsets[name] = Math.max(charsets[name], match.confidence);
 			}
 		}
 		const values = Object.entries(charsets)

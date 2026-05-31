@@ -3,6 +3,10 @@ name: Tests (lint)
 on:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: 24.x
 
@@ -13,6 +17,7 @@ jobs:
   lint:
     name: Tests (lint)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Harden runner

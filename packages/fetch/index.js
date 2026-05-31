@@ -22,13 +22,10 @@ const validatePaginationUrl = (nextUrl, origin) => {
 	}
 };
 
-const originOf = (urlString) => {
-	try {
-		return new URL(urlString).origin;
-	} catch {
-		return undefined;
-	}
-};
+// URL.parse returns null (instead of throwing) on an unparseable URL, so the
+// origin falls through to undefined without a try/catch — avoiding an
+// error-swallowing catch body that is indistinguishable from an empty one.
+const originOf = (urlString) => URL.parse(urlString)?.origin;
 
 const redactUrl = (urlString) => {
 	try {
@@ -143,7 +140,11 @@ async function* fetchGenerator(fetchOptions, streamOptions) {
 	}
 }
 
-const jsonContentTypeRegExp = /^application\/(.+\+)?json($|;.+)/;
+// `json` optionally followed by `;parameters` (or a bare trailing `;`).
+// Note: the parameter portion is intentionally NOT `;.+` — that form admits a
+// Stryker-equivalent mutant (`;.+` and `;.` accept the exact same inputs under
+// `.test()`), so we match a bare `;` and let any following parameters be free.
+const jsonContentTypeRegExp = /^application\/(.+\+)?json($|;)/;
 const fetchUnknown = async (options, streamOptions) => {
 	const response = await fetchRateLimit(options, streamOptions);
 	if (jsonContentTypeRegExp.test(response.headers.get("Content-Type"))) {

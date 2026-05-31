@@ -16,12 +16,6 @@ const ctrAlgorithms = ["AES-128-CTR", "AES-256-CTR"];
 
 const DEFAULT_MAX_INPUT_SIZE = 64 * 1024 * 1024; // 64MB
 
-// AES-CTR keystream-reuse ceiling, mirroring the web implementation.
-// 2^64 blocks = 2^68 bytes (256 EB). Beyond this the 128-bit counter can
-// wrap and the keystream repeats, destroying confidentiality.
-const MAX_CTR_BLOCKS = 1n << 64n;
-const MAX_CTR_BYTES = MAX_CTR_BLOCKS * 16n;
-
 // NOTE on nonce/IV uniqueness for the AEAD modes (AES-256-GCM,
 // CHACHA20-POLY1305): the default IV is a fresh 96-bit CSPRNG value, which is
 // safe for a bounded number of messages per key. With random 96-bit nonces the
@@ -89,34 +83,29 @@ export const encryptStream = (
 	if (aad != null && authAlgorithms.includes(algorithm)) {
 		stream.setAAD(aad);
 	}
-	// Default input guard, matching the web build for cross-platform parity:
-	//  - AEAD modes (AES-*-GCM, CHACHA20-POLY1305) default to 64MB, the same
-	//    DoS guard the web build applies (web buffers the whole ciphertext).
-	//  - AES-*-CTR has no auth tag and OpenSSL silently wraps the 128-bit
-	//    counter on overflow, so it instead uses the keystream-reuse ceiling the
-	//    web impl uses (2^68 bytes) unless the caller supplies maxInputSize.
-	const usingCtrDefaultCeiling =
+	// Input-size guard:
+	//  - When maxInputSize is supplied explicitly, enforce it for all algorithms.
+	//  - AEAD modes default to 64MB (DoS guard; web build buffers the whole
+	//    ciphertext, so parity is important).
+	//  - AES-*-CTR with no explicit maxInputSize: OpenSSL silently wraps its
+	//    128-bit counter at 2^128 blocks, but that is so far beyond any practical
+	//    workload that no runtime guard is needed. Skip the transform override
+	//    to avoid dead-code for an unreachable ceiling.
+	const skipInputGuard =
 		ctrAlgorithms.includes(algorithm) && maxInputSize == null;
-	let effectiveMaxInput;
-	if (maxInputSize != null) {
-		effectiveMaxInput = maxInputSize;
-	} else if (usingCtrDefaultCeiling) {
-		effectiveMaxInput = MAX_CTR_BYTES;
-	} else {
-		effectiveMaxInput = DEFAULT_MAX_INPUT_SIZE;
-	}
-	if (effectiveMaxInput != null) {
+	if (!skipInputGuard) {
+		const effectiveMaxInput = maxInputSize ?? DEFAULT_MAX_INPUT_SIZE;
 		let inputSize = 0n;
 		const limit = BigInt(effectiveMaxInput);
-		const reportedLimit = maxInputSize ?? DEFAULT_MAX_INPUT_SIZE;
 		const originalWrite = stream._transform.bind(stream);
 		stream._transform = (chunk, encoding, callback) => {
 			inputSize += BigInt(chunk.length);
 			if (inputSize > limit) {
-				const message = usingCtrDefaultCeiling
-					? "AES-CTR counter overflow: data exceeds safe limit. Use a new key/IV pair."
-					: `Encryption input exceeds maxInputSize (${reportedLimit} bytes). Use AES-256-CTR for large data.`;
-				callback(new Error(message));
+				callback(
+					new Error(
+						`Encryption input exceeds maxInputSize (${effectiveMaxInput} bytes). Use AES-256-CTR for large data.`,
+					),
+				);
 				return;
 			}
 			originalWrite(chunk, encoding, callback);

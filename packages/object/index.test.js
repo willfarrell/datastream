@@ -519,6 +519,46 @@ test(`${variant}: objectPivotWideToLongStream should not mutate input chunks`, a
 	deepStrictEqual(input[0], original);
 });
 
+// *** objectPivotWideToLongStream isNestedObject deep clone *** //
+test(`${variant}: objectPivotWideToLongStream should deep clone when isNestedObject is true`, async (_t) => {
+	const input = [{ id: 1, a: { x: 10 }, b: { x: 20 } }];
+	const streams = [
+		createReadableStream(input),
+		objectPivotWideToLongStream({
+			keys: ["a", "b"],
+			keyParam: "axis",
+			valueParam: "val",
+			isNestedObject: true,
+		}),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		{ id: 1, axis: "a", val: { x: 10 } },
+		{ id: 1, axis: "b", val: { x: 20 } },
+	]);
+});
+
+// *** objectKeyJoinStream isNestedObject deep clone *** //
+test(`${variant}: objectKeyJoinStream should deep clone when isNestedObject is true`, async (_t) => {
+	const input = [{ firstName: "John", lastName: "Doe", nested: { v: 1 } }];
+	const streams = [
+		createReadableStream(input),
+		objectKeyJoinStream({
+			keys: { fullName: ["firstName", "lastName"] },
+			separator: " ",
+			isNestedObject: true,
+		}),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ nested: { v: 1 }, fullName: "John Doe" }]);
+});
+
 // *** objectKeyJoinStream shallow copy regression *** //
 test(`${variant}: objectKeyJoinStream should not mutate input chunks`, async (_t) => {
 	const input = [{ first: "a", last: "b", other: "c" }];

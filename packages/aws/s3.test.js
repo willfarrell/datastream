@@ -612,3 +612,31 @@ test(`${variant}: default export should include all stream functions`, (_t) => {
 		"setClient",
 	]);
 });
+
+// The teardownBody try/catch blocks must swallow errors from Body.destroy() and
+// Body.cancel() without re-throwing. Pins the empty `catch {}` on each call.
+test(`${variant}: awsS3GetObjectStream teardownBody swallows errors from destroy and cancel`, async (_t) => {
+	const body = {
+		async *[Symbol.asyncIterator]() {
+			yield "chunk";
+		},
+		destroy() {
+			throw new Error("destroy failed");
+		},
+		cancel() {
+			throw new Error("cancel failed");
+		},
+	};
+	const stub = { send: async () => ({ Body: body }) };
+	awsS3SetClient(stub);
+
+	const stream = await awsS3GetObjectStream({ Bucket: "b", Key: "k" });
+	// Emit an error: teardownBody runs and both try/catch blocks execute. Neither
+	// throw may propagate (a rethrow mutant would cause an unhandled rejection here).
+	await new Promise((resolve) => {
+		stream.on("error", () => resolve());
+		stream.destroy(new Error("boom"));
+	});
+	await new Promise((resolve) => setImmediate(resolve));
+	// If we reach here, the errors were swallowed correctly.
+});
