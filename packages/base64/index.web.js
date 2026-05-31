@@ -3,6 +3,18 @@
 /* global btoa, atob */
 import { createTransformStream } from "@datastream/core";
 
+// Valid base64 requires length to be a multiple of 4 and only valid alphabet
+// chars, with at most 2 trailing '=' padding characters.  This rejects short
+// fragments like "YQ=" (length 3) and standalone padding like "==" (length 2)
+// so that the Web build (atob) and the Node build (Buffer.from) behave
+// identically on malformed input.
+const VALID_BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+const assertValidBase64 = (s) => {
+	if (s.length % 4 !== 0 || !VALID_BASE64_RE.test(s)) {
+		throw new Error(`Invalid base64 string: ${JSON.stringify(s)}`);
+	}
+};
+
 const utf8Encoder = new TextEncoder();
 
 const toBytes = (chunk) => {
@@ -66,10 +78,14 @@ export const base64DecodeStream = (_options = {}, streamOptions = {}) => {
 			extra = s.slice(s.length - remaining);
 			s = s.slice(0, s.length - remaining);
 		}
-		if (s.length > 0) enqueue(binaryStringToBytes(atob(s)));
+		if (s.length > 0) {
+			assertValidBase64(s);
+			enqueue(binaryStringToBytes(atob(s)));
+		}
 	};
 	const flush = (enqueue) => {
 		if (extra.length > 0) {
+			assertValidBase64(extra);
 			enqueue(binaryStringToBytes(atob(extra)));
 		}
 	};

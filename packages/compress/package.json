@@ -92,22 +92,6 @@
 		"./deflate/webstream": {
 			"types": "./deflate.d.ts",
 			"default": "./deflate.web.mjs"
-		},
-		"./protobuf": {
-			"node": {
-				"import": {
-					"types": "./protobuf.d.ts",
-					"default": "./protobuf.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./protobuf.d.ts",
-				"default": "./protobuf.web.mjs"
-			}
-		},
-		"./protobuf/webstream": {
-			"types": "./protobuf.d.ts",
-			"default": "./protobuf.web.mjs"
 		}
 	},
 	"types": "index.d.ts",
@@ -119,6 +103,7 @@
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run",
 		"test:benchmark": "node __benchmarks__/index.js"
 	},
 	"license": "MIT",
@@ -143,23 +128,13 @@
 		"@datastream/core": "0.5.0"
 	},
 	"devDependencies": {
-		"brotli-wasm": "^3.0.0",
-		"protobufjs": "^8.0.0",
-		"zstd-codec": "^0.1.0"
+		"brotli-wasm": "^3.0.0"
 	},
 	"peerDependencies": {
-		"brotli-wasm": "^3.0.0",
-		"protobufjs": "^8.0.0",
-		"zstd-codec": "^0.1.0"
+		"brotli-wasm": "^3.0.0"
 	},
 	"peerDependenciesMeta": {
 		"brotli-wasm": {
-			"optional": true
-		},
-		"protobufjs": {
-			"optional": true
-		},
-		"zstd-codec": {
 			"optional": true
 		}
 	}

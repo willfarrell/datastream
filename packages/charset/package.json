@@ -87,6 +87,7 @@
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run",
 		"test:benchmark": "node __benchmarks__/index.js"
 	},
 	"license": "MIT",

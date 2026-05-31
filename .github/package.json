@@ -2,9 +2,11 @@
 	"name": "@datastream/github-workflows",
 	"version": "0.5.0",
 	"private": true,
+	"type": "module",
 	"engines": {
-		"node": ">=24.0"
+		"node": ">=24"
 	},
+	"engineStrict": true,
 	"devDependencies": {
 		"license-check-and-add": "4.0.5",
 		"lockfile-lint": "5.0.0"

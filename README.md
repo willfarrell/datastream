@@ -21,25 +21,38 @@
   <br/>
   <a href="https://scorecard.dev/viewer/?uri=github.com/willfarrell/datastream"><img src="https://api.scorecard.dev/projects/github.com/willfarrell/datastream/badge" alt="Open Source Security Foundation (OpenSSF) Scorecard"></a>
   <a href="https://slsa.dev"><img src="https://slsa.dev/images/gh-badge-level3.svg" alt="SLSA 3"></a>
-  <a href="https://github.com/willfarrell/datastream/blob/main/docs/CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg"></a>
+  <a href="https://github.com/willfarrell/datastream/blob/main/.github/CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg"></a>
   <a href="https://biomejs.dev"><img alt="Checked with Biome" src="https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome"></a>
   <a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>
-  <a href="https://github.com/willfarrell/datastream/blob/main/package.json#L32">
+  <a href="https://github.com/willfarrell/datastream/blob/main/package.json#L25">
   <img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-95%25-brightgreen"></a>
 </p>
 </div>
 
-- [`@datastream/core`](#core)
+- [`@datastream/core`](packages/core)
   - pipeline
   - pipejoin
+  - result
   - streamToArray
+  - streamToObject
   - streamToString
+  - streamToBuffer
   - isReadable
   - isWritable
   - makeOptions
   - createReadableStream
+  - createPassThroughStream
   - createTransformStream
   - createWritableStream
+  - resolveLazy
+  - shallowClone
+  - deepClone
+  - shallowEqual
+  - deepEqual
+  - timeout
+  - createReadableStreamFromString (Node only)
+  - createReadableStreamFromArrayBuffer (Node only)
+  - backpressureGauge (Node only)
 
 ## Streams
 
@@ -50,39 +63,106 @@
 
 ### Basics
 
-- [`@datastream/string`](#string)
+- [`@datastream/string`](packages/string)
   - stringReadableStream [Readable]
   - stringLengthStream [PassThrough]
-  - stringOutputStream [PassThrough]
-- [`@datastream/object`](#object)
+  - stringCountStream [PassThrough]
+  - stringMinimumFirstChunkSize [Transform]
+  - stringMinimumChunkSize [Transform]
+  - stringSkipConsecutiveDuplicates [Transform]
+  - stringReplaceStream [Transform]
+  - stringSplitStream [Transform]
+- [`@datastream/object`](packages/object)
   - objectReadableStream [Readable]
   - objectCountStream [PassThrough]
   - objectBatchStream [Transform]
-  - objectOutputStream [PassThrough]
+  - objectPivotLongToWideStream [Transform]
+  - objectPivotWideToLongStream [Transform]
+  - objectKeyValueStream [Transform]
+  - objectKeyValuesStream [Transform]
+  - objectKeyJoinStream [Transform]
+  - objectKeyMapStream [Transform]
+  - objectValueMapStream [Transform]
+  - objectPickStream [Transform]
+  - objectOmitStream [Transform]
+  - objectFromEntriesStream [Transform]
+  - objectToEntriesStream [Transform]
+  - objectSkipConsecutiveDuplicatesStream [Transform]
 
 ### Common
 
-- [`@datastream/fetch`](#fetch)
+- [`@datastream/file`](packages/file)
+  - fileReadStream [Readable]
+  - fileWriteStream [Writable]
+- [`@datastream/fetch`](packages/fetch)
   - fetchResponseStream [Readable]
-- [`@datastream/charset[/{detect,decode,encode}]`](#charset)
+- [`@datastream/base64`](packages/base64)
+  - base64EncodeStream [Transform]
+  - base64DecodeStream [Transform]
+- [`@datastream/charset[/{detect,decode,encode}]`](packages/charset)
   - charsetDetectStream [PassThrough]
   - charsetDecodeStream [Transform]
   - charsetEncodeStream [Transform]
-- [`@datastream/compression[/{gzip,deflate}]`](#compression)
-  - gzipCompressionStream [Transform]
-  - gzipDecompressionStream [Transform]
-  - deflateCompressionStream [Transform]
-  - deflateDecompressionStream [Transform]
-- [`@datastream/digest`](#digest)
+- [`@datastream/compress[/{gzip,deflate,brotli,zstd}]`](packages/compress)
+  - gzipCompressStream [Transform]
+  - gzipDecompressStream [Transform]
+  - deflateCompressStream [Transform]
+  - deflateDecompressStream [Transform]
+  - brotliCompressStream [Transform]
+  - brotliDecompressStream [Transform]
+  - zstdCompressStream [Transform]
+  - zstdDecompressStream [Transform]
+- [`@datastream/digest`](packages/digest)
   - digestStream [PassThrough]
 
 ### Advanced
 
-- [`@datastream/csv[/{parse,format}]`](#csv)
+- [`@datastream/csv[/{parse,format}]`](packages/csv)
   - csvParseStream [Transform]
   - csvFormatStream [Transform]
-- [`@datastream/validate`](#validate)
+- [`@datastream/json`](packages/json)
+  - jsonParseStream [Transform]
+  - jsonFormatStream [Transform]
+  - ndjsonParseStream [Transform]
+  - ndjsonFormatStream [Transform]
+- [`@datastream/encrypt`](packages/encrypt)
+  - encryptStream [Transform]
+  - decryptStream [Transform]
+  - generateEncryptionKey
+- [`@datastream/validate`](packages/validate)
   - validateStream [Transform]
+- [`@datastream/arrow`](packages/arrow)
+  - arrowDetectSchemaStream [PassThrough]
+  - arrowBatchFromArrayStream [Transform]
+  - arrowBatchFromObjectStream [Transform]
+  - arrowToArrayStream [Transform]
+  - arrowToObjectStream [Transform]
+- [`@datastream/duckdb`](packages/duckdb)
+  - duckdbAppenderStream [Writable]
+  - duckdbArrowInsertStream [Writable]
+- [`@datastream/indexeddb`](packages/indexeddb)
+  - indexedDBReadStream [Readable]
+  - indexedDBWriteStream [Writable]
+- [`@datastream/ipfs`](packages/ipfs)
+  - ipfsGetStream [Readable]
+  - ipfsAddStream [Writable]
+- [`@datastream/protobuf`](packages/protobuf)
+  - protobufEncodeStream [Transform]
+  - protobufDecodeStream [Transform]
+  - protobufLengthPrefixFrameStream [Transform]
+  - protobufLengthPrefixUnframeStream [Transform]
+- [`@datastream/schema-registry`](packages/schema-registry)
+  - confluentFrameStream [Transform]
+  - confluentUnframeStream [Transform]
+  - glueFrameStream [Transform]
+  - glueUnframeStream [Transform]
+- [`@datastream/kafka`](packages/kafka)
+  - kafkaConsumeStream [Readable]
+  - kafkaProduceStream [Writable]
+- [`@datastream/aws/msk-iam`](packages/aws)
+  - awsMskIamMechanism (kafkajs OAUTHBEARER SASL config)
+- [`@datastream/aws/glue-schema-registry`](packages/aws)
+  - awsGlueSchemaRegistryResolver (cached GetSchemaVersion lookup)
 
 ## Setup
 
@@ -95,7 +175,7 @@ npm install @datastream/core @datastream/{module}
 ```mermaid
 stateDiagram-v2
 
-    [*] --> fileRead*: path
+    [*] --> fileRead: path
     [*] --> fetchResponse: URL
     [*] --> sqlCopyTo*: SQL
     [*] --> stringReadable: string
@@ -127,7 +207,7 @@ stateDiagram-v2
     encryption --> writable: buffer
 
     state readable {
-        fileRead*
+        fileRead
         fetchResponse
         sqlCopyTo*
         createReadable
@@ -140,20 +220,19 @@ stateDiagram-v2
     }
 
     state decompression {
-        brotliDeompression
-        gzipDeompression
-        deflateDeompression
-        zstdDecompression*
-        protobufDecompression*
+        brotliDecompress
+        gzipDecompress
+        deflateDecompress
+        zstdDecompress
     }
 
     state decryption {
-      decryption*
+      decrypt
     }
 
     state parse {
       csvParse
-      jsonParse*
+      jsonParse
       xmlParse*
     }
 
@@ -163,12 +242,12 @@ stateDiagram-v2
 
     state passThroughString {
       stringLength
-      stringOutput
+      stringCount
     }
 
     state passThroughObject {
       objectCount
-      objectOutput
+      objectBatch
     }
 
     state transform {
@@ -181,26 +260,25 @@ stateDiagram-v2
 
     state format {
       csvFormat
-      jsonFormat*
+      jsonFormat
       xmlFormat*
     }
 
     state compression {
-        brotliCompression
-        gzipCompression
-        deflateCompression
-        zstdCompression*
-        protobufCompression*
+        brotliCompress
+        gzipCompress
+        deflateCompress
+        zstdCompress
     }
 
     state encryption {
-      encryption*
+      encrypt
     }
 
     state writable {
-        fileWrite*
+        fileWrite
         fetchRequest*
-        sqlCopyFrom*
+        sqlCopyFrom
         awsS3Put
         awsDynamoDBPut
         awsDynamoDBDelete
@@ -275,9 +353,9 @@ Read a CSV file, validate the structure, pivot data, then save compressed.
 
 Upload file with brotli compression?
 
-### WebWorker: Decompress protobuf compressed JSON requests
+### WebWorker: Decode protobuf-encoded requests into JSON
 
-Fetch protobuf file, decompress, parse JSON
+Fetch a protobuf-encoded file, decode the protobuf framing, then parse JSON
 
 ### streams
 
@@ -294,4 +372,4 @@ Fetch protobuf file, decompress, parse JSON
 
 ## License
 
-Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell) and [contributors](https://github.com/middyjs/middy/graphs/contributors).
+Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell) and [contributors](https://github.com/willfarrell/datastream/graphs/contributors).

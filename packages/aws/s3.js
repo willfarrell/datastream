@@ -24,12 +24,47 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 	if (!Body) {
 		throw new Error("S3.GetObject not found", { cause: params });
 	}
-	return createReadableStream(Body, streamOptions);
+	const stream = createReadableStream(Body, streamOptions);
+	// Tie the SDK Body (live socket-backed readable) lifecycle to the returned
+	// wrapper: if the consumer errors/aborts, tear down Body so the underlying
+	// HTTP connection is not leaked.
+	const teardownBody = () => {
+		// Node Body is a Readable (destroy); web Body is a WHATWG ReadableStream
+		// (cancel). Call whichever exists, ignoring teardown errors so releasing
+		// the socket cannot re-throw on an already-failed Body.
+		try {
+			Body.destroy?.();
+		} catch {}
+		try {
+			Body.cancel?.();
+		} catch {}
+	};
+	// Node build: createReadableStream returns a node Readable; clean up on its
+	// 'error' event (without an error argument, so releasing the socket does not
+	// re-emit an unhandled 'error' on the already-failed Body).
+	if (typeof stream?.on === "function") {
+		stream.on("error", teardownBody);
+	}
+	// Web build (and any build given an abort signal): the wrapper is a WHATWG
+	// ReadableStream with no 'error' event, so wire teardown to the abort signal
+	// so socket teardown on consumer abort is consistent across builds.
+	const { signal } = streamOptions;
+	if (signal) {
+		if (signal.aborted) {
+			teardownBody();
+		} else {
+			signal.addEventListener("abort", teardownBody, { once: true });
+		}
+	}
+	return stream;
 };
 
 export const awsS3PutObjectStream = (options, streamOptions = {}) => {
-	const { onProgress, client, tags, ...params } = options;
+	const { onProgress, client, tags, partSize, queueSize, ...params } = options;
 	const stream = createPassThroughStream(() => {}, streamOptions);
+	// lib-storage defaults to a 5 MiB partSize and a 10,000-part ceiling
+	// (~50 GiB max object). Expose partSize/queueSize so callers can raise the
+	// ceiling for very large streamed objects.
 	const upload = new Upload({
 		client: client ?? defaultClient,
 		params: {
@@ -37,6 +72,8 @@ export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 			Body: stream,
 		},
 		tags,
+		partSize,
+		queueSize,
 	});
 	if (onProgress) {
 		stream.on("httpUploadProgress", onProgress);

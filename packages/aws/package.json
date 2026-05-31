@@ -120,17 +120,43 @@
 				"types": "./sqs.d.ts",
 				"default": "./sqs.web.mjs"
 			}
+		},
+		"./msk-iam": {
+			"node": {
+				"import": {
+					"types": "./msk-iam.d.ts",
+					"default": "./msk-iam.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./msk-iam.d.ts",
+				"default": "./msk-iam.web.mjs"
+			}
+		},
+		"./glue-schema-registry": {
+			"node": {
+				"import": {
+					"types": "./glue-schema-registry.d.ts",
+					"default": "./glue-schema-registry.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./glue-schema-registry.d.ts",
+				"default": "./glue-schema-registry.web.mjs"
+			}
 		}
 	},
 	"types": "index.d.ts",
 	"files": [
 		"*.mjs",
 		"*.map",
-		"*.d.ts"
+		"*.d.ts",
+		"client.js"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test --conditions=node",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run",
 		"test:benchmark": "node __benchmarks__/index.js"
 	},
 	"license": "MIT",
@@ -167,13 +193,14 @@
 		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
 		"@aws-sdk/client-dynamodb-streams": "^3.0.0",
+		"@aws-sdk/client-glue": "^3.0.0",
 		"@aws-sdk/client-kinesis": "^3.0.0",
 		"@aws-sdk/client-lambda": "^3.0.0",
 		"@aws-sdk/client-s3": "^3.0.0",
 		"@aws-sdk/client-sns": "^3.0.0",
 		"@aws-sdk/client-sqs": "^3.0.0",
-		"@aws-sdk/client-ssm": "^3.0.0",
-		"@aws-sdk/lib-storage": "^3.0.0"
+		"@aws-sdk/lib-storage": "^3.0.0",
+		"aws-msk-iam-sasl-signer-js": "^1.0.0"
 	},
 	"peerDependenciesMeta": {
 		"@aws-sdk/client-cloudwatch-logs": {
@@ -183,6 +210,9 @@
 			"optional": true
 		},
 		"@aws-sdk/client-dynamodb-streams": {
+			"optional": true
+		},
+		"@aws-sdk/client-glue": {
 			"optional": true
 		},
 		"@aws-sdk/client-kinesis": {
@@ -200,10 +230,10 @@
 		"@aws-sdk/client-sqs": {
 			"optional": true
 		},
-		"@aws-sdk/client-ssm": {
+		"@aws-sdk/lib-storage": {
 			"optional": true
 		},
-		"@aws-sdk/lib-storage": {
+		"aws-msk-iam-sasl-signer-js": {
 			"optional": true
 		}
 	},
@@ -211,13 +241,14 @@
 		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
 		"@aws-sdk/client-dynamodb-streams": "^3.0.0",
+		"@aws-sdk/client-glue": "^3.0.0",
 		"@aws-sdk/client-kinesis": "^3.0.0",
 		"@aws-sdk/client-lambda": "^3.0.0",
 		"@aws-sdk/client-s3": "^3.0.0",
 		"@aws-sdk/client-sns": "^3.0.0",
 		"@aws-sdk/client-sqs": "^3.0.0",
-		"@aws-sdk/client-ssm": "^3.0.0",
 		"@aws-sdk/lib-storage": "^3.0.0",
+		"aws-msk-iam-sasl-signer-js": "^1.0.0",
 		"aws-sdk-client-mock": "^4.0.0"
 	}
 }

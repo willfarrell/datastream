@@ -7,7 +7,7 @@ import {
 	streamToArray,
 } from "@datastream/core";
 
-import {
+import objectDefault, {
 	objectBatchStream,
 	objectCountStream,
 	objectFromEntriesStream,
@@ -557,6 +557,40 @@ test(`${variant}: objectBatchStream should enforce maxBatchSize`, async (_t) => 
 	);
 });
 
+// *** objectBatchStream collision-proof grouping key *** //
+test(`${variant}: objectBatchStream should keep distinct key tuples in separate batches when values contain spaces`, async (_t) => {
+	// ["a b","c"] and ["a","b c"] both join to "a b c" with space-delimiter —
+	// they must produce two separate batches, not one merged batch.
+	const input = [
+		{ x: "a b", y: "c" },
+		{ x: "a", y: "b c" },
+	];
+	const streams = [
+		createReadableStream(input),
+		objectBatchStream({ keys: ["x", "y"] }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [[{ x: "a b", y: "c" }], [{ x: "a", y: "b c" }]]);
+});
+
+// *** objectValueMapStream preserves unmapped keys *** //
+test(`${variant}: objectValueMapStream should preserve the original value for keys not present in the map`, async (_t) => {
+	const input = [{ status: "active" }, { status: "unknown" }];
+	const streams = [
+		createReadableStream(input),
+		objectValueMapStream({ key: "status", values: { active: 1, inactive: 0 } }),
+	];
+
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	// "unknown" is not in the map — original value must be preserved
+	deepStrictEqual(output, [{ status: 1 }, { status: "unknown" }]);
+});
+
 // *** objectPivotLongToWideStream should not mutate input *** //
 test(`${variant}: objectPivotLongToWideStream should not mutate input chunks`, async (_t) => {
 	const input = [
@@ -578,4 +612,53 @@ test(`${variant}: objectPivotLongToWideStream should not mutate input chunks`, a
 
 	// Original input[0][0] should be unchanged
 	deepStrictEqual(input[0][0], originalFirst);
+});
+
+// *** objectReadableStream default empty input *** //
+test(`${variant}: objectReadableStream should produce empty output when called with no args`, async (_t) => {
+	const streams = [objectReadableStream()];
+	const output = await streamToArray(streams[0]);
+	deepStrictEqual(output, []);
+});
+
+// *** objectBatchStream should produce no output on empty input *** //
+test(`${variant}: objectBatchStream should produce no output when input is empty`, async (_t) => {
+	const streams = [
+		createReadableStream([]),
+		objectBatchStream({ keys: ["a"] }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+	deepStrictEqual(output, []);
+});
+
+// *** objectToEntriesStream should produce empty arrays when keys is empty *** //
+test(`${variant}: objectToEntriesStream should produce empty array when keys is empty`, async (_t) => {
+	const input = [{ a: 1, b: 2 }];
+	const streams = [
+		createReadableStream(input),
+		objectToEntriesStream({ keys: [] }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+	deepStrictEqual(output, [[]]);
+});
+
+// *** default export contains all stream factories *** //
+test(`${variant}: default export should contain all stream factories`, async (_t) => {
+	strictEqual(typeof objectDefault.readableStream, "function");
+	strictEqual(typeof objectDefault.countStream, "function");
+	strictEqual(typeof objectDefault.pickStream, "function");
+	strictEqual(typeof objectDefault.omitStream, "function");
+	strictEqual(typeof objectDefault.batchStream, "function");
+	strictEqual(typeof objectDefault.pivotLongToWideStream, "function");
+	strictEqual(typeof objectDefault.pivotWideToLongStream, "function");
+	strictEqual(typeof objectDefault.keyValueStream, "function");
+	strictEqual(typeof objectDefault.keyValuesStream, "function");
+	strictEqual(typeof objectDefault.keyJoinStream, "function");
+	strictEqual(typeof objectDefault.keyMapStream, "function");
+	strictEqual(typeof objectDefault.valueMapStream, "function");
+	strictEqual(typeof objectDefault.fromEntriesStream, "function");
+	strictEqual(typeof objectDefault.toEntriesStream, "function");
+	strictEqual(typeof objectDefault.skipConsecutiveDuplicatesStream, "function");
 });

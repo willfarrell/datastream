@@ -1,6 +1,6 @@
-import { deepStrictEqual, ok, strictEqual } from "node:assert";
+import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert";
 import test from "node:test";
-import {
+import indexeddbDefault, {
 	indexedDBReadStream,
 	indexedDBWriteStream,
 } from "@datastream/indexeddb";
@@ -111,44 +111,237 @@ if (!isBrowser) {
 			strictEqual(e.message, "indexedDBWriteStream: Not supported");
 		}
 	});
+
+	test(`${variant}: default export should expose readStream and writeStream`, (_t) => {
+		strictEqual(typeof indexeddbDefault.readStream, "function");
+		strictEqual(typeof indexeddbDefault.writeStream, "function");
+		// They must be the named exports (same reference).
+		strictEqual(indexeddbDefault.readStream, indexedDBReadStream);
+		strictEqual(indexeddbDefault.writeStream, indexedDBWriteStream);
+	});
 }
 
-// *** web variant: indexedDBReadStream with index *** //
-if (variant === "webstream") {
-	test(`${variant}: indexedDBReadStream should use index and key when provided`, {
-		skip: "requires web implementation",
-	}, async (_t) => {
-		const mockCursor = {
-			async *[Symbol.asyncIterator]() {
-				yield { id: 1, name: "a" };
-				yield { id: 2, name: "b" };
-			},
-		};
-		const mockIndex = {
-			iterate: (_key) => mockCursor,
-		};
-		const mockStore = {
-			index: (_name) => mockIndex,
-			[Symbol.asyncIterator]: async function* () {
-				yield { id: 1, name: "a" };
-				yield { id: 2, name: "b" };
-				yield { id: 3, name: "c" };
-			},
-		};
-		const mockDb = {
-			transaction: (_store) => ({ store: mockStore }),
-		};
+// *** web variant: exercise the real web implementation directly *** //
+// Per project memory, `--conditions=webstream` loads the node build, so the web
+// code is exercised by importing `index.web.js` directly with mocked `idb`
+// objects shaped like the real library (async iterators that yield IDBCursor
+// objects exposing `.value`).
+//
+// NOTE: `streamToArray` uses event-based stream consumption which doesn't work
+// under `--test-force-exit` (used by Stryker). Use `for await` instead so the
+// test Promise settles before Node forces an exit.
+const readAll = async (stream) => {
+	const out = [];
+	for await (const chunk of stream) {
+		out.push(chunk);
+	}
+	return out;
+};
+{
+	const {
+		indexedDBReadStream: webReadStream,
+		indexedDBWriteStream: webWriteStream,
+	} = await import("./index.web.js");
 
-		const stream = await indexedDBReadStream({
-			db: mockDb,
+	// Build a mock that mimics idb: stores/indexes return async iterators of
+	// IDBCursor-shaped objects ({ value }). `iterate(key)` filters by `name`.
+	const makeCursors = (records) => ({
+		async *[Symbol.asyncIterator]() {
+			for (const record of records) {
+				yield { value: record };
+			}
+		},
+	});
+	const makeStore = (records) => ({
+		iterate: () => makeCursors(records),
+		index: (_name) => ({
+			iterate: (key) => makeCursors(records.filter((r) => r.name === key)),
+		}),
+		add: async (record) => {
+			records.push(record);
+		},
+	});
+	const makeDb = (records, { onTransaction } = {}) => ({
+		transaction: (_store, _mode) => {
+			onTransaction?.();
+			return { store: makeStore(records), done: Promise.resolve() };
+		},
+	});
+
+	test(`web: indexedDBReadStream yields stored records (cursor.value), not raw cursors`, async (_t) => {
+		const records = [
+			{ id: 1, name: "a" },
+			{ id: 2, name: "b" },
+		];
+		const stream = await webReadStream({
+			db: makeDb(records),
+			store: "test",
+		});
+
+		const output = await readAll(stream);
+
+		deepStrictEqual(output.length, 2);
+		// Real stored records, not IDBCursor objects.
+		deepStrictEqual(output[0], { id: 1, name: "a" });
+		deepStrictEqual(output[1], { id: 2, name: "b" });
+		// Guard against the regression of emitting the wrapping cursor object.
+		strictEqual(output[0].value, undefined);
+	});
+
+	test(`web: indexedDBReadStream uses index + key when provided`, async (_t) => {
+		const records = [
+			{ id: 1, name: "a" },
+			{ id: 2, name: "b" },
+			{ id: 3, name: "a" },
+		];
+		const stream = await webReadStream({
+			db: makeDb(records),
 			store: "test",
 			index: "name",
 			key: "a",
 		});
-		const { streamToArray } = await import("@datastream/core");
-		const output = await streamToArray(stream);
 
-		// Should return filtered results (2 items from index), not all 3 from store
+		const output = await readAll(stream);
+
+		// Only the two records whose name === "a" come back via the index.
 		strictEqual(output.length, 2);
+		deepStrictEqual(output[0], { id: 1, name: "a" });
+		deepStrictEqual(output[1], { id: 3, name: "a" });
+	});
+
+	test(`web: indexedDBReadStream uses the index for a falsy-but-valid key (0)`, async (_t) => {
+		// key === 0 is a valid IndexedDB key. The store records use name 0 vs 1.
+		const records = [
+			{ id: 1, name: 0 },
+			{ id: 2, name: 1 },
+			{ id: 3, name: 0 },
+		];
+		const stream = await webReadStream({
+			db: makeDb(records),
+			store: "test",
+			index: "name",
+			key: 0,
+		});
+
+		const output = await readAll(stream);
+
+		// With the buggy `if (index && key)` guard, key 0 is falsy and the whole
+		// store (all 3) would be returned instead of the 2 name===0 records.
+		strictEqual(output.length, 2);
+		deepStrictEqual(output[0], { id: 1, name: 0 });
+		deepStrictEqual(output[1], { id: 3, name: 0 });
+	});
+
+	test(`web: indexedDBReadStream uses the index for an empty-string key ("")`, async (_t) => {
+		const records = [
+			{ id: 1, name: "" },
+			{ id: 2, name: "x" },
+		];
+		const stream = await webReadStream({
+			db: makeDb(records),
+			store: "test",
+			index: "name",
+			key: "",
+		});
+
+		const output = await readAll(stream);
+
+		strictEqual(output.length, 1);
+		deepStrictEqual(output[0], { id: 1, name: "" });
+	});
+
+	test(`web: indexedDBReadStream removes the abort listener on normal completion`, async (_t) => {
+		// Spy on a real AbortController's listener registration to assert the
+		// wrapper's own "abort" listener is removed once iteration settles, so a
+		// shared signal does not accumulate one listener per constructed stream.
+		const controller = new AbortController();
+		const { signal } = controller;
+		let listeners = 0;
+		const realAdd = signal.addEventListener.bind(signal);
+		const realRemove = signal.removeEventListener.bind(signal);
+		signal.addEventListener = (...args) => {
+			listeners += 1;
+			return realAdd(...args);
+		};
+		signal.removeEventListener = (...args) => {
+			listeners -= 1;
+			return realRemove(...args);
+		};
+		const records = [{ id: 1, name: "a" }];
+
+		const stream = await webReadStream(
+			{ db: makeDb(records), store: "test" },
+			{ signal },
+		);
+		await readAll(stream);
+		// Allow the underlying stream's terminal "close" handlers to run so any
+		// listener teardown (wrapper + core) has settled before asserting.
+		await new Promise((resolve) => setImmediate(resolve));
+
+		// On normal completion every registered listener must be removed (the
+		// wrapper's "abort" listener leaked here before the fix).
+		strictEqual(listeners, 0);
+	});
+
+	test(`web: indexedDBReadStream stops iterating once the signal aborts`, async (_t) => {
+		const controller = new AbortController();
+		let produced = 0;
+		const cursors = {
+			async *[Symbol.asyncIterator]() {
+				for (let id = 1; id <= 5; id++) {
+					produced += 1;
+					// Abort partway through to verify iteration breaks early.
+					if (id === 2) controller.abort();
+					yield { value: { id } };
+				}
+			},
+		};
+		const db = {
+			transaction: () => ({
+				store: { iterate: () => cursors, index: () => ({}) },
+				done: Promise.resolve(),
+			}),
+		};
+
+		const stream = await webReadStream(
+			{ db, store: "test" },
+			{ signal: controller.signal },
+		);
+
+		// Aborting must stop the stream rather than draining all 5 records.
+		await rejects(
+			async () => {
+				for await (const _ of stream) {
+					// drain
+				}
+			},
+			{ name: "AbortError" },
+		);
+		ok(produced < 5, `expected early stop, produced ${produced}`);
+	});
+
+	test(`web: indexedDBWriteStream opens a fresh transaction per chunk (no auto-commit reuse)`, async (_t) => {
+		// A shared transaction would auto-commit between async chunks and throw
+		// TransactionInactiveError. Assert each write gets its own transaction.
+		let transactions = 0;
+		const records = [
+			{ id: 1, value: "a" },
+			{ id: 2, value: "b" },
+			{ id: 3, value: "c" },
+		];
+		const db = makeDb([], {
+			onTransaction: () => {
+				transactions += 1;
+			},
+		});
+
+		const writeStream = await webWriteStream({ db, store: "test" });
+		for (const record of records) {
+			writeStream.write(record);
+		}
+		writeStream.end();
+		await new Promise((resolve) => writeStream.on("finish", resolve));
+
+		strictEqual(transactions, records.length);
 	});
 }

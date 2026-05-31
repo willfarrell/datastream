@@ -5,6 +5,10 @@ useDefault = true
 description = "Ignore build artifacts and generated output"
 paths = [
   '''\.svelte-kit/''',
+  '''node_modules/''',
+  '''.*\.node\.mjs$''',
+  '''.*\.web\.mjs$''',
+  '''.*\.map$''',
 ]
 
 [[allowlists]]

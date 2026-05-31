@@ -17,6 +17,22 @@ export const awsDynamoDBSetClient = (ddbClient, _translateConfig) => {
 };
 awsDynamoDBSetClient(client);
 
+// UnprocessedItems/UnprocessedKeys are throttling-driven; a near-zero early
+// delay (3^0 == 1ms) just hammers the table. Apply a floor so the first retries
+// give capacity time to recover, while preserving the ~59sec cap (3^10).
+const DYNAMODB_BACKOFF_FLOOR_MS = 50;
+const DYNAMODB_BACKOFF_CAP_MS = 3 ** 10;
+// streamOptions is always supplied by the callers (getItem / batchWrite, which
+// receive the stream's streamOptions defaulting to {}), so it is never nullish.
+const dynamodbBackoff = (retryCount, streamOptions) =>
+	timeout(
+		Math.min(
+			DYNAMODB_BACKOFF_CAP_MS,
+			Math.max(DYNAMODB_BACKOFF_FLOOR_MS, 3 ** retryCount),
+		),
+		{ signal: streamOptions.signal },
+	);
+
 // options = {TableName, ...}
 
 export const awsDynamoDBQueryStream = async (options, streamOptions = {}) => {
@@ -26,7 +42,7 @@ export const awsDynamoDBQueryStream = async (options, streamOptions = {}) => {
 			const response = await client.send(new QueryCommand(opts), {
 				abortSignal: streamOptions.signal,
 			});
-			for (const item of response.Items) {
+			for (const item of response.Items ?? []) {
 				yield item;
 			}
 			opts.ExclusiveStartKey = response.LastEvaluatedKey;
@@ -43,7 +59,7 @@ export const awsDynamoDBScanStream = async (options, streamOptions = {}) => {
 			const response = await client.send(new ScanCommand(opts), {
 				abortSignal: streamOptions.signal,
 			});
-			for (const item of response.Items) {
+			for (const item of response.Items ?? []) {
 				yield item;
 			}
 			opts.ExclusiveStartKey = response.LastEvaluatedKey;
@@ -92,11 +108,11 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 				}),
 				{ abortSignal: streamOptions.signal },
 			);
-			for (const item of response.Responses[options.TableName]) {
+			for (const item of response.Responses?.[options.TableName] ?? []) {
 				yield item;
 			}
 			const UnprocessedKeys =
-				response?.UnprocessedKeys?.[options.TableName]?.Keys ?? [];
+				response.UnprocessedKeys?.[options.TableName]?.Keys ?? [];
 			if (!UnprocessedKeys.length) {
 				break;
 			}
@@ -110,7 +126,7 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 				});
 			}
 
-			await timeout(3 ** retryCount, { signal: streamOptions.signal }); // 3^10 == 59sec
+			await dynamodbBackoff(retryCount, streamOptions);
 			retryCount++;
 			keys = UnprocessedKeys;
 		}
@@ -171,7 +187,8 @@ const dynamodbBatchWrite = async (
 				[options.TableName]: batch,
 			},
 		}),
-		{ abortSignal: streamOptions?.signal },
+		// streamOptions is always supplied by put/delete (defaulting to {}).
+		{ abortSignal: streamOptions.signal },
 	);
 	if (UnprocessedItems?.[options.TableName]?.length) {
 		if (retryCount >= retryMaxCount) {
@@ -183,7 +200,7 @@ const dynamodbBatchWrite = async (
 			});
 		}
 
-		await timeout(3 ** retryCount, { signal: streamOptions?.signal }); // 3^10 == 59sec
+		await dynamodbBackoff(retryCount, streamOptions);
 		return dynamodbBatchWrite(
 			options,
 			UnprocessedItems[options.TableName],

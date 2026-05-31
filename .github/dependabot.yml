@@ -10,6 +10,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: npm
+    target-branch: develop
     directory: "/"
     schedule:
       interval: "weekly"

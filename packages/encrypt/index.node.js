@@ -1,19 +1,40 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createTransformStream } from "@datastream/core";
 
 const algorithmMap = {
-	"AES-256-GCM": { cipher: "aes-256-gcm", ivSize: 12 },
-	"AES-256-CTR": { cipher: "aes-256-ctr", ivSize: 16 },
-	"CHACHA20-POLY1305": { cipher: "chacha20-poly1305", ivSize: 12 },
+	"AES-128-GCM": { cipher: "aes-128-gcm", ivSize: 12, keySize: 16 },
+	"AES-256-GCM": { cipher: "aes-256-gcm", ivSize: 12, keySize: 32 },
+	"AES-128-CTR": { cipher: "aes-128-ctr", ivSize: 16, keySize: 16 },
+	"AES-256-CTR": { cipher: "aes-256-ctr", ivSize: 16, keySize: 32 },
+	"CHACHA20-POLY1305": { cipher: "chacha20-poly1305", ivSize: 12, keySize: 32 },
 };
 
-const authAlgorithms = ["AES-256-GCM", "CHACHA20-POLY1305"];
+const authAlgorithms = ["AES-128-GCM", "AES-256-GCM", "CHACHA20-POLY1305"];
+const ctrAlgorithms = ["AES-128-CTR", "AES-256-CTR"];
 
-const validateKey = (key) => {
-	if (!key || key.length !== 32) {
+const DEFAULT_MAX_INPUT_SIZE = 64 * 1024 * 1024; // 64MB
+
+// AES-CTR keystream-reuse ceiling, mirroring the web implementation.
+// 2^64 blocks = 2^68 bytes (256 EB). Beyond this the 128-bit counter can
+// wrap and the keystream repeats, destroying confidentiality.
+const MAX_CTR_BLOCKS = 1n << 64n;
+const MAX_CTR_BYTES = MAX_CTR_BLOCKS * 16n;
+
+// NOTE on nonce/IV uniqueness for the AEAD modes (AES-256-GCM,
+// CHACHA20-POLY1305): the default IV is a fresh 96-bit CSPRNG value, which is
+// safe for a bounded number of messages per key. With random 96-bit nonces the
+// birthday bound makes a collision non-negligible after ~2^32 encryptions under
+// a single key, and a single GCM nonce reuse is catastrophic (enables forgery
+// and authentication-key recovery). Rotate the key well before 2^32 messages,
+// or supply a unique deterministic nonce per message. Never reuse an explicit
+// iv with the same key.
+
+const validateKey = (key, keySize = 32) => {
+	if (!key || key.length !== keySize) {
 		throw new Error(
-			`Encryption key must be 32 bytes (256 bits), got ${key?.length ?? 0}`,
+			`Encryption key must be ${keySize} bytes (${keySize * 8} bits), got ${key?.length ?? 0}`,
 		);
 	}
 };
@@ -34,51 +55,75 @@ const validateAuthTag = (authTag, algorithm) => {
 	}
 };
 
-const validateAad = (aad) => {
+const validateAad = (aad, algorithm) => {
 	if (aad != null && !Buffer.isBuffer(aad) && !(aad instanceof Uint8Array)) {
 		throw new Error("aad must be a Buffer or Uint8Array");
+	}
+	// AAD only has meaning for authenticated modes. Silently dropping it for
+	// AES-256-CTR would give the caller a false sense of integrity binding.
+	if (aad != null && !authAlgorithms.includes(algorithm)) {
+		throw new Error(
+			`aad is not supported for ${algorithm} (not authenticated)`,
+		);
 	}
 };
 
 export const encryptStream = (
-	{ algorithm = "AES-256-GCM", key, iv, aad, maxInputSize } = {},
+	{ algorithm = "AES-256-GCM", key, iv, aad, maxInputSize, resultKey } = {},
 	streamOptions = {},
 ) => {
 	const config = algorithmMap[algorithm];
 	if (!config) {
 		throw new Error(`Unsupported algorithm: ${algorithm}`);
 	}
-	const { cipher: cipherName, ivSize } = config;
-	validateKey(key);
+	const { cipher: cipherName, ivSize, keySize } = config;
+	validateKey(key, keySize);
 	iv ??= randomBytes(ivSize);
 	validateIv(iv, ivSize, algorithm);
-	validateAad(aad);
+	validateAad(aad, algorithm);
 	const authTagLength = authAlgorithms.includes(algorithm) ? 16 : undefined;
 	const stream = createCipheriv(cipherName, key, iv, {
 		...streamOptions,
 		authTagLength,
 	});
-	if (aad && authAlgorithms.includes(algorithm)) {
+	if (aad != null && authAlgorithms.includes(algorithm)) {
 		stream.setAAD(aad);
 	}
-	if (maxInputSize !== null && maxInputSize !== undefined) {
-		let inputSize = 0;
+	// Default input guard, matching the web build for cross-platform parity:
+	//  - AEAD modes (AES-*-GCM, CHACHA20-POLY1305) default to 64MB, the same
+	//    DoS guard the web build applies (web buffers the whole ciphertext).
+	//  - AES-*-CTR has no auth tag and OpenSSL silently wraps the 128-bit
+	//    counter on overflow, so it instead uses the keystream-reuse ceiling the
+	//    web impl uses (2^68 bytes) unless the caller supplies maxInputSize.
+	const usingCtrDefaultCeiling =
+		ctrAlgorithms.includes(algorithm) && maxInputSize == null;
+	let effectiveMaxInput;
+	if (maxInputSize != null) {
+		effectiveMaxInput = maxInputSize;
+	} else if (usingCtrDefaultCeiling) {
+		effectiveMaxInput = MAX_CTR_BYTES;
+	} else {
+		effectiveMaxInput = DEFAULT_MAX_INPUT_SIZE;
+	}
+	if (effectiveMaxInput != null) {
+		let inputSize = 0n;
+		const limit = BigInt(effectiveMaxInput);
+		const reportedLimit = maxInputSize ?? DEFAULT_MAX_INPUT_SIZE;
 		const originalWrite = stream._transform.bind(stream);
 		stream._transform = (chunk, encoding, callback) => {
-			inputSize += chunk.length;
-			if (inputSize > maxInputSize) {
-				callback(
-					new Error(
-						`Encryption input exceeds maxInputSize (${maxInputSize} bytes). Use AES-256-CTR for large data.`,
-					),
-				);
+			inputSize += BigInt(chunk.length);
+			if (inputSize > limit) {
+				const message = usingCtrDefaultCeiling
+					? "AES-CTR counter overflow: data exceeds safe limit. Use a new key/IV pair."
+					: `Encryption input exceeds maxInputSize (${reportedLimit} bytes). Use AES-256-CTR for large data.`;
+				callback(new Error(message));
 				return;
 			}
 			originalWrite(chunk, encoding, callback);
 		};
 	}
 	stream.result = () => ({
-		key: "encrypt",
+		key: resultKey ?? "encrypt",
 		value: {
 			algorithm,
 			iv,
@@ -90,37 +135,89 @@ export const encryptStream = (
 	return stream;
 };
 
+// AEAD decrypt: buffer the whole ciphertext and only release plaintext after
+// final() verifies the auth tag. Node's Decipher is a streaming Transform that
+// emits decrypted plaintext incrementally and checks the tag only at final();
+// using it directly would release UNAUTHENTICATED plaintext to downstream
+// consumers before the tag is ever verified. Buffering-then-verifying matches
+// the web implementation's authenticated-before-release guarantee.
+const aeadDecryptStream = (
+	{ cipherName, key, iv, authTag, aad, maxInputSize, maxOutputSize },
+	streamOptions,
+) => {
+	const decipher = createDecipheriv(cipherName, key, iv, {
+		...streamOptions,
+		authTagLength: 16,
+	});
+	decipher.setAuthTag(authTag);
+	if (aad != null) {
+		decipher.setAAD(aad);
+	}
+	maxInputSize ??= DEFAULT_MAX_INPUT_SIZE;
+	const chunks = [];
+	let inputSize = 0;
+	const transform = (chunk) => {
+		// Bound memory before buffering/verification: we must buffer the whole
+		// ciphertext to verify the tag before releasing plaintext, so cap input.
+		inputSize += chunk.length;
+		if (inputSize > maxInputSize) {
+			throw new Error(
+				`Decryption input exceeds maxInputSize (${maxInputSize} bytes)`,
+			);
+		}
+		chunks.push(chunk);
+	};
+	const flush = (enqueue) => {
+		const ciphertext = Buffer.concat(chunks);
+		// update() may produce plaintext, but we withhold it until final()
+		// succeeds; if the tag is wrong, final() throws and nothing is emitted.
+		const head = decipher.update(ciphertext);
+		const tail = decipher.final();
+		const plaintext = Buffer.concat([head, tail]);
+		if (maxOutputSize != null && plaintext.length > maxOutputSize) {
+			throw new Error(
+				`Decryption output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+			);
+		}
+		enqueue(plaintext);
+	};
+	return createTransformStream(transform, flush, streamOptions);
+};
+
 export const decryptStream = (
-	{ algorithm = "AES-256-GCM", key, iv, authTag, aad, maxOutputSize } = {},
+	{
+		algorithm = "AES-256-GCM",
+		key,
+		iv,
+		authTag,
+		aad,
+		maxInputSize,
+		maxOutputSize,
+	} = {},
 	streamOptions = {},
 ) => {
 	const config = algorithmMap[algorithm];
 	if (!config) {
 		throw new Error(`Unsupported algorithm: ${algorithm}`);
 	}
-	const { cipher: cipherName, ivSize } = config;
-	validateKey(key);
+	const { cipher: cipherName, ivSize, keySize } = config;
+	validateKey(key, keySize);
 	validateIv(iv, ivSize, algorithm);
-	validateAad(aad);
-	const authTagLength = authAlgorithms.includes(algorithm) ? 16 : undefined;
+	validateAad(aad, algorithm);
 	if (authAlgorithms.includes(algorithm)) {
 		validateAuthTag(authTag, algorithm);
+		return aeadDecryptStream(
+			{ cipherName, key, iv, authTag, aad, maxInputSize, maxOutputSize },
+			streamOptions,
+		);
 	}
-	const stream = createDecipheriv(cipherName, key, iv, {
-		...streamOptions,
-		authTagLength,
-	});
-	if (authTag) {
-		stream.setAuthTag(authTag);
-	}
-	if (aad && authAlgorithms.includes(algorithm)) {
-		stream.setAAD(aad);
-	}
-	if (maxOutputSize != null) {
-		let outputSize = 0;
-		const originalPush = stream.push.bind(stream);
-		stream.push = (chunk) => {
-			if (chunk !== null) {
+	// AES-256-CTR: unauthenticated, safe to stream incrementally.
+	const stream = createDecipheriv(cipherName, key, iv, streamOptions);
+	let outputSize = 0;
+	const originalPush = stream.push.bind(stream);
+	stream.push = (chunk) => {
+		if (chunk !== null) {
+			if (maxOutputSize != null) {
 				outputSize += chunk.length;
 				if (outputSize > maxOutputSize) {
 					stream.push = originalPush;
@@ -132,12 +229,12 @@ export const decryptStream = (
 					return false;
 				}
 			}
-			return originalPush(chunk);
-		};
-		stream.on("close", () => {
-			stream.push = originalPush;
-		});
-	}
+		}
+		return originalPush(chunk);
+	};
+	stream.on("close", () => {
+		stream.push = originalPush;
+	});
 	return stream;
 };
 

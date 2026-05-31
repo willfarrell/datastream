@@ -32,24 +32,30 @@ export function stringCountStream(
 	result: () => StreamResult<number>;
 };
 
-export function stringMinimumFirstChunkSize(
+export function stringMinimumFirstChunkSizeStream(
 	options?: {
 		chunkSize?: number;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<string, string>;
+/** @deprecated Use stringMinimumFirstChunkSizeStream */
+export const stringMinimumFirstChunkSize: typeof stringMinimumFirstChunkSizeStream;
 
-export function stringMinimumChunkSize(
+export function stringMinimumChunkSizeStream(
 	options?: {
 		chunkSize?: number;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<string, string>;
+/** @deprecated Use stringMinimumChunkSizeStream */
+export const stringMinimumChunkSize: typeof stringMinimumChunkSizeStream;
 
-export function stringSkipConsecutiveDuplicates(
+export function stringSkipConsecutiveDuplicatesStream(
 	options?: Record<string, never>,
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<string, string>;
+/** @deprecated Use stringSkipConsecutiveDuplicatesStream */
+export const stringSkipConsecutiveDuplicates: typeof stringSkipConsecutiveDuplicatesStream;
 
 export function stringReplaceStream(
 	options: {
@@ -72,7 +78,9 @@ declare const _default: {
 	readableStream: typeof stringReadableStream;
 	lengthStream: typeof stringLengthStream;
 	countStream: typeof stringCountStream;
-	skipConsecutiveDuplicates: typeof stringSkipConsecutiveDuplicates;
+	minimumFirstChunkSize: typeof stringMinimumFirstChunkSizeStream;
+	minimumChunkSize: typeof stringMinimumChunkSizeStream;
+	skipConsecutiveDuplicates: typeof stringSkipConsecutiveDuplicatesStream;
 	replaceStream: typeof stringReplaceStream;
 	splitStream: typeof stringSplitStream;
 };

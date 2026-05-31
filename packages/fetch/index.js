@@ -22,6 +22,14 @@ const validatePaginationUrl = (nextUrl, origin) => {
 	}
 };
 
+const originOf = (urlString) => {
+	try {
+		return new URL(urlString).origin;
+	} catch {
+		return undefined;
+	}
+};
+
 const redactUrl = (urlString) => {
 	try {
 		const url = new URL(urlString);
@@ -79,7 +87,13 @@ export const fetchWritableStream = async (options, streamOptions = {}) => {
 	const write = (chunk) => {
 		body.push(chunk);
 	};
-	const stream = createWritableStream(write, streamOptions);
+	// Signal end-of-body so the duplex request body terminates and the
+	// in-flight upload can complete. createReadableStream treats a pushed
+	// `null` as close on both the Node and Web builds.
+	const final = () => {
+		body.push(null);
+	};
+	const stream = createWritableStream(write, final, streamOptions);
 	stream.result = () => ({ key: "output", value });
 	return stream;
 };
@@ -117,7 +131,11 @@ async function* fetchGenerator(fetchOptions, streamOptions) {
 				yield chunk;
 			}
 		} catch (error) {
+			// Binary branch: response is a Web ReadableStream with .cancel().
+			// JSON branch: response is the fetchJson async generator with
+			// .return(). Call both so resources are released uniformly.
 			await response?.cancel?.();
+			await response?.return?.();
 			throw error;
 		}
 		// ensure there is rate limiting between req with different options
@@ -146,6 +164,11 @@ async function* fetchJson(options, streamOptions) {
 			options.prefetchResponse ??
 			(await fetchRateLimit(options, streamOptions));
 		delete options.prefetchResponse;
+		// NOTE: response.json() buffers the FULL body of this page into memory
+		// before any item is yielded — unlike the binary branch which streams
+		// chunk-by-chunk with backpressure. A server returning a very large
+		// single JSON document (or large pages) is fully materialized here, so
+		// keep per-page payloads bounded for untrusted endpoints.
 		const body = await response.json();
 		url = parseLinkFromHeader(response.headers);
 		url ??= parseNextPath(body, nextPath);
@@ -187,13 +210,34 @@ const parseLinkFromHeader = (headers) => {
 	return link?.match(nextLinkRegExp)?.[1];
 };
 
-export const fetchRateLimit = async (options, streamOptions = {}) => {
+// 3xx statuses that carry a Location and represent a redirect.
+const redirectStatuses = new Set([301, 302, 303, 307, 308]);
+const maxRedirects = 20;
+
+export const fetchRateLimit = async (options = {}, streamOptions = {}) => {
+	// Apply defaults FIRST so rateLimit (and every other option) is populated
+	// before it is read; otherwise a direct call without rateLimit computes
+	// `Date.now() + 1000 * undefined` = NaN for rateLimitTimestamp.
+	// Mutate the passed-in object in place (rather than reassigning to a clone)
+	// so callers — notably fetchGenerator, which reads back
+	// options.rateLimitTimestamp to carry rate limiting between configs — see
+	// the timestamp we compute below.
+	Object.assign(options, mergeOptions(options));
+
 	const now = Date.now();
 	if (now < (options.rateLimitTimestamp ?? 0)) {
 		await timeout(options.rateLimitTimestamp - now, streamOptions);
 	}
 	options.rateLimitTimestamp = Date.now() + 1000 * options.rateLimit;
-	options = mergeOptions(options); // for when called directly
+
+	// Same-origin redirect pinning (SSRF defence). The initial origin is pinned
+	// to the original request URL; redirects to a different origin are blocked
+	// by default so a server cannot 3xx us into internal/metadata endpoints.
+	// Callers can opt out by setting `redirect` explicitly ("follow"/"error").
+	const callerRedirect = options.redirect;
+	const manageRedirects = callerRedirect === undefined;
+	// __origin is set by fetchGenerator; derive it for direct callers.
+	const initialOrigin = options.__origin ?? originOf(options.url);
 
 	const {
 		method,
@@ -202,7 +246,6 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 		mode,
 		credentials,
 		cache,
-		redirect,
 		referrer,
 		referrerPolicy,
 		integrity,
@@ -216,7 +259,9 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 		mode,
 		credentials,
 		cache,
-		redirect,
+		// When we manage redirects ourselves we ask the platform NOT to follow
+		// them so we can validate each Location before re-issuing.
+		redirect: manageRedirects ? "manual" : callerRedirect,
 		referrer,
 		referrerPolicy,
 		integrity,
@@ -224,7 +269,67 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 		duplex,
 		signal: streamOptions.signal,
 	};
-	const response = await fetch(options.url, fetchInit);
+	let response = await fetch(options.url, fetchInit);
+
+	// Manually follow / validate redirects when we own redirect handling.
+	if (manageRedirects) {
+		let redirectCount = 0;
+		while (
+			redirectStatuses.has(response.status) &&
+			response.headers.has("Location")
+		) {
+			const safeUrl = redactUrl(options.url);
+			if (++redirectCount > maxRedirects) {
+				await response.body?.cancel();
+				throw new Error(
+					`fetch ${options.method} ${safeUrl} exceeded ${maxRedirects} redirects`,
+					{
+						cause: {
+							status: response.status,
+							url: safeUrl,
+							method: options.method,
+						},
+					},
+				);
+			}
+			const location = response.headers.get("Location");
+			let target;
+			try {
+				target = new URL(location, options.url);
+			} catch {
+				await response.body?.cancel();
+				throw new Error(
+					`fetch ${options.method} ${safeUrl} returned an invalid redirect Location`,
+					{
+						cause: {
+							status: response.status,
+							url: safeUrl,
+							method: options.method,
+						},
+					},
+				);
+			}
+			if (target.origin !== initialOrigin) {
+				await response.body?.cancel();
+				throw new Error(
+					`fetch ${options.method} ${safeUrl} blocked cross-origin redirect (${target.origin} does not match ${initialOrigin})`,
+					{
+						cause: {
+							status: response.status,
+							url: safeUrl,
+							location: redactUrl(target.toString()),
+							origin: initialOrigin,
+							method: options.method,
+						},
+					},
+				);
+			}
+			await response.body?.cancel();
+			options.url = target.toString();
+			response = await fetch(options.url, fetchInit);
+		}
+	}
+
 	if (!response.ok) {
 		const safeUrl = redactUrl(options.url);
 		// 429 Too Many Requests
@@ -238,7 +343,7 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 					{
 						cause: {
 							status: response.status,
-							url: options.url,
+							url: safeUrl,
 							method: options.method,
 						},
 					},
@@ -258,7 +363,7 @@ export const fetchRateLimit = async (options, streamOptions = {}) => {
 		throw new Error(`fetch ${response.status} ${options.method} ${safeUrl}`, {
 			cause: {
 				status: response.status,
-				url: options.url,
+				url: safeUrl,
 				method: options.method,
 			},
 		});

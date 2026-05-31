@@ -26,6 +26,7 @@ export function encryptStream(
 		iv?: Uint8Array | Buffer;
 		aad?: Uint8Array | Buffer;
 		maxInputSize?: number;
+		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
 ): EncryptStreamResult | Promise<EncryptStreamResult>;

@@ -1773,3 +1773,1528 @@ test(`${variant}: csvCoerceValuesStream should handle uppercase boolean`, async 
 
 	deepStrictEqual(output, [{ val: true, val2: false }]);
 });
+
+// *** FINDING: fast-path-too-many-columns-merged *** //
+test(`${variant}: csvParseStream should not merge extra columns in fast unquoted path`, async (_t) => {
+	// A row with MORE fields than the established numCols must keep all
+	// fields separate (not collapse the surplus into the last field).
+	const streams = [
+		createReadableStream("a,b,c\r\n1,2,3,4,5\r\n"),
+		csvParseStream(),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		["a", "b", "c"],
+		["1", "2", "3", "4", "5"],
+	]);
+});
+
+test(`${variant}: csvParseStream fast and slow paths agree on over-long rows`, async (_t) => {
+	// Identical row data must parse identically whether or not a quote char
+	// appears elsewhere in the buffer (quote presence picks fast vs slow path).
+	const fastStreams = [
+		createReadableStream("a,b,c\r\n1,2,3,4,5\r\n"),
+		csvParseStream(),
+	];
+	const slowStreams = [
+		createReadableStream('a,b,c\r\n1,2,3,4,5\r\n"x",y,z\r\n'),
+		csvParseStream(),
+	];
+	const fast = await streamToArray(pipejoin(fastStreams));
+	const slow = await streamToArray(pipejoin(slowStreams));
+
+	deepStrictEqual(fast[1], ["1", "2", "3", "4", "5"]);
+	deepStrictEqual(slow[1], ["1", "2", "3", "4", "5"]);
+});
+
+test(`${variant}: csvParseStream over-long rows are detectable as malformed`, async (_t) => {
+	const filter = csvRemoveMalformedRowsStream();
+	const streams = [
+		createReadableStream("a,b,c\r\n1,2,3,4,5\r\n6,7,8\r\n"),
+		csvParseStream(),
+		filter,
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		["a", "b", "c"],
+		["6", "7", "8"],
+	]);
+	deepStrictEqual(filter.result().value.MalformedRow.idx, [1]);
+});
+
+// *** FINDING: detect-quote-scans-whole-buffer *** //
+test(`${variant}: csvDetectDelimitersStream should not detect apostrophe in data as quote char`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	const streams = [
+		createReadableStream("quote,author\n'twas the night,Moore\nhello,World\n"),
+		detect,
+	];
+	await pipeline(streams);
+
+	strictEqual(detect.result().value.quoteChar, '"');
+});
+
+test(`${variant}: csvParseStream should parse data with apostrophes after auto-detect`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	const parse = csvParseStream({
+		delimiterChar: () => detect.result().value.delimiterChar,
+		newlineChar: () => detect.result().value.newlineChar,
+		quoteChar: () => detect.result().value.quoteChar,
+	});
+	const streams = [
+		createReadableStream("quote,author\n'twas the night,Moore\nhello,World\n"),
+		detect,
+		parse,
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		["quote", "author"],
+		["'twas the night", "Moore"],
+		["hello", "World"],
+	]);
+});
+
+// *** FINDING: custom-escape-not-inverse-of-format *** //
+test(`${variant}: csvFormatStream/csvParseStream round-trip preserves escape char with custom escapeChar`, async (_t) => {
+	const value = 'a"b\\c';
+	const formatStreams = [
+		createReadableStream([[value, "next"]]),
+		csvFormatStream({ escapeChar: "\\" }),
+	];
+	const formatted = await streamToString(pipejoin(formatStreams));
+
+	const parseStreams = [
+		createReadableStream(formatted),
+		csvParseStream({ escapeChar: "\\" }),
+	];
+	const parsed = await streamToArray(pipejoin(parseStreams));
+
+	deepStrictEqual(parsed, [[value, "next"]]);
+});
+
+// *** FINDING: custom-escape-lookback-parity *** //
+test(`${variant}: csvParseStream should treat even run of escape chars as unescaped closing quote`, async (_t) => {
+	// "a\\" => field value is a\ (escaped backslash), then the closing quote
+	// is real, so the delimiter and following field are not swallowed.
+	const streams = [
+		createReadableStream('"a\\\\",b\r\nc,d\r\n'),
+		csvParseStream({ escapeChar: "\\" }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [
+		["a\\", "b"],
+		["c", "d"],
+	]);
+});
+
+// *** FINDING: detect-header-naive-newline-split *** //
+test(`${variant}: csvDetectHeaderStream should respect quoted newline in header field`, async (_t) => {
+	const headers = csvDetectHeaderStream({ newlineChar: "\n" });
+	const streams = [
+		createReadableStream('"col\nwith newline",col2\nval1,val2\n'),
+		headers,
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToString(stream);
+
+	deepStrictEqual(headers.result().value.header, ["col\nwith newline", "col2"]);
+	strictEqual(output, "val1,val2\n");
+});
+
+test(`${variant}: csvDetectHeaderStream should respect custom-escape quoted newline in header`, async (_t) => {
+	const headers = csvDetectHeaderStream({
+		newlineChar: "\n",
+		escapeChar: "\\",
+	});
+	const streams = [
+		createReadableStream('"col\\"x\nnext",col2\nval1,val2\n'),
+		headers,
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToString(stream);
+
+	deepStrictEqual(headers.result().value.header, ['col"x\nnext', "col2"]);
+	strictEqual(output, "val1,val2\n");
+});
+
+// *** FINDING: autocoerce-invalid-date *** //
+test(`${variant}: csvCoerceValuesStream should keep invalid date string as string`, async (_t) => {
+	const streams = [
+		createReadableStream([{ d: "2024-13-99" }]),
+		csvCoerceValuesStream(),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [{ d: "2024-13-99" }]);
+});
+
+// *** FINDING: csvArrayToObject-proto-header-drops-column *** //
+test(`${variant}: csvArrayToObject should keep a __proto__ header as an own data property`, async (_t) => {
+	const streams = [
+		createReadableStream([["polluted", "ok"]]),
+		csvArrayToObject({ headers: ["__proto__", "safe"] }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	strictEqual(output.length, 1);
+	const row = output[0];
+	// The __proto__ column must be stored as an own data property, not lost.
+	ok(Object.hasOwn(row, "__proto__"));
+	strictEqual(row.__proto__, "polluted");
+	strictEqual(row.safe, "ok");
+});
+
+// ===================================================================
+// Mutation-killing tests (added to raise mutation score)
+// ===================================================================
+
+// --- csvFormatStream: scanNeedsQuote first-char triggers ---
+test(`${variant}: csvFormatStream should quote field with leading space`, async (_t) => {
+	const streams = [createReadableStream([[" lead", "ok"]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '" lead",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream should quote field with trailing space`, async (_t) => {
+	const streams = [createReadableStream([["trail ", "ok"]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"trail ",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream should quote field with leading BOM`, async (_t) => {
+	const streams = [createReadableStream([["﻿bom", "ok"]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"﻿bom",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream should not quote plain interior space`, async (_t) => {
+	const streams = [createReadableStream([["a b c", "ok"]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, "a b c,ok\r\n");
+});
+
+test(`${variant}: csvFormatStream should quote field containing carriage return`, async (_t) => {
+	const streams = [createReadableStream([["a\rb", "ok"]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"a\rb",ok\r\n');
+});
+
+// --- csvFormatStream: multi-char delimiter scan path ---
+test(`${variant}: csvFormatStream should quote value containing multi-char delimiter`, async (_t) => {
+	const streams = [
+		createReadableStream([["a::b", "plain"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"a::b"::plain\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter should quote on quote char`, async (_t) => {
+	const streams = [
+		createReadableStream([['has"quote', "plain"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"has""quote"::plain\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter should not quote plain value`, async (_t) => {
+	const streams = [
+		createReadableStream([["plain", "value"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, "plain::value\r\n");
+});
+
+// --- csvFormatStream: wrapQuote with custom escape ---
+test(`${variant}: csvFormatStream custom escape should escape escape char and quote char`, async (_t) => {
+	// escapeChar=\, value contains both \ and "; backslash doubled, quote -> \"
+	const streams = [
+		createReadableStream([['a"b\\c', "ok"]]),
+		csvFormatStream({ escapeChar: "\\" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"a\\"b\\\\c",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream custom escape should escape only escape char when no quote`, async (_t) => {
+	const streams = [
+		createReadableStream([["a\\b,c", "ok"]]),
+		csvFormatStream({ escapeChar: "\\" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	// contains delimiter so quoted; backslash doubled; no quote char present
+	strictEqual(output, '"a\\\\b,c",ok\r\n');
+});
+
+// --- csvFormatStream: Date and number/non-string formatting (formatRowSlow) ---
+test(`${variant}: csvFormatStream should format Date as ISO string`, async (_t) => {
+	const d = new Date("2024-01-15T10:30:00.000Z");
+	const streams = [createReadableStream([[d, "ok"]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, "2024-01-15T10:30:00.000Z,ok\r\n");
+});
+
+test(`${variant}: csvFormatStream should format number via String`, async (_t) => {
+	const streams = [createReadableStream([[42, 3.14]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, "42,3.14\r\n");
+});
+
+test(`${variant}: csvFormatStream should format null and undefined as empty`, async (_t) => {
+	const streams = [
+		createReadableStream([[null, undefined, "x"]]),
+		csvFormatStream(),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, ",,x\r\n");
+});
+
+test(`${variant}: csvFormatStream should format boolean via String in slow path`, async (_t) => {
+	// boolean true forces slow path (non-string); String(true) === "true"
+	const streams = [createReadableStream([[true, false]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, "true,false\r\n");
+});
+
+test(`${variant}: csvFormatStream should quote number-derived string needing quote`, async (_t) => {
+	// A negative number stringifies to "-42" which starts with '-', a quote trigger
+	const streams = [createReadableStream([[-42, "ok"]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"-42",ok\r\n');
+});
+
+// --- csvFormatStream: batch boundary (>= 64 rows flushed mid-stream) ---
+test(`${variant}: csvFormatStream should emit batch at 64 rows then flush remainder`, async (_t) => {
+	const rows = [];
+	for (let i = 0; i < 70; i++) rows.push([String(i), "x"]);
+	const streams = [createReadableStream(rows), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	const lines = output.split("\r\n").filter((l) => l.length > 0);
+	strictEqual(lines.length, 70);
+	strictEqual(lines[0], "0,x");
+	strictEqual(lines[69], "69,x");
+});
+
+// --- csvFormatStream: custom newlineChar separator ---
+test(`${variant}: csvFormatStream should use custom newlineChar`, async (_t) => {
+	const streams = [
+		createReadableStream([
+			["1", "2"],
+			["3", "4"],
+		]),
+		csvFormatStream({ newlineChar: "\n" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, "1,2\n3,4\n");
+});
+
+// --- csvFormatStream: custom quoteChar ---
+test(`${variant}: csvFormatStream should use custom quoteChar`, async (_t) => {
+	const streams = [
+		createReadableStream([["a,b", "ok"]]),
+		csvFormatStream({ quoteChar: "'" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, "'a,b',ok\r\n");
+});
+
+// --- csvFormatStream multi-char delimiter: trailing space / CR / LF triggers ---
+test(`${variant}: csvFormatStream multi-char delimiter should quote trailing space`, async (_t) => {
+	const streams = [
+		createReadableStream([["trail ", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"trail "::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter should quote on newline`, async (_t) => {
+	const streams = [
+		createReadableStream([["a\nb", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"a\nb"::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter should quote on carriage return`, async (_t) => {
+	const streams = [
+		createReadableStream([["a\rb", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"a\rb"::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream single-char delimiter should quote on linefeed only`, async (_t) => {
+	const streams = [createReadableStream([["a\nb", "ok"]]), csvFormatStream()];
+	const output = await streamToString(pipejoin(streams));
+	strictEqual(output, '"a\nb",ok\r\n');
+});
+
+// --- csvCoerceValuesStream: number regex exponent shape ---
+test(`${variant}: csvCoerceValuesStream should coerce exponent with explicit sign and multi-digit exponent`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "1e+10", b: "2e-05", c: "1.5E3" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: 1e10, b: 2e-5, c: 1500 }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should keep malformed exponent as string`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "1e", b: "1e+", c: "1.2.3" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: "1e", b: "1e+", c: "1.2.3" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should not coerce string with trailing non-number text`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "12abc", d: "2024-01-15extra" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: "12abc", d: "2024-01-15extra" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should not coerce date missing leading anchor`, async (_t) => {
+	const streams = [
+		createReadableStream([{ d: "x2024-01-15" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ d: "x2024-01-15" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should coerce date with time and timezone offset`, async (_t) => {
+	const streams = [
+		createReadableStream([{ d: "2024-01-15T10:30:00+05:30" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ d: new Date("2024-01-15T10:30:00+05:30") }]);
+});
+
+// --- csvCoerceValuesStream: boolean first-char/length gating in autoCoerce ---
+test(`${variant}: csvCoerceValuesStream should not treat 4-char non-true string as boolean`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "trUE", b: "tree", c: "True" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: true, b: "tree", c: true }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should not coerce non-t/f boolean-length words`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "yes", b: "nope" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: "yes", b: "nope" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should not coerce truthy when length is wrong`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "truer", b: "falsey" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: "truer", b: "falsey" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should return null for empty string auto-coerce`, async (_t) => {
+	const streams = [createReadableStream([{ a: "" }]), csvCoerceValuesStream()];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: null }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should coerce single-digit zero and nine`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "0", b: "9" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: 0, b: 9 }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should keep plain non-numeric non-bool string`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "hello", b: "world" }]),
+		csvCoerceValuesStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: "hello", b: "world" }]);
+});
+
+// --- coerceToType boolean: string vs non-string ---
+test(`${variant}: csvCoerceValuesStream explicit boolean should lowercase compare string`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "TRUE", b: "no", c: "true" }]),
+		csvCoerceValuesStream({
+			columns: { a: "boolean", b: "boolean", c: "boolean" },
+		}),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: true, b: false, c: true }]);
+});
+
+test(`${variant}: csvCoerceValuesStream explicit boolean should use Boolean for non-string`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: 1, b: 0 }]),
+		csvCoerceValuesStream({ columns: { a: "boolean", b: "boolean" } }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: true, b: false }]);
+});
+
+// --- coerceToType json with array ---
+test(`${variant}: csvCoerceValuesStream explicit json should parse array`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "[1,2,3]" }]),
+		csvCoerceValuesStream({ columns: { a: "json" } }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: [1, 2, 3] }]);
+});
+
+// --- coerceToType default (unknown type) passthrough ---
+test(`${variant}: csvCoerceValuesStream unknown column type should pass value unchanged`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "raw" }]),
+		csvCoerceValuesStream({ columns: { a: "string" } }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: "raw" }]);
+});
+
+// --- coerceToType number coerces hex-like and keeps decimals ---
+test(`${variant}: csvCoerceValuesStream explicit number coerces decimal and hex`, async (_t) => {
+	const streams = [
+		createReadableStream([{ a: "3.14", b: "0x1F" }]),
+		csvCoerceValuesStream({ columns: { a: "number", b: "number" } }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: 3.14, b: 31 }]);
+});
+
+// --- csvDetectDelimitersStream: quote bracketing precision ---
+// A quote candidate must OPEN at a field start AND CLOSE at a field end to be
+// recognised. The following exercise each isFieldStart / isFieldEnd branch.
+
+test(`${variant}: csvDetectDelimitersStream should detect quote opening at text start`, async (_t) => {
+	// "'a'" opens at i===0 and closes before a delimiter
+	const detect = csvDetectDelimitersStream();
+	const streams = [createReadableStream("'a',b\n1,2\n"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.quoteChar, "'");
+});
+
+test(`${variant}: csvDetectDelimitersStream should detect quote after delimiter and closing at line end`, async (_t) => {
+	// second field 'b' opens after a comma and closes before the newline (LF)
+	const detect = csvDetectDelimitersStream();
+	const streams = [createReadableStream("a,'b'\n1,2\n"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.quoteChar, "'");
+});
+
+test(`${variant}: csvDetectDelimitersStream should detect quote closing before CR`, async (_t) => {
+	// quoted field closes right before \r in a CRLF newline
+	const detect = csvDetectDelimitersStream();
+	const streams = [createReadableStream("'a',b\r\n1,2\r\n"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.quoteChar, "'");
+	strictEqual(detect.result().value.newlineChar, "\r\n");
+});
+
+test(`${variant}: csvDetectDelimitersStream should detect quote opening after newline`, async (_t) => {
+	// The only properly-bracketed quote is on row 2, opening right after the LF
+	const detect = csvDetectDelimitersStream({ chunkSize: 0 });
+	const streams = [createReadableStream("a,b\n'c',d\n"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.quoteChar, "'");
+});
+
+test(`${variant}: csvDetectDelimitersStream should NOT detect quote that never closes at a field end`, async (_t) => {
+	// 'x is a field-start apostrophe with no closing quote at any field end.
+	// A later lone apostrophe sits mid-field (after a letter, not a boundary),
+	// so it neither opens nor closes a field -> default double-quote.
+	const detect = csvDetectDelimitersStream();
+	const streams = [
+		createReadableStream("name,note\n'x,it's fine\nhello,world\n"),
+		detect,
+	];
+	await pipeline(streams);
+	strictEqual(detect.result().value.quoteChar, '"');
+});
+
+test(`${variant}: csvDetectDelimitersStream should set escapeChar equal to detected quoteChar`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	const streams = [createReadableStream("'a','b'\n1,2\n"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.escapeChar, "'");
+	strictEqual(detect.result().value.quoteChar, "'");
+});
+
+test(`${variant}: csvDetectDelimitersStream should pick first delimiter by precedence (tab over comma)`, async (_t) => {
+	// Header contains BOTH a tab and a comma; detection order is [tab,pipe,semi,comma]
+	const detect = csvDetectDelimitersStream();
+	const streams = [createReadableStream("a\tb,c\n1\t2,3\n"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.delimiterChar, "\t");
+});
+
+test(`${variant}: csvDetectDelimitersStream should pick pipe over semicolon and comma`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	const streams = [createReadableStream("a|b;c,d\n1|2;3,4\n"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.delimiterChar, "|");
+});
+
+test(`${variant}: csvDetectDelimitersStream should pick semicolon over comma`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	const streams = [createReadableStream("a;b,c\n1;2,3\n"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.delimiterChar, ";");
+});
+
+test(`${variant}: csvDetectDelimitersStream should default to double-quote when no quote present`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	const streams = [createReadableStream("a,b,c\n1,2,3\n"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.quoteChar, '"');
+});
+
+test(`${variant}: csvDetectDelimitersStream should set newlineChar from header match`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	const streams = [createReadableStream("a,b\r1,2\r"), detect];
+	await pipeline(streams);
+	strictEqual(detect.result().value.newlineChar, "\r");
+});
+
+// --- csvQuotedParser direct: numCols, escapes, tail, multi-char newline ---
+test(`${variant}: csvQuotedParser establishes numCols from first row`, (_t) => {
+	const result = csvQuotedParser("a,b,c\r\n1,2,3\r\n");
+	strictEqual(result.numCols, 3);
+	deepStrictEqual(result.rows, [
+		["a", "b", "c"],
+		["1", "2", "3"],
+	]);
+});
+
+test(`${variant}: csvQuotedParser returns tail for incomplete trailing row`, (_t) => {
+	const result = csvQuotedParser("a,b\r\n1,2\r\n3,4");
+	deepStrictEqual(result.rows, [
+		["a", "b"],
+		["1", "2"],
+	]);
+	strictEqual(result.tail, "3,4");
+});
+
+test(`${variant}: csvQuotedParser preserves quoted field with escaped quotes (no escapes flag)`, (_t) => {
+	const result = csvQuotedParser('"plain",x\r\n');
+	deepStrictEqual(result.rows, [["plain", "x"]]);
+});
+
+test(`${variant}: csvQuotedParser keeps doubled-quote escapes`, (_t) => {
+	const result = csvQuotedParser('"a""b","c"\r\n');
+	deepStrictEqual(result.rows, [['a"b', "c"]]);
+});
+
+test(`${variant}: csvQuotedParser handles short quoted row truncating to fi`, (_t) => {
+	// numCols established as 3, second row has a single quoted field -> length 1
+	const result = csvQuotedParser('a,b,c\r\n"d"\r\n');
+	deepStrictEqual(result.rows[0], ["a", "b", "c"]);
+	strictEqual(result.rows[1].length, 1);
+	deepStrictEqual(result.rows[1], ["d"]);
+});
+
+test(`${variant}: csvQuotedParser handles multi-char newline length>2`, (_t) => {
+	const result = csvQuotedParser("a,b||~c,d||~", { newlineChar: "||~" }, true);
+	deepStrictEqual(result.rows, [
+		["a", "b"],
+		["c", "d"],
+	]);
+});
+
+test(`${variant}: csvQuotedParser CRLF requires both chars (lone CR does not split)`, (_t) => {
+	// With CRLF newline, a lone \r mid-field must NOT terminate the row.
+	const result = csvQuotedParser('"a\rb",c\r\n', { newlineChar: "\r\n" }, true);
+	deepStrictEqual(result.rows, [["a\rb", "c"]]);
+});
+
+test(`${variant}: csvQuotedParser tracks unterminated quote error on flush`, (_t) => {
+	const result = csvQuotedParser('"abc', {}, true);
+	deepStrictEqual(result.rows, [["abc"]]);
+	ok(result.errors.UnterminatedQuote);
+	deepStrictEqual(result.errors.UnterminatedQuote.idx, [0]);
+});
+
+test(`${variant}: csvQuotedParser unterminated quote not flushing returns tail`, (_t) => {
+	const result = csvQuotedParser('a,b\r\n"abc', {}, false);
+	deepStrictEqual(result.rows, [["a", "b"]]);
+	strictEqual(result.tail, '"abc');
+});
+
+test(`${variant}: csvQuotedParser custom escape unterminated keeps unescaped value on flush`, (_t) => {
+	const result = csvQuotedParser('"a\\"b', { escapeChar: "\\" }, true);
+	deepStrictEqual(result.rows, [['a"b']]);
+	ok(result.errors.UnterminatedQuote);
+});
+
+test(`${variant}: csvQuotedParser custom escape even run is real closing quote`, (_t) => {
+	const result = csvQuotedParser('"a\\\\",b\r\n', { escapeChar: "\\" }, true);
+	deepStrictEqual(result.rows, [["a\\", "b"]]);
+});
+
+test(`${variant}: csvQuotedParser custom escape odd run escapes the quote`, (_t) => {
+	const result = csvQuotedParser('"a\\"b",c\r\n', { escapeChar: "\\" }, true);
+	deepStrictEqual(result.rows, [['a"b', "c"]]);
+});
+
+// --- field size limit ---
+test(`${variant}: csvParseStream should throw when quoted field exceeds fieldMaxSize`, async (_t) => {
+	// field length 11 (> 10) but buffer (17) stays under the 2x safety limit (20)
+	const val = "x".repeat(11);
+	const streams = [
+		createReadableStream(`"${val}",y\r\n`),
+		csvParseStream({ fieldMaxSize: 10 }),
+	];
+	let threw = false;
+	try {
+		await pipeline(streams);
+	} catch (e) {
+		threw = true;
+		ok(/CSV field size/.test(e.message));
+	}
+	ok(threw);
+});
+
+test(`${variant}: csvParseStream should accept quoted field at exactly fieldMaxSize`, async (_t) => {
+	const val = "x".repeat(10);
+	const streams = [
+		createReadableStream(`"${val}",y\r\n`),
+		csvParseStream({ fieldMaxSize: 10 }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [[val, "y"]]);
+});
+
+test(`${variant}: csvParseStream should throw when custom-escape quoted field exceeds fieldMaxSize`, async (_t) => {
+	const val = "x".repeat(11);
+	const streams = [
+		createReadableStream(`"${val}",y\r\n`),
+		csvParseStream({ escapeChar: "\\", fieldMaxSize: 10 }),
+	];
+	let threw = false;
+	try {
+		await pipeline(streams);
+	} catch (e) {
+		threw = true;
+		ok(/CSV field size/.test(e.message));
+	}
+	ok(threw);
+});
+
+test(`${variant}: csvParseStream should throw on buffer exceeding safety limit`, async (_t) => {
+	// An unterminated quote that grows the buffer beyond fieldMaxSize*2 throws.
+	const big = `"${"x".repeat(60)}`;
+	const streams = [
+		createReadableStream(big),
+		csvParseStream({ fieldMaxSize: 10, chunkSize: 1 }),
+	];
+	let threw = false;
+	try {
+		await pipeline(streams);
+	} catch (e) {
+		threw = true;
+		ok(/safety limit/.test(e.message));
+	}
+	ok(threw);
+});
+
+// --- fast unquoted path: too-few columns (malformed) and surplus ---
+test(`${variant}: csvParseStream fast path keeps too-few-column row as-is`, async (_t) => {
+	const streams = [
+		createReadableStream("a,b,c\r\nd,e\r\nf,g,h\r\n"),
+		csvParseStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		["a", "b", "c"],
+		["d", "e"],
+		["f", "g", "h"],
+	]);
+});
+
+test(`${variant}: csvParseStream fast path keeps multiple full rows`, async (_t) => {
+	const streams = [
+		createReadableStream("a,b\r\n1,2\r\n3,4\r\n5,6\r\n"),
+		csvParseStream(),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		["a", "b"],
+		["1", "2"],
+		["3", "4"],
+		["5", "6"],
+	]);
+});
+
+test(`${variant}: csvParseStream fast path partial last row without newline`, async (_t) => {
+	const streams = [createReadableStream("a,b\r\n1,2\r\n3,4"), csvParseStream()];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		["a", "b"],
+		["1", "2"],
+		["3", "4"],
+	]);
+});
+
+// --- multi-char newline (length 2 custom, not CRLF) ---
+test(`${variant}: csvParseStream supports 2-char custom newline`, async (_t) => {
+	const streams = [
+		createReadableStream("a,b~|1,2~|"),
+		csvParseStream({ newlineChar: "~|" }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		["a", "b"],
+		["1", "2"],
+	]);
+});
+
+test(`${variant}: csvParseStream 2-char newline does not split on partial match`, async (_t) => {
+	// A lone '~' that is not followed by '|' must stay inside the field.
+	const streams = [
+		createReadableStream('"a~b",c~|d,e~|'),
+		csvParseStream({ newlineChar: "~|" }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		["a~b", "c"],
+		["d", "e"],
+	]);
+});
+
+// --- unquoted parser numCols + multi-row ---
+test(`${variant}: csvUnquotedParser sets numCols and parses many rows`, (_t) => {
+	const result = csvUnquotedParser("a,b\r\n1,2\r\n3,4\r\n");
+	strictEqual(result.numCols, 2);
+	deepStrictEqual(result.rows, [
+		["a", "b"],
+		["1", "2"],
+		["3", "4"],
+	]);
+});
+
+test(`${variant}: csvUnquotedParser custom delimiter and newline`, (_t) => {
+	const result = csvUnquotedParser("a;b\nc;d\n", {
+		delimiterChar: ";",
+		newlineChar: "\n",
+	});
+	deepStrictEqual(result.rows, [
+		["a", "b"],
+		["c", "d"],
+	]);
+});
+
+// --- csvDetectHeaderStream / findRowEnd quote & escape aware row scan ---
+test(`${variant}: csvDetectHeaderStream multi-char delimiter splits header`, async (_t) => {
+	const headers = csvDetectHeaderStream({
+		newlineChar: "\n",
+		delimiterChar: "::",
+	});
+	const streams = [createReadableStream("a::b::c\n1::2::3\n"), headers];
+	const output = await streamToString(pipejoin(streams));
+	deepStrictEqual(headers.result().value.header, ["a", "b", "c"]);
+	strictEqual(output, "1::2::3\n");
+});
+
+test(`${variant}: csvDetectHeaderStream respects delimiter inside quoted header field`, async (_t) => {
+	const headers = csvDetectHeaderStream({ newlineChar: "\n" });
+	const streams = [createReadableStream('"a,b",c\n1,2\n'), headers];
+	const output = await streamToString(pipejoin(streams));
+	deepStrictEqual(headers.result().value.header, ["a,b", "c"]);
+	strictEqual(output, "1,2\n");
+});
+
+test(`${variant}: csvDetectHeaderStream custom-escape even run closes header quote`, async (_t) => {
+	const headers = csvDetectHeaderStream({
+		newlineChar: "\n",
+		escapeChar: "\\",
+	});
+	const streams = [createReadableStream('"a\\\\",b\nv1,v2\n'), headers];
+	const output = await streamToString(pipejoin(streams));
+	deepStrictEqual(headers.result().value.header, ["a\\", "b"]);
+	strictEqual(output, "v1,v2\n");
+});
+
+test(`${variant}: csvDetectHeaderStream passes through data after a quoted header newline`, async (_t) => {
+	const headers = csvDetectHeaderStream({ newlineChar: "\n" });
+	const streams = [
+		createReadableStream('"h1\nstill h1",h2\nr1a,r1b\nr2a,r2b\n'),
+		headers,
+	];
+	const output = await streamToString(pipejoin(streams));
+	deepStrictEqual(headers.result().value.header, ["h1\nstill h1", "h2"]);
+	strictEqual(output, "r1a,r1b\nr2a,r2b\n");
+});
+
+test(`${variant}: csvDetectHeaderStream CRLF header newline length`, async (_t) => {
+	const headers = csvDetectHeaderStream({ newlineChar: "\r\n" });
+	const streams = [createReadableStream("a,b,c\r\n1,2,3\r\n"), headers];
+	const output = await streamToString(pipejoin(streams));
+	deepStrictEqual(headers.result().value.header, ["a", "b", "c"]);
+	strictEqual(output, "1,2,3\r\n");
+});
+
+test(`${variant}: csvDetectHeaderStream emits remaining rest only when non-empty`, async (_t) => {
+	const headers = csvDetectHeaderStream({ newlineChar: "\n" });
+	const streams = [createReadableStream("only,header\n"), headers];
+	const output = await streamToString(pipejoin(streams));
+	deepStrictEqual(headers.result().value.header, ["only", "header"]);
+	strictEqual(output, "");
+});
+
+// --- csvRemoveMalformedRowsStream result key + default + idx ---
+test(`${variant}: csvRemoveMalformedRowsStream default resultKey and message`, async (_t) => {
+	const filter = csvRemoveMalformedRowsStream();
+	const streams = [createReadableStream([["a", "b"], ["c"]]), filter];
+	const result = await pipeline(streams);
+	strictEqual(filter.result().key, "csvRemoveMalformedRows");
+	deepStrictEqual(result.csvRemoveMalformedRows.MalformedRow.idx, [1]);
+	strictEqual(
+		filter.result().value.MalformedRow.message,
+		"Row has incorrect number of fields",
+	);
+	strictEqual(filter.result().value.MalformedRow.id, "MalformedRow");
+});
+
+test(`${variant}: csvRemoveMalformedRowsStream first row sets count, later mismatch dropped`, async (_t) => {
+	const filter = csvRemoveMalformedRowsStream();
+	const streams = [
+		createReadableStream([["a", "b", "c"], ["1", "2", "3"], ["x"]]),
+		filter,
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		["a", "b", "c"],
+		["1", "2", "3"],
+	]);
+	deepStrictEqual(filter.result().value.MalformedRow.idx, [2]);
+});
+
+// --- csvRemoveEmptyRowsStream default resultKey + message ---
+test(`${variant}: csvRemoveEmptyRowsStream default resultKey and message`, async (_t) => {
+	const filter = csvRemoveEmptyRowsStream();
+	const streams = [
+		createReadableStream([
+			["", ""],
+			["1", "2"],
+		]),
+		filter,
+	];
+	const result = await pipeline(streams);
+	strictEqual(filter.result().key, "csvRemoveEmptyRows");
+	strictEqual(result.csvRemoveEmptyRows.EmptyRow.message, "Row is empty");
+	strictEqual(result.csvRemoveEmptyRows.EmptyRow.id, "EmptyRow");
+});
+
+test(`${variant}: csvRemoveEmptyRowsStream keeps row with one non-empty field`, async (_t) => {
+	const filter = csvRemoveEmptyRowsStream();
+	const streams = [
+		createReadableStream([
+			["", "x"],
+			["", ""],
+		]),
+		filter,
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [["", "x"]]);
+	deepStrictEqual(filter.result().value.EmptyRow.idx, [1]);
+});
+
+test(`${variant}: csvRemoveEmptyRowsStream keeps row whose only non-empty field is last`, async (_t) => {
+	const filter = csvRemoveEmptyRowsStream();
+	const streams = [createReadableStream([["", "", "z"]]), filter];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [["", "", "z"]]);
+	deepStrictEqual(filter.result().value, {});
+});
+
+// --- csvInjectHeaderStream injects header exactly once ---
+test(`${variant}: csvInjectHeaderStream injects header exactly once`, async (_t) => {
+	const streams = [
+		createReadableStream([
+			["1", "2"],
+			["3", "4"],
+			["5", "6"],
+		]),
+		csvInjectHeaderStream({ header: ["a", "b"] }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		["a", "b"],
+		["1", "2"],
+		["3", "4"],
+		["5", "6"],
+	]);
+});
+
+// --- csvParseStream chunkSize ready/join paths ---
+test(`${variant}: csvParseStream single input chunk reaching chunkSize processes immediately`, async (_t) => {
+	const streams = [
+		createReadableStream(["a,b,c,d,e\r\n", "1,2,3,4,5\r\n"]),
+		csvParseStream({ chunkSize: 5 }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		["a", "b", "c", "d", "e"],
+		["1", "2", "3", "4", "5"],
+	]);
+});
+
+test(`${variant}: csvParseStream below chunkSize joins on flush`, async (_t) => {
+	const streams = [
+		createReadableStream(["a,", "b\r\n", "1,", "2\r\n"]),
+		csvParseStream({ chunkSize: 1000 }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		["a", "b"],
+		["1", "2"],
+	]);
+});
+
+test(`${variant}: csvParseStream default resultKey is csvErrors`, async (_t) => {
+	const streams = [createReadableStream("a,b\r\n"), csvParseStream()];
+	const result = await pipeline(streams);
+	strictEqual(streams[1].result().key, "csvErrors");
+	deepStrictEqual(result.csvErrors, {});
+});
+
+// --- csvFormatStream multi-char delimiter: each first-char formula trigger ---
+test(`${variant}: csvFormatStream multi-char delimiter quotes leading equals`, async (_t) => {
+	const streams = [
+		createReadableStream([["=x", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), '"=x"::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter quotes leading plus`, async (_t) => {
+	const streams = [
+		createReadableStream([["+x", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), '"+x"::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter quotes leading minus`, async (_t) => {
+	const streams = [
+		createReadableStream([["-x", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), '"-x"::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter quotes leading at-sign`, async (_t) => {
+	const streams = [
+		createReadableStream([["@x", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), '"@x"::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter quotes leading space`, async (_t) => {
+	const streams = [
+		createReadableStream([[" x", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), '" x"::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter quotes leading BOM`, async (_t) => {
+	const streams = [
+		createReadableStream([["﻿x", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), '"﻿x"::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter does NOT quote plain leading char`, async (_t) => {
+	const streams = [
+		createReadableStream([["xyz", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), "xyz::ok\r\n");
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter quotes trailing space`, async (_t) => {
+	const streams = [
+		createReadableStream([["trail ", "ok"]]),
+		csvFormatStream({ delimiterChar: "::" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), '"trail "::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter quotes on newline`, async (_t) => {
+	const a = await streamToString(
+		pipejoin([
+			createReadableStream([["a\nb", "ok"]]),
+			csvFormatStream({ delimiterChar: "::" }),
+		]),
+	);
+	strictEqual(a, '"a\nb"::ok\r\n');
+});
+
+test(`${variant}: csvFormatStream multi-char delimiter quotes on carriage return`, async (_t) => {
+	const b = await streamToString(
+		pipejoin([
+			createReadableStream([["a\rb", "ok"]]),
+			csvFormatStream({ delimiterChar: "::" }),
+		]),
+	);
+	strictEqual(b, '"a\rb"::ok\r\n');
+});
+
+// --- csvFormatStream single-char delimiter: each first-char formula trigger ---
+test(`${variant}: csvFormatStream single-char delimiter quotes leading at-sign`, async (_t) => {
+	const streams = [createReadableStream([["@x", "ok"]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), '"@x",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream single-char delimiter quotes leading plus`, async (_t) => {
+	const streams = [createReadableStream([["+x", "ok"]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), '"+x",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream single-char delimiter quotes leading minus`, async (_t) => {
+	const streams = [createReadableStream([["-x", "ok"]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), '"-x",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream single-char delimiter quotes leading equals`, async (_t) => {
+	const streams = [createReadableStream([["=x", "ok"]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), '"=x",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream single-char delimiter does NOT quote plain value`, async (_t) => {
+	const streams = [createReadableStream([["xyz", "ok"]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), "xyz,ok\r\n");
+});
+
+test(`${variant}: csvFormatStream single-char delimiter quotes trailing space`, async (_t) => {
+	const streams = [createReadableStream([["trail ", "ok"]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), '"trail ",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream should quote field with leading BOM`, async (_t) => {
+	const streams = [createReadableStream([["﻿bom", "ok"]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), '"﻿bom",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream should quote field with carriage return`, async (_t) => {
+	const streams = [createReadableStream([["a\rb", "ok"]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), '"a\rb",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream should format Date as ISO string`, async (_t) => {
+	const d = new Date("2024-01-15T10:30:00.000Z");
+	const streams = [createReadableStream([[d, "ok"]]), csvFormatStream()];
+	strictEqual(
+		await streamToString(pipejoin(streams)),
+		"2024-01-15T10:30:00.000Z,ok\r\n",
+	);
+});
+
+test(`${variant}: csvFormatStream should format number via String`, async (_t) => {
+	const streams = [createReadableStream([[42, 3.14]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), "42,3.14\r\n");
+});
+
+test(`${variant}: csvFormatStream should format boolean via String in slow path`, async (_t) => {
+	const streams = [createReadableStream([[true, false]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), "true,false\r\n");
+});
+
+test(`${variant}: csvFormatStream should quote negative number string`, async (_t) => {
+	const streams = [createReadableStream([[-42, "ok"]]), csvFormatStream()];
+	strictEqual(await streamToString(pipejoin(streams)), '"-42",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream should format null and undefined as empty`, async (_t) => {
+	const streams = [
+		createReadableStream([[null, undefined, "x"]]),
+		csvFormatStream(),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), ",,x\r\n");
+});
+
+test(`${variant}: csvFormatStream custom escape escapes escape and quote chars`, async (_t) => {
+	const streams = [
+		createReadableStream([['a"b\\c', "ok"]]),
+		csvFormatStream({ escapeChar: "\\" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), '"a\\"b\\\\c",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream custom escape escapes only escape char when no quote`, async (_t) => {
+	const streams = [
+		createReadableStream([["a\\b,c", "ok"]]),
+		csvFormatStream({ escapeChar: "\\" }),
+	];
+	strictEqual(await streamToString(pipejoin(streams)), '"a\\\\b,c",ok\r\n');
+});
+
+test(`${variant}: csvFormatStream batch boundary flushes at 64 rows`, async (_t) => {
+	const rows = [];
+	for (let i = 0; i < 70; i++) rows.push([String(i), "x"]);
+	const output = await streamToString(
+		pipejoin([createReadableStream(rows), csvFormatStream()]),
+	);
+	const lines = output.split("\r\n").filter((l) => l.length > 0);
+	strictEqual(lines.length, 70);
+	strictEqual(lines[0], "0,x");
+	strictEqual(lines[69], "69,x");
+});
+
+test(`${variant}: csvFormatStream custom newlineChar separator`, async (_t) => {
+	const output = await streamToString(
+		pipejoin([
+			createReadableStream([
+				["1", "2"],
+				["3", "4"],
+			]),
+			csvFormatStream({ newlineChar: "\n" }),
+		]),
+	);
+	strictEqual(output, "1,2\n3,4\n");
+});
+
+test(`${variant}: csvFormatStream custom quoteChar`, async (_t) => {
+	const output = await streamToString(
+		pipejoin([
+			createReadableStream([["a,b", "ok"]]),
+			csvFormatStream({ quoteChar: "'" }),
+		]),
+	);
+	strictEqual(output, "'a,b',ok\r\n");
+});
+
+// --- Quoted-field post-quote newline dispatch: length 1 / 2 / >2 ---
+test(`${variant}: csvQuotedParser quoted field then LF newline (length 1)`, (_t) => {
+	const result = csvQuotedParser('"a"\n"b"\n', { newlineChar: "\n" }, true);
+	deepStrictEqual(result.rows, [["a"], ["b"]]);
+});
+
+test(`${variant}: csvQuotedParser quoted field then CRLF newline (length 2)`, (_t) => {
+	const result = csvQuotedParser(
+		'"a"\r\n"b"\r\n',
+		{ newlineChar: "\r\n" },
+		true,
+	);
+	deepStrictEqual(result.rows, [["a"], ["b"]]);
+});
+
+test(`${variant}: csvQuotedParser quoted field then lone CR is not a CRLF newline`, (_t) => {
+	const result = csvQuotedParser('"a"\rb,c\r\n', { newlineChar: "\r\n" }, true);
+	strictEqual(result.rows.length, 1);
+	strictEqual(result.rows[0][0], "a");
+});
+
+test(`${variant}: csvQuotedParser quoted field then 3-char newline (length > 2)`, (_t) => {
+	const result = csvQuotedParser('"a"~|~"b"~|~', { newlineChar: "~|~" }, true);
+	deepStrictEqual(result.rows, [["a"], ["b"]]);
+});
+
+test(`${variant}: csvQuotedParser quoted field then partial 3-char newline is garbage`, (_t) => {
+	const result = csvQuotedParser('"a"~|x~|~', { newlineChar: "~|~" }, true);
+	strictEqual(result.rows.length, 1);
+	strictEqual(result.rows[0][0], "a");
+});
+
+test(`${variant}: csvQuotedParser custom escape quoted field then LF newline`, (_t) => {
+	const result = csvQuotedParser(
+		'"a"\n"b"\n',
+		{ newlineChar: "\n", escapeChar: "\\" },
+		true,
+	);
+	deepStrictEqual(result.rows, [["a"], ["b"]]);
+});
+
+test(`${variant}: csvQuotedParser custom escape quoted field then CRLF newline`, (_t) => {
+	const result = csvQuotedParser(
+		'"a"\r\n"b"\r\n',
+		{ newlineChar: "\r\n", escapeChar: "\\" },
+		true,
+	);
+	deepStrictEqual(result.rows, [["a"], ["b"]]);
+});
+
+test(`${variant}: csvQuotedParser custom escape quoted field then 3-char newline`, (_t) => {
+	const result = csvQuotedParser(
+		'"a"~|~"b"~|~',
+		{ newlineChar: "~|~", escapeChar: "\\" },
+		true,
+	);
+	deepStrictEqual(result.rows, [["a"], ["b"]]);
+});
+
+test(`${variant}: csvQuotedParser custom escape quoted field then lone CR not CRLF`, (_t) => {
+	const result = csvQuotedParser(
+		'"a"\rb,c\r\n',
+		{ newlineChar: "\r\n", escapeChar: "\\" },
+		true,
+	);
+	strictEqual(result.rows.length, 1);
+	strictEqual(result.rows[0][0], "a");
+});
+
+// --- csvCoerceValuesStream: iso8601 regex shape ---
+test(`${variant}: csvCoerceValuesStream should coerce date with multi-digit fractional seconds`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ d: "2024-01-15T10:30:00.123Z" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ d: new Date("2024-01-15T10:30:00.123Z") }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should coerce date with timezone offset without colon`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ d: "2024-01-15T10:30:00+0530" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ d: new Date("2024-01-15T10:30:00+0530") }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should coerce date with timezone offset with colon`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ d: "2024-01-15T10:30:00+05:30" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ d: new Date("2024-01-15T10:30:00+05:30") }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should coerce date with space separator and seconds`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ d: "2024-01-15 10:30:45" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ d: new Date("2024-01-15 10:30:45") }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should coerce plain date-only value`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ d: "2024-12-31" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ d: new Date("2024-12-31") }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should keep date with non-digit fractional as string`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ d: "2024-01-15T10:30:00.abc" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ d: "2024-01-15T10:30:00.abc" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should coerce exponent forms`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ a: "1e+10", b: "2e-05", c: "1.5E3" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ a: 1e10, b: 2e-5, c: 1500 }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should keep malformed exponent as string`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ a: "1e", b: "1e+", c: "1.2.3" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ a: "1e", b: "1e+", c: "1.2.3" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should not coerce trailing non-number text`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ a: "12abc", d: "2024-01-15extra" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ a: "12abc", d: "2024-01-15extra" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should not coerce date missing leading anchor`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ d: "x2024-01-15" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ d: "x2024-01-15" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream boolean first-char/length gating`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ a: "trUE", b: "tree", c: "True", d: "truer" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ a: true, b: "tree", c: true, d: "truer" }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should return null for empty string auto-coerce`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([createReadableStream([{ a: "" }]), csvCoerceValuesStream()]),
+	);
+	deepStrictEqual(output, [{ a: null }]);
+});
+
+test(`${variant}: csvCoerceValuesStream should coerce single-digit zero and nine`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ a: "0", b: "9" }]),
+			csvCoerceValuesStream(),
+		]),
+	);
+	deepStrictEqual(output, [{ a: 0, b: 9 }]);
+});
+
+test(`${variant}: csvCoerceValuesStream explicit boolean lowercase compare`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ a: "TRUE", b: "no", c: "true" }]),
+			csvCoerceValuesStream({
+				columns: { a: "boolean", b: "boolean", c: "boolean" },
+			}),
+		]),
+	);
+	deepStrictEqual(output, [{ a: true, b: false, c: true }]);
+});
+
+test(`${variant}: csvCoerceValuesStream explicit boolean Boolean for non-string`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ a: 1, b: 0 }]),
+			csvCoerceValuesStream({ columns: { a: "boolean", b: "boolean" } }),
+		]),
+	);
+	deepStrictEqual(output, [{ a: true, b: false }]);
+});
+
+test(`${variant}: csvCoerceValuesStream explicit json parses array`, async (_t) => {
+	const output = await streamToArray(
+		pipejoin([
+			createReadableStream([{ a: "[1,2,3]" }]),
+			csvCoerceValuesStream({ columns: { a: "json" } }),
+		]),
+	);
+	deepStrictEqual(output, [{ a: [1, 2, 3] }]);
+});
+
+// --- csvDetectDelimitersStream quote boundary precision ---
+test(`${variant}: csvDetectDelimitersStream detects quote closing at end of text`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("x,y\nz,'w'"), detect]);
+	strictEqual(detect.result().value.quoteChar, "'");
+});
+
+test(`${variant}: csvDetectDelimitersStream detects quote opening after CR-only newline`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("a,b\r'c',d\r"), detect]);
+	strictEqual(detect.result().value.quoteChar, "'");
+	strictEqual(detect.result().value.newlineChar, "\r");
+});
+
+test(`${variant}: csvDetectDelimitersStream detects quote closing before a delimiter`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("'a',b,c\n1,2,3\n"), detect]);
+	strictEqual(detect.result().value.quoteChar, "'");
+});
+
+test(`${variant}: csvDetectDelimitersStream detects quote opening at text start`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("'a',b\n1,2\n"), detect]);
+	strictEqual(detect.result().value.quoteChar, "'");
+});
+
+test(`${variant}: csvDetectDelimitersStream detects quote opening after newline`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("a,b\n'c',d\n"), detect]);
+	strictEqual(detect.result().value.quoteChar, "'");
+});
+
+test(`${variant}: csvDetectDelimitersStream does NOT detect a quote that never closes at a field end`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([
+		createReadableStream("name,note\n'x,it's fine\nhello,world\n"),
+		detect,
+	]);
+	strictEqual(detect.result().value.quoteChar, '"');
+});
+
+test(`${variant}: csvDetectDelimitersStream sets escapeChar equal to detected quoteChar`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("'a','b'\n1,2\n"), detect]);
+	strictEqual(detect.result().value.escapeChar, "'");
+	strictEqual(detect.result().value.quoteChar, "'");
+});
+
+test(`${variant}: csvDetectDelimitersStream picks tab over comma by precedence`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("a\tb,c\n1\t2,3\n"), detect]);
+	strictEqual(detect.result().value.delimiterChar, "\t");
+});
+
+test(`${variant}: csvDetectDelimitersStream picks pipe over semicolon and comma`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("a|b;c,d\n1|2;3,4\n"), detect]);
+	strictEqual(detect.result().value.delimiterChar, "|");
+});
+
+test(`${variant}: csvDetectDelimitersStream picks semicolon over comma`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("a;b,c\n1;2,3\n"), detect]);
+	strictEqual(detect.result().value.delimiterChar, ";");
+});
+
+test(`${variant}: csvDetectDelimitersStream defaults to double-quote when none present`, async (_t) => {
+	const detect = csvDetectDelimitersStream();
+	await pipeline([createReadableStream("a,b,c\n1,2,3\n"), detect]);
+	strictEqual(detect.result().value.quoteChar, '"');
+});

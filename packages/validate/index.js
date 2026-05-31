@@ -26,9 +26,16 @@ export const validateStream = (
 		allowCoerceTypes,
 		resultKey,
 		maxErrorRows = Infinity,
-	},
+		maxErrorKeys = 1000,
+	} = {},
 	streamOptions = {},
 ) => {
+	if (!schema) {
+		throw new Error(
+			"validateStream requires a schema (JSON Schema object or compiled AJV function)",
+		);
+	}
+
 	idxStart ??= 0;
 
 	if (typeof schema !== "function") {
@@ -36,18 +43,48 @@ export const validateStream = (
 	}
 
 	const value = {}; // aka errors
+	let valueCount = 0; // track distinct id count without Object.keys() per error
 	let idx = idxStart - 1;
 	const transform = (chunk, enqueue) => {
 		idx += 1;
-		const data =
-			allowCoerceTypes === false ? structuredClone(chunk) : undefined;
-		const chunkValid = schema(chunk);
+
+		let emitChunk;
+		let validateTarget;
+
+		if (allowCoerceTypes === false) {
+			// Validate on a clone so AJV coercion does not mutate the original.
+			// Emit the original (uncoerced) chunk.
+			try {
+				validateTarget = structuredClone(chunk);
+			} catch {
+				// Non-cloneable: fall back to validating the original (best-effort)
+				validateTarget = chunk;
+			}
+			emitChunk = chunk;
+		} else {
+			// Clone before validation so AJV coercion does not mutate caller's object.
+			// Emit the coerced clone.
+			try {
+				validateTarget = structuredClone(chunk);
+			} catch {
+				// Non-cloneable: validate the original (caller's object may be mutated)
+				validateTarget = chunk;
+			}
+			emitChunk = validateTarget;
+		}
+
+		const chunkValid = schema(validateTarget);
 		if (!chunkValid) {
 			for (const error of schema.errors) {
 				const { id, keys, message } = processError(error);
 
 				if (!value[id]) {
+					// Stop creating new entries once maxErrorKeys cap is reached
+					if (valueCount >= maxErrorKeys) {
+						continue;
+					}
 					value[id] = { id, keys, message, idx: [] };
+					valueCount += 1;
 				}
 				if (value[id].idx.length < maxErrorRows) {
 					value[id].idx.push(idx);
@@ -55,7 +92,7 @@ export const validateStream = (
 			}
 		}
 		if (chunkValid || onErrorEnqueue) {
-			enqueue(data ?? chunk);
+			enqueue(emitChunk);
 		}
 	};
 	const stream = createTransformStream(transform, streamOptions);
@@ -76,7 +113,8 @@ const processError = (error) => {
 		});
 		keys = [...new Set(keys.sort())];
 	} else {
-		keys.push(makeKeys(error));
+		const key = makeKeys(error);
+		if (key) keys.push(key);
 	}
 	if (!error.instancePath && keys.length) {
 		id += `/${keys.join("|")}`;
