@@ -25,27 +25,23 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 		throw new Error("S3.GetObject not found", { cause: params });
 	}
 	const stream = createReadableStream(Body, streamOptions);
-	// Tie the SDK Body lifecycle to the returned wrapper: if the consumer
-	// errors/aborts, tear down Body so the underlying HTTP connection is not
-	// leaked.
+	// Tie the SDK Body (live socket-backed readable) lifecycle to the returned
+	// wrapper: if the consumer errors/aborts, tear down Body so the underlying
+	// HTTP connection is not leaked.
 	const teardownBody = () => {
-		// Node Body is a Readable (destroy); web Body is a WHATWG ReadableStream
-		// (cancel). Call whichever exists, ignoring teardown errors so releasing
-		// the socket cannot re-throw on an already-failed Body.
+		// The node SDK Body is a Readable (destroy). The try/catch swallows teardown
+		// errors so releasing the socket cannot re-throw on an already-failed Body
+		// (and tolerates a Body that does not expose destroy()).
 		try {
-			Body.destroy?.();
-		} catch {}
-		try {
-			Body.cancel?.();
+			Body.destroy();
 		} catch {}
 	};
-	// If the wrapper exposes an 'error' event (a node Readable), clean up on it.
-	if (typeof stream?.on === "function") {
-		stream.on("error", teardownBody);
-	}
-	// The web wrapper is a WHATWG ReadableStream with no 'error' event, so wire
-	// teardown to the abort signal so socket teardown on consumer abort is
-	// consistent across builds.
+	// Node build: createReadableStream returns a node Readable; clean up on its
+	// 'error' event (without an error argument, so releasing the socket does not
+	// re-emit an unhandled 'error' on the already-failed Body).
+	stream.on("error", teardownBody);
+	// Any build given an abort signal also wires teardown to the abort signal so
+	// socket teardown on consumer abort is consistent across builds.
 	const { signal } = streamOptions;
 	if (signal) {
 		if (signal.aborted) {
