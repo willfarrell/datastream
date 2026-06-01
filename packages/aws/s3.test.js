@@ -398,22 +398,19 @@ test(`${variant}: awsS3GetObjectStream not-found error cause is the request para
 });
 
 // On the node build the returned stream is a Readable; its 'error' event must
-// tear down the SDK Body (destroy + cancel) so the socket is released. This pins
-// the `if (typeof stream?.on === "function")` wiring, the teardownBody body, the
-// try blocks and the `Body.destroy?.()` / `Body.cancel?.()` calls.
+// tear down the SDK Body (a node Readable -> destroy()) so the socket is
+// released. This pins the unconditional `stream.on("error", teardownBody)`
+// wiring and the `Body.destroy()` call inside teardownBody.
 test(`${variant}: awsS3GetObjectStream tears down the Body when the stream errors`, async (_t) => {
 	let destroyed = 0;
-	let cancelled = 0;
-	// An async-iterable Body that also exposes destroy()/cancel() spies.
+	// An async-iterable Body that also exposes a destroy() spy (the node SDK Body
+	// is a Readable).
 	const body = {
 		async *[Symbol.asyncIterator]() {
 			yield "chunk";
 		},
 		destroy() {
 			destroyed++;
-		},
-		cancel() {
-			cancelled++;
 		},
 	};
 	const stub = { send: async () => ({ Body: body }) };
@@ -429,7 +426,6 @@ test(`${variant}: awsS3GetObjectStream tears down the Body when the stream error
 	await new Promise((resolve) => setImmediate(resolve));
 
 	deepStrictEqual(destroyed, 1);
-	deepStrictEqual(cancelled, 1);
 });
 
 // An abort signal that fires AFTER the stream is created must tear down the Body
@@ -465,6 +461,61 @@ test(`${variant}: awsS3GetObjectStream tears down the Body when a later abort fi
 	deepStrictEqual(destroyed >= 1, true);
 
 	// Cleanup so the test does not leak the open stream.
+	stream.destroy();
+});
+
+// Pin the EXACT addEventListener wiring for the late-abort path. A non-aborted
+// signal whose addEventListener is recorded proves the source registers
+// teardownBody under the "abort" event name with `{ once: true }`. The source's
+// listener is identified by being the one whose invocation tears down the Body
+// (the node Readable's own internal "abort" listener does not touch Body). This
+// kills: dropping the else block (no registration), the "" event-name mutant,
+// the `{}` options mutant, and the `{ once: false }` mutant.
+test(`${variant}: awsS3GetObjectStream registers the abort listener with the exact name and options`, async (_t) => {
+	let destroyed = 0;
+	const body = {
+		async *[Symbol.asyncIterator]() {
+			yield "chunk";
+		},
+		destroy() {
+			destroyed++;
+		},
+	};
+	const stub = { send: async () => ({ Body: body }) };
+	awsS3SetClient(stub);
+
+	const recorded = [];
+	// A duck-typed (non-aborted) signal: createReadableStream and the source both
+	// register on it; we record every addEventListener call.
+	const signal = {
+		aborted: false,
+		addEventListener: (name, fn, options) => {
+			recorded.push({ name, fn, options });
+		},
+		removeEventListener: () => {},
+	};
+
+	const stream = await awsS3GetObjectStream(
+		{ Bucket: "b", Key: "k" },
+		{ signal },
+	);
+	// teardown must NOT have run eagerly (signal is not aborted).
+	deepStrictEqual(destroyed, 0);
+
+	// Identify the source's teardown registration: it is the recorded entry whose
+	// listener, when invoked, tears down the Body.
+	let teardownEntry;
+	for (const entry of recorded) {
+		const before = destroyed;
+		entry.fn();
+		if (destroyed > before) {
+			teardownEntry = entry;
+			break;
+		}
+	}
+	deepStrictEqual(teardownEntry?.name, "abort");
+	deepStrictEqual(teardownEntry?.options, { once: true });
+
 	stream.destroy();
 });
 
@@ -584,6 +635,19 @@ test(`${variant}: awsS3ChecksumStream multi-part composite checksum is suffixed 
 
 	const result1 = await checksumStream.result();
 	deepStrictEqual(result1.value.checksums.length, 2);
+	// Pin the exact composite and per-part digests. A memoization mutant
+	// (`if (true)`) recomputes on the second call over the already-base64'd
+	// `checksums`, which the first call below would expose as a different value;
+	// even the first call's value must be the real composite digest (not the
+	// empty-input digest produced when the recompute path runs prematurely).
+	deepStrictEqual(result1.value.checksums, [
+		"d88SBg1HGD6oxANF5ziefgXLB1PKs3Sl50+TKYFbTLU=",
+		"d88SBg1HGD6oxANF5ziefgXLB1PKs3Sl50+TKYFbTLU=",
+	]);
+	deepStrictEqual(
+		result1.value.checksum,
+		"//kFcRsCAXRHbjZsPUmCkRBx+J1hJiSiqKAF/q7oMi0=-2",
+	);
 	// Composite form: "<base64>-<count>".
 	deepStrictEqual(result1.value.checksum.endsWith("-2"), true);
 
@@ -592,8 +656,8 @@ test(`${variant}: awsS3ChecksumStream multi-part composite checksum is suffixed 
 	deepStrictEqual(result2.value.checksum, result1.value.checksum);
 });
 
-// The part-boundary uses strict `>` partSize: input exactly equal to partSize
-// stays a single part. A `>=` mutant would split it into two.
+// Input exactly equal to partSize stays a single part (the trailing partial is
+// digested by the flush, not split off).
 test(`${variant}: awsS3ChecksumStream keeps input exactly equal to partSize as one part`, async (_t) => {
 	const input = "x".repeat(50);
 	const stream = [
@@ -602,6 +666,32 @@ test(`${variant}: awsS3ChecksumStream keeps input exactly equal to partSize as o
 	];
 	const result = await pipeline(stream);
 	deepStrictEqual(result.s3.checksums.length, 1);
+});
+
+// Streaming part boundaries across MULTIPLE chunks pin the per-chunk peel loop:
+// each 60-byte chunk completes exactly one 50-byte part and carries a sub-part
+// remainder forward, so the stream yields parts [50, 50, 20]. This pins
+// `Math.floor(bytes.byteLength / partSize)` (dropping the floor over-peels the
+// carried remainder into extra short parts -> 4 parts), the `part < wholeParts`
+// loop bound (a `<=` over-iterates) and the `bytes.slice(partSize)` advance.
+test(`${variant}: awsS3ChecksumStream peels whole parts across chunks and carries the remainder`, async (_t) => {
+	const stream = [
+		createReadableStream(["x".repeat(60), "x".repeat(60)]),
+		awsS3ChecksumStream({ ChecksumAlgorithm: "SHA256", partSize: 50 }),
+	];
+	const result = await pipeline(stream);
+	deepStrictEqual(result.s3.checksums.length, 3);
+	// Two complete 50-byte parts (identical bytes -> identical digest) and a
+	// trailing 20-byte part.
+	deepStrictEqual(result.s3.checksums, [
+		"d88SBg1HGD6oxANF5ziefgXLB1PKs3Sl50+TKYFbTLU=",
+		"d88SBg1HGD6oxANF5ziefgXLB1PKs3Sl50+TKYFbTLU=",
+		"1PwdtmVEZQfcUbDJOS3ZZJKRWBv+G0jiQbKwgDKztkc=",
+	]);
+	deepStrictEqual(
+		result.s3.checksum,
+		"kE1tc6lRu6Azw5+k/yKQ/QDXDG236y62PebJpxEZQhQ=-3",
+	);
 });
 
 test(`${variant}: default export should include all stream functions`, (_t) => {
@@ -613,18 +703,15 @@ test(`${variant}: default export should include all stream functions`, (_t) => {
 	]);
 });
 
-// The teardownBody try/catch blocks must swallow errors from Body.destroy() and
-// Body.cancel() without re-throwing. Pins the empty `catch {}` on each call.
-test(`${variant}: awsS3GetObjectStream teardownBody swallows errors from destroy and cancel`, async (_t) => {
+// The teardownBody try/catch must swallow an error from Body.destroy() without
+// re-throwing. Pins the empty `catch {}`.
+test(`${variant}: awsS3GetObjectStream teardownBody swallows errors from destroy`, async (_t) => {
 	const body = {
 		async *[Symbol.asyncIterator]() {
 			yield "chunk";
 		},
 		destroy() {
 			throw new Error("destroy failed");
-		},
-		cancel() {
-			throw new Error("cancel failed");
 		},
 	};
 	const stub = { send: async () => ({ Body: body }) };

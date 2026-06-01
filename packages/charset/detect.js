@@ -85,23 +85,19 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 				value: { charset: undefined, confidence: 0 },
 			};
 		}
-		const charsets = Object.fromEntries(charsetKeys.map((k) => [k, 0]));
+		const charsets = Object.fromEntries(charsetKeys.map((k) => [k, undefined]));
 		const matches = analyse(concatBytes(sample, sampleLength));
 		for (const match of matches) {
 			const name = normaliseMatchName(match.name);
 			if (name in charsets) {
-				// chardet reports each charset once with a 0..100 confidence; ASCII
-				// folds into UTF-8, so take the strongest signal for the bucket
-				// (keeping the result within the 0..100 range rather than summing).
-				// charsets[name] is seeded to 0 by the allowlist; the ?? 0 fallback
-				// means that if the membership guard is ever dropped an unsupported
-				// name folds in at its real confidence (not NaN) and outranks the
-				// real winner, so the allowlist-filter test fails on that mutant.
-				charsets[name] = Math.max(charsets[name], match.confidence);
+				charsets[name] = Math.max(charsets[name] ?? 0, match.confidence);
 			}
 		}
 		const values = Object.entries(charsets)
-			.map(([charset, confidence]) => ({ charset, confidence }))
+			.map(([charset, confidence]) => ({
+				charset,
+				confidence: confidence ?? 0,
+			}))
 			.sort((a, b) => b.confidence - a.confidence);
 		return { key: resultKey ?? "charset", value: values[0] };
 	};

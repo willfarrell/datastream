@@ -1,5 +1,6 @@
 import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 import test, { mock } from "node:test";
 import {
 	backpressureGauge,
@@ -2102,4 +2103,176 @@ test(`${variant}: pipeline drains an object-mode readable-last stream`, async (_
 	];
 	const out = await withTimeout(pipeline(streams));
 	deepStrictEqual(out, {});
+});
+
+// --- pipeline passes the spread streamOptions object (not `{}`) to
+// pipelinePromise for a readable-last pipeline. A signal supplied in
+// streamOptions and aborted mid-flight must abort the pipeline. The
+// ObjectLiteral -> `{}` mutant drops the signal so the pipeline runs to
+// completion and resolves instead of rejecting. ---
+if (variant === "node") {
+	test(`${variant}: pipeline forwards a streamOptions signal to the readable-last sink`, async (_t) => {
+		// A slow trailing readable so the abort lands while the pipeline runs.
+		let emitted = 0;
+		const slowReadable = new Readable({
+			objectMode: true,
+			read() {
+				setTimeout(() => {
+					this.push(emitted < 10 ? String(emitted++) : null);
+				}, 20);
+			},
+		});
+		const controller = new AbortController();
+		const pending = pipeline([slowReadable], { signal: controller.signal });
+		setTimeout(() => controller.abort(), 30);
+		try {
+			await withTimeout(pending);
+			throw new Error("Should have thrown");
+		} catch (e) {
+			strictEqual(e.code, "ABORT_ERR");
+		}
+	});
+}
+
+// --- size accumulation `chunk?.length ?? chunk?.byteLength ?? N` is computed
+// for every chunk. An `undefined` chunk leaves both optional chains nullish so
+// the `?? N` fallback applies. Removing either `?.` (OptionalChaining mutant)
+// makes `undefined.length` / `undefined.byteLength` throw, so a stream carrying
+// an `undefined` chunk must still drain cleanly. Covers .on and async paths of
+// every collector. ---
+if (variant === "node") {
+	test(`${variant}: streamToArray tolerates an undefined chunk (.on + async paths)`, async (_t) => {
+		const onOut = await streamToArray(emitterStream([undefined, "a"]));
+		deepStrictEqual(onOut, [undefined, "a"]);
+		const asyncOut = await streamToArray(asyncGen([undefined, "a"]));
+		deepStrictEqual(asyncOut, [undefined, "a"]);
+	});
+
+	test(`${variant}: streamToString tolerates an undefined chunk (.on + async paths)`, async (_t) => {
+		const onOut = await streamToString(emitterStream([undefined, "a"]));
+		strictEqual(onOut, "a");
+		const asyncOut = await streamToString(asyncGen([undefined, "a"]));
+		strictEqual(asyncOut, "a");
+	});
+
+	test(`${variant}: streamToObject tolerates an undefined chunk (.on + async paths)`, async (_t) => {
+		const onOut = await streamToObject(emitterStream([undefined, { a: 1 }]));
+		deepStrictEqual(onOut, { a: 1 });
+		const asyncOut = await streamToObject(asyncGen([undefined, { a: 1 }]));
+		deepStrictEqual(asyncOut, { a: 1 });
+	});
+}
+
+// --- createReadableStream input dispatch. An iterable WITHOUT a `.map` method
+// (a Set) must reach the `Readable.from(input)` branch. The Array.isArray ->
+// `true` mutant would call `set.map(...)`, which throws because Set has no map. ---
+test(`${variant}: createReadableStream streams a non-array iterable (Set) input`, async (_t) => {
+	const input = new Set(["a", "b", "c"]);
+	const streams = [createReadableStream(input)];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+	deepStrictEqual(output, ["a", "b", "c"]);
+});
+
+// --- createReadableStreamFromString / ...FromArrayBuffer read chunkSize via
+// `streamOptions?.chunkSize`. Calling them directly with a `null` options object
+// must fall back to the default chunkSize; the OptionalChaining mutant
+// (`streamOptions.chunkSize`) would throw on `null.chunkSize`. ---
+test(`${variant}: createReadableStreamFromString tolerates null streamOptions`, async (_t) => {
+	const mod = await import("@datastream/core");
+	const stream = mod.createReadableStreamFromString("abcdef", null);
+	const output = await streamToString(stream);
+	strictEqual(output, "abcdef");
+});
+
+test(`${variant}: createReadableStreamFromArrayBuffer tolerates null streamOptions`, async (_t) => {
+	const mod = await import("@datastream/core");
+	const input = new Uint8Array([1, 2, 3, 4, 5]).buffer;
+	const stream = mod.createReadableStreamFromArrayBuffer(input, null);
+	const output = await streamToArray(stream);
+	deepStrictEqual(Array.from(output[0]), [1, 2, 3, 4, 5]);
+});
+
+// --- string iterator loops `while (position < length)`. With a chunkSize that
+// divides the input length exactly, the `<=` (EqualityOperator) mutant runs one
+// extra iteration and yields a trailing empty-string chunk. Pin the exact chunk
+// list so a phantom "" chunk fails the assertion. ---
+test(`${variant}: createReadableStreamFromString stops exactly at the end (no trailing empty chunk)`, async (_t) => {
+	const mod = await import("@datastream/core");
+	// length 8, chunkSize 4 -> exactly 2 chunks, no remainder.
+	const stream = mod.createReadableStreamFromString("abcdefgh", {
+		chunkSize: 4,
+	});
+	const output = await streamToArray(stream);
+	deepStrictEqual(output, ["abcd", "efgh"]);
+});
+
+// --- ArrayBuffer iterator loops `while (position < length)`. With a chunkSize
+// dividing byteLength exactly, the `<=` mutant runs one extra iteration and
+// yields a trailing empty (zero-length) chunk. Pin exactly 2 chunks. ---
+test(`${variant}: createReadableStreamFromArrayBuffer stops exactly at the end (no trailing empty chunk)`, async (_t) => {
+	const mod = await import("@datastream/core");
+	// 8 bytes, chunkSize 4 -> exactly 2 chunks of 4 bytes, no remainder.
+	const input = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer;
+	const stream = mod.createReadableStreamFromArrayBuffer(input, {
+		chunkSize: 4,
+	});
+	const output = await streamToArray(stream);
+	strictEqual(output.length, 2);
+	deepStrictEqual(Array.from(output[0]), [1, 2, 3, 4]);
+	deepStrictEqual(Array.from(output[1]), [5, 6, 7, 8]);
+});
+
+// --- createPassThroughStream default passThrough is `(chunk) => chunk`. The
+// default's return value feeds the thenable detection: when a chunk is itself a
+// rejecting thenable, the default returns it, the stream awaits it, and the
+// rejection surfaces as a stream error. The ArrowFunction mutant
+// (`() => undefined`) returns undefined, skips the await, and the pipeline
+// would resolve instead of rejecting. ---
+test(`${variant}: createPassThroughStream default forwards the chunk's own thenable (rejection surfaces)`, async (_t) => {
+	// A thenable object whose `then` rejects. Built via a computed key so the
+	// linter's no-thenable-literal rule is not tripped; it is intentional here.
+	const thenKey = "then";
+	const rejecting = {
+		[thenKey](_resolve, reject) {
+			reject(new Error("thenable-rejected"));
+		},
+	};
+	// Push the thenable directly (Readable.from would await/reject it before the
+	// transform); piping hands the raw thenable to the default passThrough, whose
+	// returned value (the chunk) is then awaited.
+	const source = createReadableStream();
+	process.nextTick(() => {
+		source.push(rejecting);
+		source.push(null);
+	});
+	const streams = [source, createPassThroughStream()];
+	try {
+		await withTimeout(pipeline(streams));
+		throw new Error("Should have thrown");
+	} catch (e) {
+		strictEqual(e.message, "thenable-rejected");
+	}
+});
+
+// --- createWritableStream final handler awaits a returned thenable. An async
+// `final` that REJECTS must propagate as a pipeline error. The thenable-check
+// mutants (`if (false)`, `typeof ... === ""`) would take the else branch and
+// resolve, swallowing the rejection. ---
+test(`${variant}: createWritableStream propagates a rejecting async final`, async (_t) => {
+	const streams = [
+		createReadableStream(["a", "b", "c"]),
+		createWritableStream(
+			() => {},
+			async () => {
+				throw new Error("final-rejected");
+			},
+		),
+	];
+	try {
+		await withTimeout(pipeline(streams));
+		throw new Error("Should have thrown");
+	} catch (e) {
+		strictEqual(e.message, "final-rejected");
+	}
 });

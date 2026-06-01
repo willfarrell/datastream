@@ -5,7 +5,7 @@ import {
 	KinesisClient,
 	PutRecordsCommand,
 } from "@aws-sdk/client-kinesis";
-import {
+import kinesisDefault, {
 	awsKinesisGetRecordsStream,
 	awsKinesisPutRecordsStream,
 	awsKinesisSetClient,
@@ -1120,4 +1120,18 @@ test(`${variant}: awsKinesisPutRecordsStream aborts during retry backoff`, async
 	// repeatedly during this window -> far more than one send.
 	await new Promise((resolve) => setTimeout(resolve, 300));
 	deepStrictEqual(sends, 1);
+});
+
+// The default export must expose exactly the public surface (setClient plus the
+// two stream factories). An `ObjectLiteral` mutant collapsing it to `{}` would
+// drop every key.
+test(`${variant}: kinesis default export exposes all stream functions`, (_t) => {
+	deepStrictEqual(Object.keys(kinesisDefault).sort(), [
+		"getRecordsStream",
+		"putRecordsStream",
+		"setClient",
+	]);
+	deepStrictEqual(kinesisDefault.setClient, awsKinesisSetClient);
+	deepStrictEqual(kinesisDefault.getRecordsStream, awsKinesisGetRecordsStream);
+	deepStrictEqual(kinesisDefault.putRecordsStream, awsKinesisPutRecordsStream);
 });

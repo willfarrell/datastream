@@ -24,7 +24,7 @@ export function ndjsonParseStream(
 
 export function ndjsonFormatStream(
 	options?: {
-		resultKey?: string;
+		space?: number | string;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<Record<string, unknown>, string>;

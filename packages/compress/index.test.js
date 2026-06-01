@@ -1,4 +1,5 @@
 import { ok, strictEqual } from "node:assert";
+import { realpathSync } from "node:fs";
 import { register } from "node:module";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
@@ -7,6 +8,7 @@ import {
 	brotliDecompressSync,
 	deflateSync,
 	gzipSync,
+	constants as zlibConstants,
 	zstdCompressSync,
 	zstdDecompressSync,
 } from "node:zlib";
@@ -1116,8 +1118,12 @@ if (variant === "webstream") {
 {
 	const repo = new URL("../../", import.meta.url).pathname;
 	const coreWebUrl = pathToFileURL(`${repo}packages/core/index.web.mjs`).href;
+	// Resolve through realpathSync so the brotli-wasm CJS node build is loaded via
+	// its canonical path. Under a Stryker sandbox `${repo}node_modules` is a
+	// symlink, and importing the CJS module through the symlinked path yields an
+	// empty namespace (DecompressStream undefined); the canonical path avoids that.
 	const brotliWasmNodeUrl = pathToFileURL(
-		`${repo}node_modules/brotli-wasm/index.node.js`,
+		realpathSync(`${repo}node_modules/brotli-wasm/index.node.js`),
 	).href;
 	const loaderSource = `
 		export async function resolve(specifier, context, nextResolve) {
@@ -1496,5 +1502,131 @@ if (variant === "webstream") {
 		} catch (e) {
 			ok(e.message.includes("Not supported"));
 		}
+	});
+}
+
+// *** guardOutput internals (node *.node.mjs sources) *** //
+// These tests pin the monkey-patched push guard installed by guardOutput and the
+// limit-resolution branches in each <algo>{Compress,Decompress}Stream. They run
+// only under --conditions=node because they import the node builds directly.
+if (variant === "node") {
+	const compressFactories = {
+		gzip: gzipCompressStream,
+		deflate: deflateCompressStream,
+		brotli: brotliCompressStream,
+		zstd: zstdCompressStream,
+	};
+	const decompressFactories = {
+		gzip: gzipDecompressStream,
+		deflate: deflateDecompressStream,
+		brotli: brotliDecompressStream,
+		zstd: zstdDecompressStream,
+	};
+
+	for (const [name, factory] of Object.entries(decompressFactories)) {
+		// guardOutput must size string chunks via Buffer.byteLength (the `??`
+		// fallback). With a tiny limit, pushing a string longer than the limit must
+		// trip the guard: push() returns false. The `&&` mutant makes outputSize
+		// NaN so the guard never trips and push() returns true.
+		test(`${variant}: ${name}DecompressStream guardOutput sizes string chunks and trips limit`, (_t) => {
+			const stream = factory({ maxOutputSize: 2 });
+			stream.on("error", () => {});
+			strictEqual(stream.push("abc"), false); // 3 bytes > 2 -> destroyed
+			stream.destroy();
+		});
+
+		// Within the limit, push() returns true and the guard does not trip.
+		test(`${variant}: ${name}DecompressStream guardOutput passes string chunks within limit`, (_t) => {
+			const stream = factory({ maxOutputSize: 1024 });
+			strictEqual(stream.push("abc"), true);
+			stream.destroy();
+		});
+
+		// restore() resets stream.push on 'error'. If restore is a no-op, or the
+		// 'error' listener is registered under the wrong event name, push stays the
+		// wrapped function.
+		test(`${variant}: ${name}DecompressStream restores push on error`, (_t) => {
+			const stream = factory({ maxOutputSize: 100 });
+			const wrapped = stream.push;
+			stream.on("error", () => {});
+			stream.emit("error", new Error("boom"));
+			ok(stream.push !== wrapped, "push must be restored after error");
+			stream.destroy();
+		});
+
+		// restore() resets stream.push on 'close' too (separate listener).
+		test(`${variant}: ${name}DecompressStream restores push on close`, (_t) => {
+			const stream = factory({ maxOutputSize: 100 });
+			const wrapped = stream.push;
+			stream.emit("close");
+			ok(stream.push !== wrapped, "push must be restored after close");
+			stream.destroy();
+		});
+
+		// maxOutputSize:null disables the limit entirely: NO guard is installed, so
+		// the stream carries no extra close/error listeners. The `false ? ...` and
+		// `if (limit !== undefined) -> if (true)` mutants would install the guard.
+		test(`${variant}: ${name}DecompressStream maxOutputSize:null installs no guard`, (_t) => {
+			const stream = factory({ maxOutputSize: null });
+			strictEqual(stream.listenerCount("close"), 0);
+			strictEqual(stream.listenerCount("error"), 0);
+			stream.destroy();
+		});
+
+		// The default (no maxOutputSize) DOES install the guard (DEFAULT ceiling).
+		test(`${variant}: ${name}DecompressStream default installs the guard`, (_t) => {
+			const stream = factory();
+			strictEqual(stream.listenerCount("close"), 1);
+			strictEqual(stream.listenerCount("error"), 1);
+			stream.destroy();
+		});
+	}
+
+	for (const [name, factory] of Object.entries(compressFactories)) {
+		// No maxOutputSize on a compress stream => no guard => no extra listeners.
+		// The `maxOutputSize !== undefined -> true` mutant would install the guard.
+		test(`${variant}: ${name}CompressStream without maxOutputSize installs no guard`, (_t) => {
+			const stream = factory();
+			strictEqual(stream.listenerCount("close"), 0);
+			strictEqual(stream.listenerCount("error"), 0);
+			stream.destroy();
+		});
+
+		// maxOutputSize:null on a compress stream also installs no guard.
+		test(`${variant}: ${name}CompressStream maxOutputSize:null installs no guard`, (_t) => {
+			const stream = factory({ maxOutputSize: null });
+			strictEqual(stream.listenerCount("close"), 0);
+			strictEqual(stream.listenerCount("error"), 0);
+			stream.destroy();
+		});
+
+		// A finite maxOutputSize installs the guard.
+		test(`${variant}: ${name}CompressStream with maxOutputSize installs the guard`, (_t) => {
+			const stream = factory({ maxOutputSize: 1024 });
+			strictEqual(stream.listenerCount("close"), 1);
+			strictEqual(stream.listenerCount("error"), 1);
+			stream.destroy();
+		});
+	}
+
+	// ObjectLiteral: brotli/zstd decompress forward `{ ...streamOptions, params }`
+	// when params are supplied. The `{}` mutant drops streamOptions, so chunkSize
+	// reverts to the zlib default (16384) instead of the supplied value.
+	test(`${variant}: brotliDecompressStream forwards streamOptions when params given`, (_t) => {
+		const stream = brotliDecompressStream(
+			{ params: { [zlibConstants.BROTLI_DECODER_PARAM_LARGE_WINDOW]: 0 } },
+			{ chunkSize: 8192 },
+		);
+		strictEqual(stream._chunkSize, 8192);
+		stream.destroy();
+	});
+
+	test(`${variant}: zstdDecompressStream forwards streamOptions when params given`, (_t) => {
+		const stream = zstdDecompressStream(
+			{ params: { [zlibConstants.ZSTD_d_windowLogMax]: 27 } },
+			{ chunkSize: 8192 },
+		);
+		strictEqual(stream._chunkSize, 8192);
+		stream.destroy();
 	});
 }

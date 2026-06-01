@@ -115,22 +115,23 @@ export const backpressureGauge = (streams) => {
 	return metrics;
 };
 
-export const streamToArray = (stream, { maxBufferSize } = {}) => {
+export const streamToArray = (
+	stream,
+	{ maxBufferSize = Number.POSITIVE_INFINITY } = {},
+) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const value = [];
 			let size = 0;
 			stream.on("data", (chunk) => {
-				if (maxBufferSize != null) {
-					size += chunk?.length ?? chunk?.byteLength ?? 1;
-					if (size > maxBufferSize) {
-						stream.destroy(
-							new Error(
-								`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
-							),
-						);
-						return;
-					}
+				size += chunk?.length ?? chunk?.byteLength ?? 1;
+				if (size > maxBufferSize) {
+					stream.destroy(
+						new Error(
+							`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
+						),
+					);
+					return;
 				}
 				value.push(fromSafe(chunk));
 			});
@@ -144,13 +145,11 @@ export const streamToArray = (stream, { maxBufferSize } = {}) => {
 		const value = [];
 		let size = 0;
 		for await (const chunk of stream) {
-			if (maxBufferSize != null) {
-				size += chunk?.length ?? chunk?.byteLength ?? 1;
-				if (size > maxBufferSize) {
-					throw new Error(
-						`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
-					);
-				}
+			size += chunk?.length ?? chunk?.byteLength ?? 1;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
 			}
 			// Decode the null sentinel here too so both consumption paths agree.
 			value.push(fromSafe(chunk));
@@ -159,22 +158,23 @@ export const streamToArray = (stream, { maxBufferSize } = {}) => {
 	})();
 };
 
-export const streamToObject = (stream, { maxBufferSize } = {}) => {
+export const streamToObject = (
+	stream,
+	{ maxBufferSize = Number.POSITIVE_INFINITY } = {},
+) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const value = Object.create(null);
 			let size = 0;
 			stream.on("data", (chunk) => {
-				if (maxBufferSize != null) {
-					size += chunk?.length ?? chunk?.byteLength ?? 1;
-					if (size > maxBufferSize) {
-						stream.destroy(
-							new Error(
-								`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
-							),
-						);
-						return;
-					}
+				size += chunk?.length ?? chunk?.byteLength ?? 1;
+				if (size > maxBufferSize) {
+					stream.destroy(
+						new Error(
+							`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
+						),
+					);
+					return;
 				}
 				// Unwrap the null sentinel so a null-bearing object stream doesn't
 				// leak the Symbol; Object.assign(value, null) is a safe no-op.
@@ -190,13 +190,11 @@ export const streamToObject = (stream, { maxBufferSize } = {}) => {
 		const value = Object.create(null);
 		let size = 0;
 		for await (const chunk of stream) {
-			if (maxBufferSize != null) {
-				size += chunk?.length ?? chunk?.byteLength ?? 1;
-				if (size > maxBufferSize) {
-					throw new Error(
-						`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
-					);
-				}
+			size += chunk?.length ?? chunk?.byteLength ?? 1;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
 			}
 			Object.assign(value, fromSafe(chunk));
 		}
@@ -204,22 +202,23 @@ export const streamToObject = (stream, { maxBufferSize } = {}) => {
 	})();
 };
 
-export const streamToString = (stream, { maxBufferSize } = {}) => {
+export const streamToString = (
+	stream,
+	{ maxBufferSize = Number.POSITIVE_INFINITY } = {},
+) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const chunks = [];
 			let size = 0;
 			stream.on("data", (chunk) => {
-				if (maxBufferSize != null) {
-					size += chunk?.length ?? chunk?.byteLength ?? 0;
-					if (size > maxBufferSize) {
-						stream.destroy(
-							new Error(
-								`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
-							),
-						);
-						return;
-					}
+				size += chunk?.length ?? chunk?.byteLength ?? 0;
+				if (size > maxBufferSize) {
+					stream.destroy(
+						new Error(
+							`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
+						),
+					);
+					return;
 				}
 				// Unwrap the null sentinel; otherwise join("") throws
 				// "Cannot convert a Symbol value to a string".
@@ -235,13 +234,11 @@ export const streamToString = (stream, { maxBufferSize } = {}) => {
 		const chunks = [];
 		let size = 0;
 		for await (const chunk of stream) {
-			if (maxBufferSize != null) {
-				size += chunk?.length ?? chunk?.byteLength ?? 0;
-				if (size > maxBufferSize) {
-					throw new Error(
-						`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
-					);
-				}
+			size += chunk?.length ?? chunk?.byteLength ?? 0;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
 			}
 			chunks.push(fromSafe(chunk));
 		}
@@ -249,7 +246,10 @@ export const streamToString = (stream, { maxBufferSize } = {}) => {
 	})();
 };
 
-export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
+export const streamToBuffer = (
+	stream,
+	{ maxBufferSize = Number.POSITIVE_INFINITY } = {},
+) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const value = [];
@@ -258,16 +258,14 @@ export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
 				// Unwrap the null sentinel; Buffer.from(symbol) throws
 				// ERR_INVALID_ARG_TYPE. fromSafe(null) -> null -> empty buffer.
 				const buf = Buffer.from(fromSafe(chunk) ?? []);
-				if (maxBufferSize != null) {
-					size += buf.length;
-					if (size > maxBufferSize) {
-						stream.destroy(
-							new Error(
-								`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
-							),
-						);
-						return;
-					}
+				size += buf.length;
+				if (size > maxBufferSize) {
+					stream.destroy(
+						new Error(
+							`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
+						),
+					);
+					return;
 				}
 				value.push(buf);
 			});
@@ -282,13 +280,11 @@ export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
 		let size = 0;
 		for await (const chunk of stream) {
 			const buf = Buffer.from(fromSafe(chunk) ?? []);
-			if (maxBufferSize != null) {
-				size += buf.length;
-				if (size > maxBufferSize) {
-					throw new Error(
-						`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
-					);
-				}
+			size += buf.length;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
 			}
 			value.push(buf);
 		}
@@ -348,7 +344,7 @@ export const createReadableStream = (input, streamOptions = {}) => {
 	if (typeof input === "string") {
 		return createReadableStreamFromString(input, streamOptions);
 	}
-	if (typeof input === "object" && input.byteLength) {
+	if (input.byteLength) {
 		return createReadableStreamFromArrayBuffer(input, streamOptions);
 	}
 	if (Array.isArray(input)) {

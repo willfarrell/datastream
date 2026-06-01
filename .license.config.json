@@ -14,6 +14,7 @@
 		"bin/*",
 		"CNAME",
 		"commitlint.config.cjs",
+		"stryker.config.*",
 		"docs/**/*",
 		"LICENSE",
 		".license.template",

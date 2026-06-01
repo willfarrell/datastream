@@ -929,3 +929,115 @@ test(`${variant}: jsonParseStream correctly parses element with surrounding spac
 	const output = await streamToArray(pipejoin(streams));
 	deepStrictEqual(output, [42]);
 });
+
+// *** Third-round targeted tests (after scanner refactor) *** //
+
+// --- scanner: a nested element is emitted when its closing brace returns depth
+// to 0. Adjacent objects with NO comma between them can ONLY be split by the
+// closing-brace emit; if that emit is skipped/disabled, the scanner would later
+// try to parse the merged "{...}{...}" as one element and fail. Pins the
+// `if (depth === 0)` emit (kills its `false`/block-removal/operator mutants). ---
+test(`${variant}: jsonParseStream splits adjacent objects with no comma between them`, async (_t) => {
+	const parse = jsonParseStream();
+	const streams = [createReadableStream('[{"a":1}{"b":2}]'), parse];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ a: 1 }, { b: 2 }]);
+	const { value } = parse.result();
+	deepStrictEqual(value.ParseError, undefined);
+});
+
+test(`${variant}: jsonParseStream splits adjacent arrays with no comma between them`, async (_t) => {
+	const parse = jsonParseStream();
+	const streams = [createReadableStream("[[1,2][3,4]]"), parse];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [
+		[1, 2],
+		[3, 4],
+	]);
+	const { value } = parse.result();
+	deepStrictEqual(value.ParseError, undefined);
+});
+
+// --- scanner whitespace skip: leading whitespace before a value must NOT be
+// included in the element's raw text (elementStart must point at the first
+// non-whitespace char). With maxValueSize tuned just above the trimmed value
+// but below the padded value, treating a whitespace char as content would push
+// the raw length over maxValueSize and throw. One test per whitespace kind
+// pins each `ch !== <code>` guard (space/tab/LF/CR). ---
+const whitespaceLeadCases = {
+	space: "[    123]",
+	tab: "[\t\t\t\t123]",
+	"line feed": "[\n\n\n\n123]",
+	"carriage return": "[\r\r\r\r123]",
+};
+for (const [name, input] of Object.entries(whitespaceLeadCases)) {
+	test(`${variant}: jsonParseStream skips leading ${name} so raw value stays within maxValueSize`, async (_t) => {
+		// trimmed "123" = 3 chars (<= 5); padded "    123" = 7 chars (> 5).
+		const streams = [
+			createReadableStream(input),
+			jsonParseStream({ maxValueSize: 5 }),
+		];
+		const output = await streamToArray(pipejoin(streams));
+		deepStrictEqual(output, [123]);
+	});
+}
+
+// --- scanner buffer trim: after each fully-consumed element the processed
+// portion must be trimmed from the buffer so it does not grow unbounded. With a
+// small maxBufferSize, 50+ tiny elements split across chunks only fit if the
+// buffer is trimmed (kills the `trimFrom` ternary and the unconditional trim
+// being skipped). ---
+test(`${variant}: jsonParseStream trims consumed buffer so many chunks fit a small maxBufferSize`, async (_t) => {
+	const chunks = ["["];
+	for (let i = 0; i < 50; i++) chunks.push("1,");
+	chunks.push("1]");
+	const parse = jsonParseStream({ maxBufferSize: 10 });
+	const output = await streamToArray(
+		pipejoin([createReadableStream(chunks), parse]),
+	);
+	deepStrictEqual(output.length, 51);
+	deepStrictEqual(output[0], 1);
+	const { value } = parse.result();
+	deepStrictEqual(value.ParseError, undefined);
+});
+
+// --- scanner trim: an in-progress element must NOT be trimmed away. When the
+// buffer ends mid-element across a chunk boundary, trimFrom must be elementStart
+// (not scanPos), so the partial element is preserved for the next chunk. ---
+test(`${variant}: jsonParseStream preserves an in-progress element across a chunk boundary`, async (_t) => {
+	const parse = jsonParseStream();
+	const streams = [createReadableStream(['[{"abc":', "123}]"]), parse];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [{ abc: 123 }]);
+	const { value } = parse.result();
+	deepStrictEqual(value.ParseError, undefined);
+});
+
+// --- scanner trim: after a chunk ends exactly on a comma (no element in
+// progress, buffer fully consumed), the next chunk's leading whitespace must
+// still be skipped. If the trim incorrectly left elementStart pointing at 0,
+// the next element's raw text would absorb that leading whitespace and overflow
+// maxValueSize. Pins the `if (elementStart !== -1)` trim-reset guard. ---
+test(`${variant}: jsonParseStream keeps elementStart unset across a comma-aligned chunk boundary`, async (_t) => {
+	const streams = [
+		createReadableStream(["[1,", "   123]"]),
+		jsonParseStream({ maxValueSize: 4 }),
+	];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [1, 123]);
+});
+
+// --- flush: a lone closing bracket left in the buffer must NOT be emitted as an
+// element (kills `trimmed !== "]"` -> `!== ""`). Construct a stream where the
+// final buffer is exactly "]". ---
+test(`${variant}: jsonParseStream flush ignores a trailing lone closing bracket`, async (_t) => {
+	// "[1" is scanned (element 1 in progress -> emitted at flush); a separate
+	// trailing "]" chunk arrives but, with the array still "open" at depth 0 and
+	// element 1 already pending, exercises the flush `]` guard.
+	const parse = jsonParseStream();
+	const streams = [createReadableStream(["[", "1", "]"]), parse];
+	const output = await streamToArray(pipejoin(streams));
+	deepStrictEqual(output, [1]);
+	const { value } = parse.result();
+	deepStrictEqual(value.ParseError, undefined);
+});

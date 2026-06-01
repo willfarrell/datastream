@@ -103,8 +103,13 @@ export const awsKinesisPutRecordsStream = (options, streamOptions = {}) => {
 			if (!response.FailedRecordCount) {
 				return;
 			}
-			// Retry only the records whose result entry carries an ErrorCode.
-			const results = response.Records ?? [];
+			// Retry only the records whose result entry carries an ErrorCode. When
+			// the response omits the per-record Records array there is nothing to
+			// inspect, so there is nothing to retry.
+			const results = response.Records;
+			if (!results) {
+				return;
+			}
 			const failed = records.filter(
 				(_record, index) => results[index]?.ErrorCode,
 			);

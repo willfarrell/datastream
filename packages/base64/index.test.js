@@ -9,6 +9,7 @@ import {
 	createReadableStream,
 	pipejoin,
 	pipeline,
+	streamToArray,
 	streamToBuffer,
 	streamToString,
 } from "@datastream/core";
@@ -284,4 +285,78 @@ test(`${variant}: base64DecodeStream should track extra correctly across non-mod
 	const streams = [createReadableStream(chunks), base64DecodeStream()];
 	const output = await streamToBuffer(pipejoin(streams));
 	deepStrictEqual(output.toString(), originalText);
+});
+
+// *** Per-chunk emission shape (encode) *** //
+// streamToArray preserves the discrete chunks each transform/flush enqueues.
+// A single 4-byte chunk must emit the 3-byte aligned group from transform and
+// the held trailing byte from flush as TWO separate chunks. This pins down the
+// `% 3` arithmetic, the remaining/whole guards, and the flush emission so that
+// mutants which keep the same concatenation but change the split are killed.
+test(`${variant}: base64EncodeStream should emit aligned group then trailing byte as separate chunks`, async (_t) => {
+	const input = Buffer.from("aaaa"); // 4 bytes -> 4 % 3 = 1 trailing byte
+	const streams = [createReadableStream([input]), base64EncodeStream()];
+	const chunks = await streamToArray(pipejoin(streams));
+	deepStrictEqual(chunks, [
+		Buffer.from("aaa").toString("base64"), // "YWFh"
+		Buffer.from("a").toString("base64"), // "YQ=="
+	]);
+});
+
+// A 3-byte aligned chunk emits exactly one chunk from transform and nothing
+// from flush (extra stays undefined). Kills flush `if (extra) -> true` (which
+// would call undefined.toString() and throw) and the encode guards that would
+// emit an empty trailing chunk.
+test(`${variant}: base64EncodeStream should emit a single chunk for aligned input`, async (_t) => {
+	const input = Buffer.from("aaa"); // 3 bytes, 3 % 3 = 0
+	const streams = [createReadableStream([input]), base64EncodeStream()];
+	const chunks = await streamToArray(pipejoin(streams));
+	deepStrictEqual(chunks, [Buffer.from("aaa").toString("base64")]);
+});
+
+// A single 1-byte chunk holds the whole byte as extra: transform emits NOTHING
+// (whole === 0) and flush emits the encoded byte. Kills `whole > 0 -> true`
+// and `whole > 0 -> whole >= 0` (which would emit an empty "" chunk from the
+// transform) and flush `if (extra) -> false` (which would drop the byte).
+test(`${variant}: base64EncodeStream should emit only from flush for a single byte`, async (_t) => {
+	const input = Buffer.from("a"); // 1 byte, whole === 0
+	const streams = [createReadableStream([input]), base64EncodeStream()];
+	const chunks = await streamToArray(pipejoin(streams));
+	deepStrictEqual(chunks, [Buffer.from("a").toString("base64")]); // ["YQ=="]
+});
+
+// *** Per-chunk emission shape (decode) *** //
+// A short (< 4 char) single chunk holds everything as extra: transform emits
+// NOTHING (whole === 0) and the leftover is rejected at flush. Kills the decode
+// `s.length > 0 -> true / >= 0` mutants (which would enqueue an empty Buffer).
+test(`${variant}: base64DecodeStream should not emit for a sub-quartet chunk`, async (_t) => {
+	const emitted = [];
+	let threw = false;
+	await new Promise((resolve) => {
+		const source = createReadableStream(["YQ"]);
+		const decode = base64DecodeStream();
+		decode.on("data", (chunk) => emitted.push(chunk));
+		decode.on("end", resolve);
+		decode.on("error", () => {
+			threw = true;
+			resolve();
+		});
+		source.pipe(decode);
+	});
+	// "YQ" is an incomplete quartet: the transform must emit no chunk and the
+	// flush must reject it. Without the `s.length > 0` guard the transform would
+	// enqueue an empty Buffer before the flush rejection.
+	deepStrictEqual(threw, true, "Expected incomplete quartet to be rejected");
+	deepStrictEqual(emitted, []);
+});
+
+// A single aligned 4-char chunk decodes to exactly one Buffer chunk from the
+// transform; flush emits nothing (extra empty). Kills the `% 4 -> * 4` and
+// `whole = length - remaining -> + remaining` mutants which change the split.
+test(`${variant}: base64DecodeStream should emit a single buffer chunk for an aligned quartet`, async (_t) => {
+	const b64 = Buffer.from("abc").toString("base64"); // "YWJj", 4 chars
+	const streams = [createReadableStream([b64]), base64DecodeStream()];
+	const chunks = await streamToArray(pipejoin(streams));
+	deepStrictEqual(chunks.length, 1);
+	deepStrictEqual(Buffer.concat(chunks).toString(), "abc");
 });

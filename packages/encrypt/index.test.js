@@ -1314,6 +1314,63 @@ test(`${variant}: CTR decrypt maxOutputSize boundary: exactly the limit succeeds
 	strictEqual(Buffer.concat(out).toString("utf8"), input);
 });
 
+// *** Mutation-kill: createCipheriv options object forwards streamOptions ***
+// The 4th argument `{ ...streamOptions, authTagLength }` is the cipher's
+// Transform options. Replacing it with `{}` (ObjectLiteral mutant) would drop
+// the forwarded highWaterMark, so the returned cipher stream would fall back to
+// the default highWaterMark instead of the caller-supplied one.
+test(`${variant}: encryptStream forwards streamOptions.highWaterMark to the cipher stream`, (_t) => {
+	const enc = encryptStream({ key }, { highWaterMark: 7 });
+	strictEqual(
+		enc.readableHighWaterMark,
+		7,
+		"highWaterMark from streamOptions must reach createCipheriv",
+	);
+	strictEqual(enc.writableHighWaterMark, 7);
+});
+
+test(`${variant}: encryptStream cipher uses the default highWaterMark when none supplied`, (_t) => {
+	// Guards the above: the 7 above is genuinely from streamOptions, not a default.
+	const enc = encryptStream({ key });
+	strictEqual(enc.readableHighWaterMark !== 7, true);
+});
+
+// *** Mutation-kill: maxOutputSize == null means NO ceiling (explicit null) ***
+// `maxOutputSize != null && ...` must short-circuit to false when null. The
+// `true && ...` mutant degrades to `length > null` (=> length > 0) and would
+// wrongly reject any non-empty plaintext.
+test(`${variant}: AEAD decrypt with maxOutputSize: null imposes no output ceiling`, async (_t) => {
+	const input = "no ceiling please";
+	const { ciphertext, iv, authTag } = await gcmCiphertext(input);
+	const dec = decryptStream({ key, iv, authTag, maxOutputSize: null });
+	const out = [];
+	const decStream = createReadableStream([ciphertext]).pipe(dec);
+	for await (const chunk of decStream) {
+		out.push(Buffer.from(chunk));
+	}
+	strictEqual(Buffer.concat(out).toString("utf8"), input);
+});
+
+test(`${variant}: CTR decrypt with maxOutputSize: null imposes no output ceiling`, async (_t) => {
+	// Kills `if (maxOutputSize != null) -> if (true)` on the CTR push override:
+	// with null and the mutant, `outputSize > null` (=> > 0) would destroy the
+	// stream on the first non-empty chunk.
+	const input = "a".repeat(500);
+	const { chunks, iv } = await ctrCiphertext(input);
+	const dec = decryptStream({
+		key,
+		iv,
+		algorithm: "AES-256-CTR",
+		maxOutputSize: null,
+	});
+	const out = [];
+	const decStream = createReadableStream(chunks).pipe(dec);
+	for await (const chunk of decStream) {
+		out.push(Buffer.from(chunk));
+	}
+	strictEqual(Buffer.concat(out).toString("utf8"), input);
+});
+
 test(`${variant}: CTR decrypt maxOutputSize accumulates across chunks`, async (_t) => {
 	// Reinforces the `outputSize += chunk.length` accumulation (kills `-=`):
 	// many small chunks whose sum exceeds the limit must error.

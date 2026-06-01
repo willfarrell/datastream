@@ -29,9 +29,12 @@ export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
 				buffer = buffer.substring(pos);
 				break;
 			}
-			const line = buffer.substring(pos, nlIdx).trimEnd();
+			const line = buffer.substring(pos, nlIdx);
 			pos = nlIdx + 1;
-			if (line.length === 0) continue;
+			// Skip blank/whitespace-only lines. JSON.parse already tolerates
+			// surrounding whitespace (incl. a trailing \r from \r\n), so the raw
+			// line is parsed directly.
+			if (!/\S/.test(line)) continue;
 			try {
 				enqueue(JSON.parse(line));
 			} catch {
@@ -42,16 +45,18 @@ export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const flush = (enqueue) => {
-		const line = buffer.trimEnd();
-		if (line.length > 0) {
+		// Parse the trailing (unterminated) line if it has any content. JSON.parse
+		// tolerates surrounding whitespace, so the raw buffer is parsed directly.
+		if (/\S/.test(buffer)) {
 			try {
-				enqueue(JSON.parse(line));
+				enqueue(JSON.parse(buffer));
 			} catch {
 				trackError("ParseError", "Invalid JSON");
 			}
-			idx++;
+			// No idx++ here: flush is terminal, so a post-increment would be dead.
 		}
-		buffer = "";
+		// No buffer reset here: flush is terminal and the buffer is never read
+		// again, so a reset would be dead code.
 	};
 
 	const stream = createTransformStream(transform, flush, streamOptions);
@@ -112,9 +117,10 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 				`jsonParseStream value size (${text.length}) exceeds maxValueSize (${maxValueSize})`,
 			);
 		}
-		const trimmed = text.trim();
+		// JSON.parse tolerates surrounding whitespace, so the raw element text is
+		// parsed directly; callers only reach here with non-whitespace content.
 		try {
-			enqueue(JSON.parse(trimmed));
+			enqueue(JSON.parse(text));
 		} catch {
 			trackError("ParseError", "Invalid JSON");
 		}
@@ -170,7 +176,9 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 			if (ch === 0x5d || ch === 0x7d) {
 				if (depth > 0) {
 					depth--;
-					if (depth === 0 && elementStart !== -1) {
+					// depth was > 0, so the matching open brace already set
+					// elementStart; it is provably !== -1 here.
+					if (depth === 0) {
 						emitElement(buffer.substring(elementStart, scanPos + 1), enqueue);
 						elementStart = -1;
 					}
@@ -206,14 +214,16 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 			scanPos++;
 		}
 
-		// Trim processed portion from buffer
+		// Trim the processed portion from the buffer. trimFrom is always >= 0:
+		// it is either elementStart (>= 0 when an element is in progress) or
+		// scanPos (>= 0). A trimFrom of 0 makes the substring/offset updates
+		// no-ops, so the trim runs unconditionally.
 		const trimFrom = elementStart !== -1 ? elementStart : scanPos;
-		if (trimFrom > 0) {
-			buffer = buffer.substring(trimFrom);
-			scanPos -= trimFrom;
-			if (elementStart !== -1) {
-				elementStart = 0;
-			}
+		buffer = buffer.substring(trimFrom);
+		scanPos -= trimFrom;
+		if (elementStart !== -1) {
+			// The in-progress element now begins at the start of the buffer.
+			elementStart = 0;
 		}
 	};
 
@@ -229,16 +239,19 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const flush = (enqueue) => {
-		if (elementStart !== -1 && buffer.length > 0) {
-			const trimmed = buffer.substring(elementStart).trim();
-			if (trimmed.length > 0 && trimmed !== "]") {
-				emitElement(trimmed, enqueue);
-			}
+		// After scan(), the buffer holds exactly the trailing in-progress element
+		// (starting at its first non-whitespace char) or only whitespace when no
+		// element is pending. Emit the raw buffer as an element when it contains
+		// any non-whitespace; emitElement/JSON.parse tolerate surrounding
+		// whitespace. The scanner never leaves a structural `]` pending, so no
+		// special closing-bracket guard is needed.
+		if (/\S/.test(buffer)) {
+			emitElement(buffer, enqueue);
 		}
 		if (!started && sawNonWhitespace) {
 			trackError("NoArrayStart", "Input did not contain a top-level array");
 		}
-		buffer = "";
+		// flush is terminal; the buffer is never read again, so no reset is needed.
 	};
 
 	const stream = createTransformStream(transform, flush, streamOptions);

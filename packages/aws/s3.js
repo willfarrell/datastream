@@ -25,9 +25,9 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 		throw new Error("S3.GetObject not found", { cause: params });
 	}
 	const stream = createReadableStream(Body, streamOptions);
-	// Tie the SDK Body (live socket-backed readable) lifecycle to the returned
-	// wrapper: if the consumer errors/aborts, tear down Body so the underlying
-	// HTTP connection is not leaked.
+	// Tie the SDK Body lifecycle to the returned wrapper: if the consumer
+	// errors/aborts, tear down Body so the underlying HTTP connection is not
+	// leaked.
 	const teardownBody = () => {
 		// Node Body is a Readable (destroy); web Body is a WHATWG ReadableStream
 		// (cancel). Call whichever exists, ignoring teardown errors so releasing
@@ -39,15 +39,13 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 			Body.cancel?.();
 		} catch {}
 	};
-	// Node build: createReadableStream returns a node Readable; clean up on its
-	// 'error' event (without an error argument, so releasing the socket does not
-	// re-emit an unhandled 'error' on the already-failed Body).
+	// If the wrapper exposes an 'error' event (a node Readable), clean up on it.
 	if (typeof stream?.on === "function") {
 		stream.on("error", teardownBody);
 	}
-	// Web build (and any build given an abort signal): the wrapper is a WHATWG
-	// ReadableStream with no 'error' event, so wire teardown to the abort signal
-	// so socket teardown on consumer abort is consistent across builds.
+	// The web wrapper is a WHATWG ReadableStream with no 'error' event, so wire
+	// teardown to the abort signal so socket teardown on consumer abort is
+	// consistent across builds.
 	const { signal } = streamOptions;
 	if (signal) {
 		if (signal.aborted) {
@@ -104,17 +102,17 @@ export const awsS3ChecksumStream = (
 		if (typeof chunk === "string") {
 			chunk = new TextEncoder().encode(chunk);
 		}
-		while (bytes.byteLength + chunk.byteLength > partSize) {
-			chunk = _concatBuffers([bytes, chunk]);
-			const prefixChunk = chunk.slice(0, partSize);
-
+		bytes = new Uint8Array(_concatBuffers([bytes, chunk]));
+		// Peel off every whole part the accumulated buffer can supply. Math.floor
+		// of the byte ratio gives the exact number of complete parts; any trailing
+		// partial part stays buffered for the next chunk (or the final flush).
+		const wholeParts = Math.floor(bytes.byteLength / partSize);
+		for (let part = 0; part < wholeParts; part++) {
+			const prefixChunk = bytes.slice(0, partSize);
 			const checksum = await crypto.subtle.digest(algorithm, prefixChunk);
 			checksums.push(checksum);
-			chunk = chunk.slice(prefixChunk.byteLength);
-
-			bytes = new Uint8Array(0);
+			bytes = bytes.slice(partSize);
 		}
-		bytes = _concatBuffers([bytes, chunk]);
 	};
 	const flush = async () => {
 		if (bytes.byteLength) {
@@ -132,10 +130,11 @@ export const awsS3ChecksumStream = (
 					_concatBuffers(checksums),
 				);
 				checksum = `${_arrayBufferToBase64(checksum)}-${checksums.length}`;
-			} else if (checksums.length === 1) {
-				checksum = _arrayBufferToBase64(checksums[0]);
 			} else {
-				checksum = "";
+				// Single part -> its base64. Empty input leaves checksums empty, and
+				// _arrayBufferToBase64(undefined) is the empty string, matching the
+				// "no data digested" result without a dedicated branch.
+				checksum = _arrayBufferToBase64(checksums[0]);
 			}
 			checksums = checksums.map(_arrayBufferToBase64);
 		}

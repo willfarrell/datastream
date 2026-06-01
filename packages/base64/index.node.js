@@ -30,14 +30,14 @@ export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
 			extra = undefined;
 		}
 		const remaining = buf.length % 3;
+		const whole = buf.length - remaining;
 		if (remaining > 0) {
-			extra = Buffer.from(buf.subarray(buf.length - remaining));
-			buf = buf.subarray(0, buf.length - remaining);
+			extra = Buffer.from(buf.subarray(whole));
 		}
-		if (buf.length > 0) enqueue(buf.toString("base64"));
+		if (whole > 0) enqueue(buf.subarray(0, whole).toString("base64"));
 	};
 	const flush = (enqueue) => {
-		if (extra && extra.length > 0) {
+		if (extra) {
 			enqueue(extra.toString("base64"));
 		}
 	};
@@ -47,25 +47,25 @@ export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
 export const base64DecodeStream = (_options = {}, streamOptions = {}) => {
 	let extra = "";
 	const transform = (chunk, enqueue) => {
-		const str =
-			typeof chunk === "string" ? chunk : toBuffer(chunk).toString("ascii");
-		let s = extra.length > 0 ? extra + str : str;
-		extra = "";
-		const remaining = s.length % 4;
-		if (remaining > 0) {
-			extra = s.slice(s.length - remaining);
-			s = s.slice(0, s.length - remaining);
-		}
+		// Base64's alphabet is pure ASCII, so a string chunk and the ASCII byte
+		// view of a Buffer/Uint8Array chunk are interchangeable. Normalising every
+		// chunk through toBuffer().toString("ascii") keeps a single code path.
+		const str = toBuffer(chunk).toString("ascii");
+		const s0 = extra + str;
+		const remaining = s0.length % 4;
+		const whole = s0.length - remaining;
+		extra = s0.slice(whole);
+		const s = s0.slice(0, whole);
 		if (s.length > 0) {
 			assertValidBase64(s);
 			enqueue(Buffer.from(s, "base64"));
 		}
 	};
-	const flush = (enqueue) => {
-		if (extra.length > 0) {
-			assertValidBase64(extra);
-			enqueue(Buffer.from(extra, "base64"));
-		}
+	const flush = () => {
+		// Any leftover characters form an incomplete quartet (length 1-3) and can
+		// never be a valid base64 group, so reject rather than silently drop them.
+		// assertValidBase64("") is a no-op, so no length guard is needed here.
+		assertValidBase64(extra);
 	};
 	return createTransformStream(transform, flush, streamOptions);
 };

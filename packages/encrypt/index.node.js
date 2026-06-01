@@ -134,10 +134,11 @@ const aeadDecryptStream = (
 	{ cipherName, key, iv, authTag, aad, maxInputSize, maxOutputSize },
 	streamOptions,
 ) => {
-	const decipher = createDecipheriv(cipherName, key, iv, {
-		...streamOptions,
-		authTagLength: 16,
-	});
+	// The decipher here is driven manually via update()/final() and is never
+	// exposed as a stream, so forwarding streamOptions to it has no effect. The
+	// default auth-tag length is already 16 bytes for every AEAD cipher we use,
+	// so no options object is needed.
+	const decipher = createDecipheriv(cipherName, key, iv);
 	decipher.setAuthTag(authTag);
 	if (aad != null) {
 		decipher.setAAD(aad);
@@ -202,28 +203,32 @@ export const decryptStream = (
 	}
 	// AES-256-CTR: unauthenticated, safe to stream incrementally.
 	const stream = createDecipheriv(cipherName, key, iv, streamOptions);
-	let outputSize = 0;
-	const originalPush = stream.push.bind(stream);
-	stream.push = (chunk) => {
-		if (chunk !== null) {
-			if (maxOutputSize != null) {
-				outputSize += chunk.length;
-				if (outputSize > maxOutputSize) {
-					stream.push = originalPush;
-					stream.destroy(
-						new Error(
-							`Decryption output exceeds maxOutputSize (${maxOutputSize} bytes)`,
-						),
-					);
-					return false;
-				}
+	// Only intercept push when an output ceiling is configured; with no ceiling
+	// the decipher is returned untouched (no per-chunk accounting overhead and no
+	// override to leak). Installing the override only when needed also means the
+	// inner accounting never has to re-check `maxOutputSize`.
+	if (maxOutputSize != null) {
+		let outputSize = 0;
+		const originalPush = stream.push.bind(stream);
+		stream.push = (chunk) => {
+			// EOF marker (null) carries no bytes and must always pass through.
+			if (chunk === null) return originalPush(chunk);
+			outputSize += chunk.length;
+			if (outputSize > maxOutputSize) {
+				// Tear the stream down with the limit error and withhold this chunk.
+				// The push() return value is irrelevant here: a destroyed stream emits
+				// nothing further, so we simply return (undefined) without forwarding
+				// the chunk to originalPush.
+				stream.destroy(
+					new Error(
+						`Decryption output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+					),
+				);
+				return;
 			}
-		}
-		return originalPush(chunk);
-	};
-	stream.on("close", () => {
-		stream.push = originalPush;
-	});
+			return originalPush(chunk);
+		};
+	}
 	return stream;
 };
 
