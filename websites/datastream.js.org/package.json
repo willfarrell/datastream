@@ -4,6 +4,10 @@
 	"private": true,
 	"version": "0.5.0",
 	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"engineStrict": true,
 	"scripts": {
 		"start": "vite dev",
 		"preview": "vite preview",
@@ -14,7 +18,7 @@
 		"build:styles:extract": "ds extract --input-dir ./.svelte-kit --theme ./src/styles/theme.css --output-dir src/styles/",
 		"build:styles:optimize": "ds optimize-styles ./.svelte-kit",
 		"release:login": "wrangler login --browser false",
-		"release:domain": "curl https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/datastream/domains -H 'Content-Type: application/json' -H 'Authorization: Bearer ${API_KEY_W_PAGES_EDIT}' -d '{\"name\": \"datastream.js.org\"}'",
+		"release:domain": "curl https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/datastreamjs/domains -H 'Content-Type: application/json' -H 'Authorization: Bearer ${API_KEY_W_PAGES_EDIT}' -d '{\"name\": \"datastream.js.org\"}'",
 		"release:deploy": "wrangler pages deploy"
 	},
 	"dependencies": {
@@ -40,10 +44,5 @@
 		"vite-plugin-sitemap": "^0.8.0",
 		"vite-plugin-sri": "^0.0.2",
 		"wrangler": "^4.0.0"
-	},
-	"overrides": {
-		"@sveltejs/kit": {
-			"cookie": "0.7.2"
-		}
 	}
 }
