@@ -44,7 +44,7 @@
 		"rm:macos": "find . -name '.DS_Store' -type f -delete",
 		"rm:lock": "find . -name 'package-lock.json' -type f -delete",
 		"rm:node_modules": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
-		"update": "npm update --workspaces && npm install --workspaces",
+		"update": "corepack up && npm run rm && npm install --workspaces",
 		"outdated": "npm outdated --workspaces",
 		"audit": "npm audit fix --workspaces",
 		"release:license:add": "license-check-and-add add -f .license.config.json",

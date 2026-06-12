@@ -17,6 +17,8 @@ const nav = {
 		aws: "/docs/packages/aws",
 		indexeddb: "/docs/packages/indexeddb",
 		ipfs: "/docs/packages/ipfs",
+		kafka: "/docs/packages/kafka",
+		duckdb: "/docs/packages/duckdb",
 	},
 	"Data Formats": {
 		csv: "/docs/packages/csv",
@@ -25,6 +27,9 @@ const nav = {
 		object: "/docs/packages/object",
 		base64: "/docs/packages/base64",
 		charset: "/docs/packages/charset",
+		arrow: "/docs/packages/arrow",
+		protobuf: "/docs/packages/protobuf",
+		"schema-registry": "/docs/packages/schema-registry",
 	},
 	Processing: {
 		validate: "/docs/packages/validate",

@@ -39,7 +39,7 @@ const validateIv = (iv, algorithm) => {
 };
 
 const validateAuthTag = (authTag, algorithm) => {
-	if (!authTag || authTag.byteLength !== 16) {
+	if (authTag?.byteLength !== 16) {
 		throw new Error(
 			`authTag for ${algorithm} must be 16 bytes, got ${authTag?.byteLength ?? 0}`,
 		);

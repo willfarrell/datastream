@@ -39,7 +39,7 @@
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:benchmark": "node __benchmarks__/index.js"
+		"test:perf": "node --test index.perf.js"
 	},
 	"license": "MIT",
 	"keywords": [

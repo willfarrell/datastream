@@ -138,6 +138,7 @@
   - arrowToArrayStream [Transform]
   - arrowToObjectStream [Transform]
 - [`@datastream/duckdb`](packages/duckdb)
+  - duckdbConnect (connection helper)
   - duckdbAppenderStream [Writable]
   - duckdbArrowInsertStream [Writable]
 - [`@datastream/indexeddb`](packages/indexeddb)
@@ -157,6 +158,7 @@
   - glueFrameStream [Transform]
   - glueUnframeStream [Transform]
 - [`@datastream/kafka`](packages/kafka)
+  - kafkaConnect (producer/consumer connection helper)
   - kafkaConsumeStream [Readable]
   - kafkaProduceStream [Writable]
 - [`@datastream/aws/msk-iam`](packages/aws)

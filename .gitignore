@@ -116,5 +116,11 @@ dist
 *.iml
 .nova
 
+# Agents
+## /graphify hook install
+.husky/post-checkout
+.husky/post-commit
+graphify-out
+
 # OS
 .DS_Store
