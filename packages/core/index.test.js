@@ -2276,3 +2276,88 @@ test(`${variant}: createWritableStream propagates a rejecting async final`, asyn
 		strictEqual(e.message, "final-rejected");
 	}
 });
+
+// ===========================================================================
+// *** Stream-leak resilience ***
+// Legacy `.pipe()` only tears a chain down on `finish`; when a stream errors
+// or a consumer closes early it leaves the upstream source running, producing
+// into a dead pipeline (the classic Node.js stream leak). pipejoin must mirror
+// what pipeline()/pipelinePromise does internally: destroy EVERY stream on the
+// first error so nothing is left running. pipeline() (pipelinePromise) already
+// does this; these tests pin both behaviours so neither can regress.
+// ===========================================================================
+
+if (variant === "node") {
+	// A mid-chain error must destroy the upstream source AND the downstream sink,
+	// not just the stream that threw. With bare `.pipe()` the source survives and
+	// keeps producing — the leak this guards against.
+	test(`${variant}: pipejoin destroys every stream when one errors (no upstream leak)`, async (_t) => {
+		const source = createReadableStream(["a", "b", "c"]);
+		const failing = createTransformStream(() => {
+			throw new Error("mid-failure");
+		});
+		const sink = createWritableStream();
+		// Swallow the error; we are asserting on teardown, not propagation here.
+		pipejoin([source, failing, sink], () => {});
+		await timeout(50);
+		strictEqual(source.destroyed, true, "source must be destroyed");
+		strictEqual(failing.destroyed, true, "failing transform must be destroyed");
+		strictEqual(sink.destroyed, true, "downstream sink must be destroyed");
+	});
+
+	// The error must still reach a collector consuming the joined stream, and the
+	// upstream source must be torn down rather than left producing.
+	test(`${variant}: pipejoin surfaces the error to a collector and tears the source down`, async (_t) => {
+		const source = createReadableStream(["a", "b", "c"]);
+		const failing = createTransformStream((chunk, enqueue) => {
+			if (chunk === "b") throw new Error("collector-failure");
+			enqueue(chunk);
+		});
+		const joined = pipejoin([source, failing], () => {});
+		try {
+			await withTimeout(streamToArray(joined));
+			throw new Error("Should have thrown");
+		} catch (e) {
+			strictEqual(e.message, "collector-failure");
+		}
+		strictEqual(source.destroyed, true, "source must be destroyed on error");
+	});
+
+	// A consumer that stops reading early (break out of the async iterator) must
+	// not leave the source running: the iterator protocol destroys the readable,
+	// and pipejoin's teardown must propagate that to every upstream stream.
+	test(`${variant}: pipejoin tears the source down when the consumer stops early`, async (_t) => {
+		const source = createReadableStream(["a", "b", "c", "d", "e"]);
+		const passThrough = createPassThroughStream((c) => c);
+		const joined = pipejoin([source, passThrough], () => {});
+		for await (const chunk of joined) {
+			if (chunk === "b") break; // early exit -> iterator destroys `joined`
+		}
+		await timeout(50);
+		strictEqual(joined.destroyed, true, "joined stream must be destroyed");
+		strictEqual(
+			source.destroyed,
+			true,
+			"source must be destroyed on early exit",
+		);
+	});
+
+	// Characterization: pipeline() (pipelinePromise) already destroys the whole
+	// chain on a mid-stream error. Pin it so the resilient teardown can't regress.
+	test(`${variant}: pipeline destroys the source when a transform errors`, async (_t) => {
+		const source = createReadableStream(["a", "b", "c"]);
+		const streams = [
+			source,
+			createTransformStream(() => {
+				throw new Error("pipeline-mid-failure");
+			}),
+		];
+		try {
+			await withTimeout(pipeline(streams));
+			throw new Error("Should have thrown");
+		} catch (e) {
+			strictEqual(e.message, "pipeline-mid-failure");
+		}
+		strictEqual(source.destroyed, true, "pipeline must destroy the source");
+	});
+}

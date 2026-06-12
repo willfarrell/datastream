@@ -46,20 +46,33 @@ export const pipeline = async (streams, streamOptions = {}) => {
 	return result(streams);
 };
 
-export const pipejoin = (
-	streams,
-	onError = (e) => {
-		process.nextTick(() => {
-			throw e;
-		});
-	},
-) => {
-	const pipeline = streams.reduce((pipeline, stream, idx) => {
-		if (typeof stream.then === "function") {
+export const pipejoin = (streams, onError) => {
+	for (let idx = 0, l = streams.length; idx < l; idx++) {
+		if (typeof streams[idx].then === "function") {
 			throw new Error(`Promise instead of stream passed in at index ${idx}`);
 		}
-		return pipeline.pipe(stream).on("error", onError);
-	});
+	}
+	let settled = false;
+	const teardown = (error) => {
+		if (settled) return;
+		settled = true;
+		for (const stream of streams) {
+			if (!stream.destroyed) stream.destroy(error);
+		}
+		if (onError) {
+			onError(error);
+		} else {
+			process.nextTick(() => {
+				throw error;
+			});
+		}
+	};
+	let pipeline = streams[0];
+	pipeline.on("error", teardown);
+	for (let idx = 1, l = streams.length; idx < l; idx++) {
+		pipeline = pipeline.pipe(streams[idx]);
+		pipeline.on("error", teardown);
+	}
 	return pipeline;
 };
 
