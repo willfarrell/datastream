@@ -30,7 +30,7 @@
 		"@sveltejs/kit": "^2.61.1",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
 		"@willfarrell-ds/cli": "0.0.0-alpha.6",
-		"esbuild": "^0.28.0",
+		"esbuild": "^0.28.1",
 		"mdsvex": "^0.12.0",
 		"svelte": "^5.55.9",
 		"svgo": "^4.0.0",
