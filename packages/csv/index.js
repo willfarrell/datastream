@@ -60,6 +60,7 @@ const findRowEnd = (
 	const escapeCode = escapeChar.charCodeAt(0);
 	const delimiterLength = delimiterChar.length;
 	let pos = 0;
+	let nextNl = text.indexOf(newlineChar, 0);
 	for (;;) {
 		// `pos` is always a field start here (it advances only past a closing quote
 		// or a delimiter), so a quote at `pos` always opens a quoted field.
@@ -82,7 +83,9 @@ const findRowEnd = (
 			pos = closeQ + 1;
 			continue;
 		}
-		const nextNl = text.indexOf(newlineChar, pos);
+		if (nextNl !== -1 && nextNl < pos) {
+			nextNl = text.indexOf(newlineChar, pos);
+		}
 		const nextDelim = text.indexOf(delimiterChar, pos);
 		// Advance past a delimiter that falls at or before the row's newline (a
 		// delimiter that is a prefix of the newline wins the tie). When there is no
@@ -349,6 +352,8 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 	let pos = 0;
 	let lastWasDelimiter = false;
 
+	let nextNl = text.indexOf(newlineChar, 0);
+
 	// Called at most once per invocation (each unterminated-quote branch returns
 	// immediately afterwards), so the error map and entry are created fresh here.
 	const trackError = (id, message) => {
@@ -367,10 +372,10 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 
 			if (escapeIsQuote) {
 				// Find the closing quote with indexOf, skipping escaped "" pairs.
-				// replaceAll collapses any doubled quotes; on a field without "" it
-				// is a no-op, so it is applied unconditionally.
 				let closeQ = text.indexOf(quoteChar, pos);
+				let hadEscaped = false;
 				while (closeQ !== -1 && text.charCodeAt(closeQ + 1) === quoteCharCode) {
+					hadEscaped = true;
 					closeQ = text.indexOf(quoteChar, closeQ + 2);
 				}
 
@@ -379,7 +384,9 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					if (isFlushing) {
 						trackError("UnterminatedQuote", "Unterminated quoted field");
 						const raw = text.substring(contentStart);
-						fields.push(raw.replaceAll(escapedQuote, quoteChar));
+						fields.push(
+							hadEscaped ? raw.replaceAll(escapedQuote, quoteChar) : raw,
+						);
 						if (numCols === 0) numCols = fields.length;
 						enqueue(fields);
 						idx++;
@@ -391,10 +398,10 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					return;
 				}
 
-				// Extract field value: single slice + replaceAll (no-op without "")
-				const field = text
-					.substring(contentStart, closeQ)
-					.replaceAll(escapedQuote, quoteChar);
+				const slice = text.substring(contentStart, closeQ);
+				const field = hadEscaped
+					? slice.replaceAll(escapedQuote, quoteChar)
+					: slice;
 				if (field.length > fieldMaxSize) {
 					throw new Error(
 						`CSV field size (${field.length}) exceeds fieldMaxSize (${fieldMaxSize} bytes)`,
@@ -511,7 +518,9 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 		// (handling a quote that opens the next field).
 		lastWasDelimiter = false;
 		{
-			const nextNl = text.indexOf(newlineChar, pos);
+			if (nextNl !== -1 && nextNl < pos) {
+				nextNl = text.indexOf(newlineChar, pos);
+			}
 			const nextDelim = text.indexOf(delimiterChar, pos);
 
 			if (nextDelim !== -1 && (nextNl === -1 || nextDelim <= nextNl)) {

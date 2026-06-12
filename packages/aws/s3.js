@@ -93,26 +93,50 @@ export const awsS3ChecksumStream = (
 	if (!algorithm)
 		throw new Error(`Unsupported ChecksumAlgorithm: ${ChecksumAlgorithm}`);
 	let checksums = [];
-	let bytes = new Uint8Array(0);
+	const pending = [];
+	let pendingLen = 0;
+	const takePart = () => {
+		const part = new Uint8Array(partSize);
+		let filled = 0;
+		while (filled < partSize) {
+			const head = pending[0];
+			const need = partSize - filled;
+			if (head.byteLength <= need) {
+				part.set(head, filled);
+				filled += head.byteLength;
+				pending.shift();
+			} else {
+				part.set(head.subarray(0, need), filled);
+				pending[0] = head.subarray(need);
+				filled += need;
+			}
+		}
+		pendingLen -= partSize;
+		return part;
+	};
 	const passThrough = async (chunk) => {
 		if (typeof chunk === "string") {
 			chunk = new TextEncoder().encode(chunk);
+		} else if (!(chunk instanceof Uint8Array)) {
+			// Match the old _concatBuffers handling of ArrayBuffer/Buffer inputs.
+			chunk = new Uint8Array(chunk);
 		}
-		bytes = new Uint8Array(_concatBuffers([bytes, chunk]));
-		// Peel off every whole part the accumulated buffer can supply. Math.floor
-		// of the byte ratio gives the exact number of complete parts; any trailing
+		pending.push(chunk);
+		pendingLen += chunk.byteLength;
+		// Peel off every whole part the buffered bytes can supply; any trailing
 		// partial part stays buffered for the next chunk (or the final flush).
-		const wholeParts = Math.floor(bytes.byteLength / partSize);
-		for (let part = 0; part < wholeParts; part++) {
-			const prefixChunk = bytes.slice(0, partSize);
-			const checksum = await crypto.subtle.digest(algorithm, prefixChunk);
+		while (pendingLen >= partSize) {
+			const checksum = await crypto.subtle.digest(algorithm, takePart());
 			checksums.push(checksum);
-			bytes = bytes.slice(partSize);
 		}
 	};
 	const flush = async () => {
-		if (bytes.byteLength) {
-			const checksum = await crypto.subtle.digest(algorithm, bytes);
+		if (pendingLen > 0) {
+			// Remainder is < partSize: a single concat of the leftover chunks.
+			const checksum = await crypto.subtle.digest(
+				algorithm,
+				_concatBuffers(pending),
+			);
 			checksums.push(checksum);
 		}
 	};
