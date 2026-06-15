@@ -93,6 +93,9 @@
 		},
 		"license-check-and-add": {
 			"minimatch": "^10.2.5"
+		},
+		"miniflare": {
+			"ws": "^8.21.0"
 		}
 	},
 	"workspaces": [
