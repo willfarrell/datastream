@@ -266,6 +266,38 @@ test(`${variant}: awsS3ChecksumStream should make multi-part checksum with small
 	deepStrictEqual(result.s3.partSize, 50);
 });
 
+test(`${variant}: awsS3ChecksumStream should emit a trailing partial part below partSize`, async (_t) => {
+	// 130 bytes at partSize 50 -> two whole parts (100) plus a 30-byte remainder
+	// the flush digests: exactly three checksums. A non-exact multiple pins the
+	// floor() part-count so it cannot round/ceil into a phantom extra part.
+	const input = "x".repeat(130);
+	const options = {
+		ChecksumAlgorithm: "SHA256",
+		partSize: 50,
+	};
+
+	const stream = [createReadableStream(input), awsS3ChecksumStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result.s3.checksums.length, 3);
+});
+
+test(`${variant}: awsS3ChecksumStream should assemble parts that span multiple chunks`, async (_t) => {
+	// Four 30-byte chunks (120 bytes) at partSize 50: each whole part is filled
+	// from more than one buffered chunk, exercising the partial-chunk carry-over
+	// (a part needs 50 = 30 + 20, leaving a 10-byte tail of the second chunk).
+	const input = Array.from({ length: 4 }, () => new Uint8Array(30).fill(7));
+	const options = {
+		ChecksumAlgorithm: "SHA256",
+		partSize: 50,
+	};
+
+	const stream = [createReadableStream(input), awsS3ChecksumStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result.s3.checksums.length, 3);
+});
+
 test(`${variant}: awsS3ChecksumStream should make checksum with custom resultKey`, async (_t) => {
 	const input = "x".repeat(16_384);
 	const options = {
@@ -284,6 +316,22 @@ test(`${variant}: awsS3ChecksumStream should make checksum with custom resultKey
 
 test(`${variant}: awsS3ChecksumStream should handle Uint8Array input`, async (_t) => {
 	const input = new TextEncoder().encode("x".repeat(100));
+	const options = {
+		ChecksumAlgorithm: "SHA256",
+		partSize: 50,
+	};
+
+	const stream = [createReadableStream(input), awsS3ChecksumStream(options)];
+	const result = await pipeline(stream);
+
+	deepStrictEqual(result.s3.checksums.length, 2);
+});
+
+test(`${variant}: awsS3ChecksumStream should handle ArrayBuffer input`, async (_t) => {
+	// An ArrayBuffer is neither a string nor a Uint8Array, exercising the
+	// `new Uint8Array(chunk)` coercion branch. Wrapped in an array so object-mode
+	// delivery keeps it an ArrayBuffer rather than chunking it into Uint8Arrays.
+	const input = [new TextEncoder().encode("x".repeat(100)).buffer];
 	const options = {
 		ChecksumAlgorithm: "SHA256",
 		partSize: 50,

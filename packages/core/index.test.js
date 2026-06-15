@@ -2287,6 +2287,48 @@ test(`${variant}: createWritableStream propagates a rejecting async final`, asyn
 // does this; these tests pin both behaviours so neither can regress.
 // ===========================================================================
 
+// pipejoin's teardown is build-agnostic: the node build loads under both the
+// node and webstream conditions, so this runs under every variant to keep the
+// teardown `settled` re-entry guard and the already-destroyed skip covered in
+// both builds (the variant-gated tests below would leave those branches uncovered
+// under webstream).
+test(`${variant}: pipejoin teardown is idempotent and skips already-destroyed streams`, async (_t) => {
+	const source = createReadableStream(["a", "b", "c"]);
+	const failing = createTransformStream(() => {
+		throw new Error("teardown-failure");
+	});
+	const sink = createWritableStream();
+	// Count how often the already-destroyed erroring stream gets destroy()ed: Node
+	// tears `failing` down on throw, so teardown's loop must SKIP it (the
+	// `!stream.destroyed` guard) — it must end at exactly one destroy, not two.
+	let failingDestroyCalls = 0;
+	const failingDestroy = failing.destroy.bind(failing);
+	failing.destroy = (error) => {
+		failingDestroyCalls++;
+		return failingDestroy(error);
+	};
+	// Destroying the streams re-emits 'error', re-entering teardown; the `settled`
+	// guard must short-circuit so onError fires exactly once, not once per stream.
+	let onErrorCalls = 0;
+	pipejoin([source, failing, sink], () => {
+		onErrorCalls++;
+	});
+	await timeout(50);
+	strictEqual(
+		onErrorCalls,
+		1,
+		"onError must fire exactly once (settled guard)",
+	);
+	strictEqual(
+		failingDestroyCalls,
+		1,
+		"already-destroyed stream must not be re-destroyed",
+	);
+	strictEqual(source.destroyed, true);
+	strictEqual(failing.destroyed, true);
+	strictEqual(sink.destroyed, true);
+});
+
 if (variant === "node") {
 	// A mid-chain error must destroy the upstream source AND the downstream sink,
 	// not just the stream that threw. With bare `.pipe()` the source survives and

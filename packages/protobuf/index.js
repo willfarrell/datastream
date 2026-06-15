@@ -75,57 +75,72 @@ export const protobufLengthPrefixUnframeStream = (
 	{ maxMessageSize = Number.POSITIVE_INFINITY } = {},
 	streamOptions = {},
 ) => {
-	// Growable ring-free byte buffer: `buffer` is the backing store (capacity),
-	// `start` is the first unconsumed byte and `end` is one past the last buffered
-	// byte. readMessage advances `start` instead of re-slicing per message, and
-	// append() writes into spare tail capacity — compacting/doubling only when the
-	// chunk doesn't fit. The old `concat([buffer, chunk])` per chunk was O(n²) both
-	// across many small messages (per-message re-slice) and across one large
-	// message spanning many chunks (full re-copy each append); this is amortized
-	// O(n) for both.
-	let buffer = new Uint8Array(0);
-	let start = 0;
-	let end = 0;
+	// Buffer incoming chunks as a list instead of one growable byte buffer: the
+	// varint length prefix is parsed across chunk boundaries and each message is
+	// copied out exactly once. This keeps the hot path free of per-chunk realloc
+	// and — just as importantly — free of capacity-reuse branches whose only effect
+	// is speed (and which mutation testing cannot distinguish from the slow path).
+	const pending = [];
+	let pendingLen = 0;
 
-	const append = (chunk) => {
-		if (buffer.length - end >= chunk.length) {
-			// Fits in the existing tail capacity — no copy of prior bytes.
-			buffer.set(chunk, end);
-			end += chunk.length;
-			return;
+	// Byte at absolute position `pos` (0 <= pos < pendingLen) across the chunks.
+	const byteAt = (pos) => {
+		let index = 0;
+		while (pos >= pending[index].byteLength) {
+			pos -= pending[index].byteLength;
+			index += 1;
 		}
-		// Doesn't fit at the tail. Reclaim the consumed prefix [0, start); grow
-		// (doubling) only when even the reclaimed space is insufficient.
-		const used = end - start;
-		const capacity = Math.max(used + chunk.length, buffer.length * 2);
-		if (capacity > buffer.length) {
-			const next = new Uint8Array(capacity);
-			next.set(buffer.subarray(start, end), 0);
-			buffer = next;
-		} else {
-			buffer.copyWithin(0, start, end);
-		}
-		start = 0;
-		end = used;
-		buffer.set(chunk, end);
-		end += chunk.length;
+		return pending[index][pos];
 	};
 
-	// Pull one complete length-prefixed message off the front of the buffered
-	// region [start, end), or return null when the bytes don't yet hold a full
-	// prefix+message.
+	// Drop the first `count` bytes off the front of the buffered chunks.
+	const skip = (count) => {
+		while (count > 0) {
+			const head = pending[0];
+			const n = Math.min(head.byteLength, count);
+			count -= n;
+			pendingLen -= n;
+			const rest = head.subarray(n);
+			if (rest.byteLength === 0) {
+				pending.shift();
+			} else {
+				pending[0] = rest;
+			}
+		}
+	};
+
+	// Copy the first `count` bytes off the front of the buffered chunks into a new
+	// contiguous Uint8Array, consuming them.
+	const take = (count) => {
+		const out = new Uint8Array(count);
+		let filled = 0;
+		while (filled < count) {
+			const head = pending[0];
+			const n = Math.min(head.byteLength, count - filled);
+			out.set(head.subarray(0, n), filled);
+			filled += n;
+			const rest = head.subarray(n);
+			if (rest.byteLength === 0) {
+				pending.shift();
+			} else {
+				pending[0] = rest;
+			}
+		}
+		pendingLen -= count;
+		return out;
+	};
+
+	// Pull one complete length-prefixed message off the front, or return null when
+	// the buffered bytes don't yet hold a full prefix + body.
 	const readMessage = () => {
 		let length = 0;
 		let scale = 1;
-		let offset = start;
+		let prefixBytes = 0;
 		let complete = false;
-		// offset only ever advances by 1 from start, so it lands on `end` exactly;
-		// `!==` (rather than `<`) avoids a phantom read one past the end being
-		// indistinguishable from the real terminating-byte case.
-		while (offset !== end) {
-			const byte = buffer[offset];
+		while (prefixBytes < pendingLen) {
+			const byte = byteAt(prefixBytes);
 			length += (byte & 0x7f) * scale;
-			offset += 1;
+			prefixBytes += 1;
 			if ((byte & 0x80) === 0) {
 				complete = true;
 				break;
@@ -140,16 +155,16 @@ export const protobufLengthPrefixUnframeStream = (
 				`Protobuf message exceeds maxMessageSize (${maxMessageSize} bytes)`,
 			);
 		}
-		if (end - offset < length) {
+		if (pendingLen - prefixBytes < length) {
 			return null;
 		}
-		const message = buffer.slice(offset, offset + length);
-		start = offset + length;
-		return message;
+		skip(prefixBytes);
+		return take(length);
 	};
 
 	const transform = (chunk, enqueue) => {
-		append(chunk);
+		pending.push(chunk);
+		pendingLen += chunk.byteLength;
 		let message = readMessage();
 		while (message !== null) {
 			enqueue(message);
@@ -158,7 +173,7 @@ export const protobufLengthPrefixUnframeStream = (
 	};
 
 	const flush = () => {
-		if (end - start > 0) {
+		if (pendingLen > 0) {
 			throw new Error(
 				"Protobuf unframe stream ended with an incomplete message",
 			);

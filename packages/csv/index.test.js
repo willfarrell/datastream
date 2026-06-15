@@ -1950,6 +1950,7 @@ test(`${variant}: csvArrayToObject should keep a __proto__ header as an own data
 	const row = output[0];
 	// The __proto__ column must be stored as an own data property, not lost.
 	ok(Object.hasOwn(row, "__proto__"));
+	// biome-ignore lint/suspicious/noProto: intentionally reading the own data property literally named "__proto__" to assert prototype-pollution safety.
 	strictEqual(row.__proto__, "polluted");
 	strictEqual(row.safe, "ok");
 });

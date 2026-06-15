@@ -243,6 +243,64 @@ test(`${variant}: unframe reassembles messages split across byte-sized chunks`, 
 	);
 });
 
+test(`${variant}: unframe reassembles a body split mid-chunk with trailing frames`, async () => {
+	// Two chunks where the split falls inside bigMessage's body, so a single
+	// message is assembled from a partial first chunk plus a second chunk that
+	// also carries the following frames. This drives the multi-chunk copy path:
+	// the body spans two buffered chunks and the second chunk's tail (the next
+	// frames) must be retained, not discarded.
+	const encoded = await encodeAll([bigMessage, ...messages], { Type });
+	const frames = await streamToArray(
+		pipejoin([
+			createReadableStream(encoded),
+			protobufLengthPrefixFrameStream(),
+		]),
+	);
+	const stream = concat(frames);
+	// 100 lands inside bigMessage's body (2-byte prefix + ~200-byte body), and the
+	// remainder carries the rest of that body plus all three trailing frames.
+	const splitAt = 100;
+	const chunks = [stream.subarray(0, splitAt), stream.subarray(splitAt)];
+	const unframed = await streamToArray(
+		pipejoin([
+			createReadableStream(chunks),
+			protobufLengthPrefixUnframeStream({ maxMessageSize: 4096 }),
+		]),
+	);
+	deepStrictEqual(
+		unframed.map((b) => toPlain(Type.decode(b))),
+		[bigMessage, ...messages],
+	);
+});
+
+test(`${variant}: unframe reassembles many small messages fed one byte at a time`, async () => {
+	// Many small messages, fed one byte at a time, so every prefix and body
+	// straddles chunk boundaries and the buffered-chunk list is repeatedly drained
+	// down to a partial message and refilled.
+	const small = Array.from({ length: 20 }, (_, i) => ({
+		id: i,
+		name: `m${i}`,
+	}));
+	const encoded = await encodeAll(small, { Type });
+	const frames = await streamToArray(
+		pipejoin([
+			createReadableStream(encoded),
+			protobufLengthPrefixFrameStream(),
+		]),
+	);
+	const byteChunks = Array.from(concat(frames), (b) => Uint8Array.of(b));
+	const unframed = await streamToArray(
+		pipejoin([
+			createReadableStream(byteChunks),
+			protobufLengthPrefixUnframeStream({ maxMessageSize: 4096 }),
+		]),
+	);
+	deepStrictEqual(
+		unframed.map((b) => toPlain(Type.decode(b))),
+		small,
+	);
+});
+
 test(`${variant}: unframe throws when a message exceeds maxMessageSize`, async () => {
 	const encoded = await encodeAll([bigMessage], { Type });
 	const frames = await streamToArray(

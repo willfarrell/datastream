@@ -100,15 +100,17 @@ export const awsS3ChecksumStream = (
 		let filled = 0;
 		while (filled < partSize) {
 			const head = pending[0];
-			const need = partSize - filled;
-			if (head.byteLength <= need) {
-				part.set(head, filled);
-				filled += head.byteLength;
+			// Copy as much of the head chunk as the part still needs. `rest` is
+			// whatever is left of the head afterwards: drop the head once it is fully
+			// consumed, otherwise keep the remainder at the front for the next part.
+			const take = Math.min(head.byteLength, partSize - filled);
+			part.set(head.subarray(0, take), filled);
+			filled += take;
+			const rest = head.subarray(take);
+			if (rest.byteLength === 0) {
 				pending.shift();
 			} else {
-				part.set(head.subarray(0, need), filled);
-				pending[0] = head.subarray(need);
-				filled += need;
+				pending[0] = rest;
 			}
 		}
 		pendingLen -= partSize;
@@ -117,15 +119,17 @@ export const awsS3ChecksumStream = (
 	const passThrough = async (chunk) => {
 		if (typeof chunk === "string") {
 			chunk = new TextEncoder().encode(chunk);
-		} else if (!(chunk instanceof Uint8Array)) {
-			// Match the old _concatBuffers handling of ArrayBuffer/Buffer inputs.
+		} else {
+			// Normalize ArrayBuffer/Buffer/Uint8Array to a plain Uint8Array so
+			// takePart's subarray/set views are always valid.
 			chunk = new Uint8Array(chunk);
 		}
 		pending.push(chunk);
 		pendingLen += chunk.byteLength;
-		// Peel off every whole part the buffered bytes can supply; any trailing
-		// partial part stays buffered for the next chunk (or the final flush).
-		while (pendingLen >= partSize) {
+		// Digest every whole part the buffered bytes can supply; any trailing
+		// partial part (< partSize) stays buffered for the next chunk or the flush.
+		const wholeParts = Math.floor(pendingLen / partSize);
+		for (let part = 0; part < wholeParts; part++) {
 			const checksum = await crypto.subtle.digest(algorithm, takePart());
 			checksums.push(checksum);
 		}
