@@ -1,0 +1,20 @@
+{
+	"$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+	"packageManager": "npm",
+	"testRunner": "node-test",
+	"nodeTest": {
+		"testFiles": ["packages/encrypt/**/*.test.js"],
+		"nodeArgs": ["--conditions=node"],
+		"concurrency": false
+	},
+	"coverageAnalysis": "perTest",
+	"mutate": [
+		"packages/encrypt/**/*.node.mjs",
+		"!**/*.map",
+		"!**/node_modules/**"
+	],
+	"plugins": ["@stryker-mutator/node-test-runner"],
+	"reporters": ["progress", "clear-text"],
+	"thresholds": { "high": 100, "low": 100, "break": 0 },
+	"tempDirName": "/tmp/stryker/@datastream/node-test"
+}

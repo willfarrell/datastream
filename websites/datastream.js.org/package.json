@@ -2,7 +2,7 @@
 	"name": "datastream.js.org",
 	"description": "SvelteKit SSR",
 	"private": true,
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"type": "module",
 	"engines": {
 		"node": ">=24"

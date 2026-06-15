@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/object",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "Object transform streams for picking, omitting, pivoting, batching, and key mapping",
 	"type": "module",
 	"engines": {
@@ -61,6 +61,6 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.5.0"
+		"@datastream/core": "0.6.0"
 	}
 }

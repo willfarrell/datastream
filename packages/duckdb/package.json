@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/duckdb",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "DuckDB writable streams (copy-from) for Node and browser",
 	"type": "module",
 	"engines": {
@@ -64,7 +64,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.5.0"
+		"@datastream/core": "0.6.0"
 	},
 	"peerDependencies": {
 		"@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
@@ -83,7 +83,7 @@
 		}
 	},
 	"devDependencies": {
-		"@datastream/arrow": "0.5.0",
+		"@datastream/arrow": "0.6.0",
 		"@duckdb/duckdb-wasm": "1.33.1-dev45.0",
 		"@duckdb/node-api": "1.5.3-r.1",
 		"apache-arrow": "21.1.0"

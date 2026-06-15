@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/kafka",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "Kafka producer and consumer streams (Node, via kafkajs)",
 	"type": "module",
 	"engines": {
@@ -65,7 +65,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.5.0"
+		"@datastream/core": "0.6.0"
 	},
 	"peerDependencies": {
 		"kafkajs": "^2.0.0"

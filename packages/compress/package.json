@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/compress",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "Compression and decompression streams for gzip, deflate, brotli, and zstd",
 	"type": "module",
 	"engines": {
@@ -125,7 +125,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.5.0"
+		"@datastream/core": "0.6.0"
 	},
 	"devDependencies": {
 		"brotli-wasm": "^3.0.0"
