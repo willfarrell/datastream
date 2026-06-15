@@ -3,6 +3,8 @@
 /* global crypto */
 import { createTransformStream } from "@datastream/core";
 
+const textEncoder = new TextEncoder();
+
 const DEFAULT_MAX_INPUT_SIZE = 64 * 1024 * 1024; // 64MB
 
 const expectedIvSize = {
@@ -67,8 +69,7 @@ const validateAad = (aad, algorithm) => {
 const concatBuffers = (chunks) => {
 	let totalLength = 0;
 	const buffers = chunks.map((chunk) => {
-		const buf =
-			chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk);
+		const buf = chunk instanceof Uint8Array ? chunk : textEncoder.encode(chunk);
 		totalLength += buf.byteLength;
 		return buf;
 	});
@@ -132,8 +133,7 @@ const aesGcmEncrypt = async (
 	let inputSize = 0;
 	let authTag;
 	const transform = (chunk) => {
-		const buf =
-			chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk);
+		const buf = chunk instanceof Uint8Array ? chunk : textEncoder.encode(chunk);
 		inputSize += buf.byteLength;
 		if (inputSize > maxInputSize) {
 			throw new Error(
@@ -189,8 +189,7 @@ const aesGcmDecrypt = async (
 	const chunks = [];
 	let inputSize = 0;
 	const transform = (chunk) => {
-		const buf =
-			chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk);
+		const buf = chunk instanceof Uint8Array ? chunk : textEncoder.encode(chunk);
 		// Bound memory before buffering/decryption: maxOutputSize alone is checked
 		// only post-decryption, after the full ciphertext is already allocated.
 		inputSize += buf.byteLength;
@@ -250,8 +249,7 @@ const aesCtrEncrypt = async (
 	let blockOffset = 0n;
 	let inputSize = 0;
 	const transform = async (chunk, enqueue) => {
-		const buf =
-			chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk);
+		const buf = chunk instanceof Uint8Array ? chunk : textEncoder.encode(chunk);
 		inputSize += buf.byteLength;
 		if (inputSize > maxInputSize) {
 			throw new Error(
@@ -295,8 +293,7 @@ const aesCtrDecrypt = async (
 	let blockOffset = 0n;
 	let outputSize = 0;
 	const transform = async (chunk, enqueue) => {
-		const buf =
-			chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk);
+		const buf = chunk instanceof Uint8Array ? chunk : textEncoder.encode(chunk);
 		const counter = incrementCounter(iv, blockOffset);
 		// length:128 — see aesCtrEncrypt; the full 128-bit counter must match.
 		const decrypted = await crypto.subtle.decrypt(
@@ -334,8 +331,7 @@ const chacha20Encrypt = async (
 	let inputSize = 0;
 	let authTag;
 	const transform = (chunk) => {
-		const buf =
-			chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk);
+		const buf = chunk instanceof Uint8Array ? chunk : textEncoder.encode(chunk);
 		inputSize += buf.byteLength;
 		if (inputSize > maxInputSize) {
 			throw new Error(
@@ -378,8 +374,7 @@ const chacha20Decrypt = async (
 	const chunks = [];
 	let inputSize = 0;
 	const transform = (chunk) => {
-		const buf =
-			chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk);
+		const buf = chunk instanceof Uint8Array ? chunk : textEncoder.encode(chunk);
 		// Bound memory before buffering/decryption (maxOutputSize is post-decrypt).
 		inputSize += buf.byteLength;
 		if (inputSize > maxInputSize) {
