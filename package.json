@@ -34,7 +34,7 @@
 		"test:sast:semgrep": "semgrep scan --config auto --error",
 		"test:sast:trivy": "trivy fs --scanners vuln,license --include-dev-deps --ignored-licenses 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT,MPL-2.0,BlueOak-1.0.0,Unlicense,Python-2.0,LGPL-3.0-or-later --exit-code 1 --skip-files '**/bun.lock' --disable-telemetry .",
 		"test:sast:trufflehog": "trufflehog filesystem --only-verified --log-level=-1 ./",
-		"test:sast:zizmor": "zizmor .github/workflows/",
+		"test:sast:zizmor": "zizmor .github",
 		"test:types": "tstyche",
 		"test:mutation": "npm run test:mutation --workspaces --if-present",
 		"test:perf": "node --test --test-concurrency=1 'packages/**/*.perf.js'",
