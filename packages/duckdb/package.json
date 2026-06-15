@@ -1,0 +1,91 @@
+{
+	"name": "@datastream/duckdb",
+	"version": "0.5.0",
+	"description": "DuckDB writable streams (copy-from) for Node and browser",
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"engineStrict": true,
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.node.mjs",
+	"module": "./index.web.mjs",
+	"exports": {
+		".": {
+			"node": {
+				"import": {
+					"types": "./index.d.ts",
+					"default": "./index.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./index.d.ts",
+				"default": "./index.web.mjs"
+			}
+		},
+		"./webstream": {
+			"types": "./index.d.ts",
+			"default": "./index.web.mjs"
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"*.mjs",
+		"*.map",
+		"*.d.ts"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test",
+		"test:perf": "node --test index.perf.js",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
+	},
+	"license": "MIT",
+	"keywords": [
+		"duckdb",
+		"sql",
+		"writable",
+		"Web Stream API",
+		"Node Stream API"
+	],
+	"author": {
+		"name": "datastream contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "github:willfarrell/datastream",
+		"directory": "packages/duckdb"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"dependencies": {
+		"@datastream/core": "0.5.0"
+	},
+	"peerDependencies": {
+		"@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
+		"@duckdb/node-api": "^1.5.3-r.1",
+		"apache-arrow": "21.1.0"
+	},
+	"peerDependenciesMeta": {
+		"@duckdb/duckdb-wasm": {
+			"optional": true
+		},
+		"@duckdb/node-api": {
+			"optional": true
+		},
+		"apache-arrow": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@datastream/arrow": "0.5.0",
+		"@duckdb/duckdb-wasm": "1.33.1-dev45.0",
+		"@duckdb/node-api": "1.5.3-r.1",
+		"apache-arrow": "21.1.0"
+	}
+}

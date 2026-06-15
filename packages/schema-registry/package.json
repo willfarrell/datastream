@@ -1,0 +1,71 @@
+{
+	"name": "@datastream/schema-registry",
+	"version": "0.5.0",
+	"description": "Schema-Registry wire-format framing transform streams (Confluent and AWS Glue)",
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"engineStrict": true,
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.node.mjs",
+	"module": "./index.web.mjs",
+	"exports": {
+		".": {
+			"node": {
+				"import": {
+					"types": "./index.d.ts",
+					"default": "./index.node.mjs"
+				}
+			},
+			"import": {
+				"types": "./index.d.ts",
+				"default": "./index.web.mjs"
+			}
+		},
+		"./webstream": {
+			"types": "./index.d.ts",
+			"default": "./index.web.mjs"
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"*.mjs",
+		"*.map",
+		"*.d.ts"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test",
+		"test:perf": "node --test index.perf.js",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
+	},
+	"license": "MIT",
+	"keywords": [
+		"schema-registry",
+		"confluent",
+		"glue",
+		"avro",
+		"protobuf",
+		"Web Stream API",
+		"Node Stream API"
+	],
+	"author": {
+		"name": "datastream contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "github:willfarrell/datastream",
+		"directory": "packages/schema-registry"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"dependencies": {
+		"@datastream/core": "0.5.0"
+	}
+}
