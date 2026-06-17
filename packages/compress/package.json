@@ -144,12 +144,12 @@
 	},
 	"devDependencies": {
 		"brotli-wasm": "^3.0.0",
-		"protobufjs": "^8.4.2",
+		"protobufjs": "^8.5.0",
 		"zstd-codec": "^0.1.0"
 	},
 	"peerDependencies": {
 		"brotli-wasm": "^3.0.0",
-		"protobufjs": "^8.4.2",
+		"protobufjs": "^8.5.0",
 		"zstd-codec": "^0.1.0"
 	},
 	"peerDependenciesMeta": {
