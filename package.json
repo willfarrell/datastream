@@ -66,10 +66,10 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.16",
+		"@biomejs/biome": "^2.5.0",
 		"@commitlint/cli": "^21.0.2",
 		"@commitlint/config-conventional": "^21.0.2",
-		"@types/node": "^25.9.2",
+		"@types/node": "^25.9.3",
 		"esbuild": "^0.28.1",
 		"fast-check": "^4.8.0",
 		"husky": "^9.0.0",

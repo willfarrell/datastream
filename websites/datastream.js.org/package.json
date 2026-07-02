@@ -26,8 +26,8 @@
 		"uuid": "14.0.0"
 	},
 	"devDependencies": {
-		"@sveltejs/adapter-cloudflare": "^7.0.0",
-		"@sveltejs/kit": "^2.64.0",
+		"@sveltejs/adapter-cloudflare": "^7.2.9",
+		"@sveltejs/kit": "^2.65.2",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
 		"@willfarrell-ds/cli": "0.0.0-alpha.6",
 		"esbuild": "^0.28.1",
@@ -39,7 +39,7 @@
 		"vite-plugin-mkcert": "^2.1.0",
 		"vite-plugin-sitemap": "^0.8.0",
 		"vite-plugin-sri": "^0.0.2",
-		"wrangler": "^4.99.0"
+		"wrangler": "^4.101.0"
 	},
 	"overrides": {
 		"@sveltejs/kit": {
