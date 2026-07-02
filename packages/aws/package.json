@@ -164,16 +164,16 @@
 		"@datastream/core": "0.5.0"
 	},
 	"peerDependencies": {
-		"@aws-sdk/client-cloudwatch-logs": "^3.1065.0",
-		"@aws-sdk/client-dynamodb": "^3.1065.0",
-		"@aws-sdk/client-dynamodb-streams": "^3.1065.0",
-		"@aws-sdk/client-kinesis": "^3.1065.0",
-		"@aws-sdk/client-lambda": "^3.1065.0",
-		"@aws-sdk/client-s3": "^3.1065.0",
-		"@aws-sdk/client-sns": "^3.1065.0",
-		"@aws-sdk/client-sqs": "^3.1065.0",
-		"@aws-sdk/client-ssm": "^3.1065.0",
-		"@aws-sdk/lib-storage": "^3.1065.0"
+		"@aws-sdk/client-cloudwatch-logs": "^3.1070.0",
+		"@aws-sdk/client-dynamodb": "^3.1070.0",
+		"@aws-sdk/client-dynamodb-streams": "^3.1070.0",
+		"@aws-sdk/client-kinesis": "^3.1070.0",
+		"@aws-sdk/client-lambda": "^3.1070.0",
+		"@aws-sdk/client-s3": "^3.1070.0",
+		"@aws-sdk/client-sns": "^3.1070.0",
+		"@aws-sdk/client-sqs": "^3.1070.0",
+		"@aws-sdk/client-ssm": "^3.1070.0",
+		"@aws-sdk/lib-storage": "^3.1070.0"
 	},
 	"peerDependenciesMeta": {
 		"@aws-sdk/client-cloudwatch-logs": {
@@ -208,16 +208,16 @@
 		}
 	},
 	"devDependencies": {
-		"@aws-sdk/client-cloudwatch-logs": "^3.1065.0",
-		"@aws-sdk/client-dynamodb": "^3.1065.0",
-		"@aws-sdk/client-dynamodb-streams": "^3.1065.0",
-		"@aws-sdk/client-kinesis": "^3.1065.0",
-		"@aws-sdk/client-lambda": "^3.1065.0",
-		"@aws-sdk/client-s3": "^3.1065.0",
-		"@aws-sdk/client-sns": "^3.1065.0",
-		"@aws-sdk/client-sqs": "^3.1065.0",
-		"@aws-sdk/client-ssm": "^3.1065.0",
-		"@aws-sdk/lib-storage": "^3.1065.0",
+		"@aws-sdk/client-cloudwatch-logs": "^3.1070.0",
+		"@aws-sdk/client-dynamodb": "^3.1070.0",
+		"@aws-sdk/client-dynamodb-streams": "^3.1070.0",
+		"@aws-sdk/client-kinesis": "^3.1070.0",
+		"@aws-sdk/client-lambda": "^3.1070.0",
+		"@aws-sdk/client-s3": "^3.1070.0",
+		"@aws-sdk/client-sns": "^3.1070.0",
+		"@aws-sdk/client-sqs": "^3.1070.0",
+		"@aws-sdk/client-ssm": "^3.1070.0",
+		"@aws-sdk/lib-storage": "^3.1070.0",
 		"aws-sdk-client-mock": "^4.0.0"
 	}
 }
