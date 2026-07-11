@@ -1,0 +1,37 @@
+{
+	"kit": {
+		"csp": {
+			"mode": "hash",
+			"directives": {
+				"report-to": ["default"],
+				"report-uri": [
+					"https://9a3890fa-a783-51c2-b20f-0dbe457d526f.report-to.org"
+				],
+				"img-src": ["self"],
+				"base-uri": ["none"],
+				"style-src": ["self"],
+				"script-src": ["self"],
+				"worker-src": ["self"],
+				"connect-src": ["self"],
+				"default-src": ["none"],
+				"form-action": ["self"],
+				"manifest-src": ["self"],
+				"style-src-attr": ["report-sample"],
+				"frame-ancestors": ["none"],
+				"script-src-attr": ["report-sample"],
+				"upgrade-insecure-requests": true
+			},
+			"reportOnly": {
+				"base-uri": ["none"],
+				"default-src": ["none", "report-sample", "'report-sha256'"],
+				"form-action": ["none"],
+				"frame-ancestors": ["none"],
+				"report-to": ["default"],
+				"report-uri": [
+					"https://9a3890fa-a783-51c2-b20f-0dbe457d526f.report-to.org"
+				],
+				"require-trusted-types-for": ["script"]
+			}
+		}
+	}
+}
