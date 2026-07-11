@@ -6,7 +6,7 @@
 		"headers": {
 			"Connection-Allowlist": "(\"*\");report-to=default",
 			"Connection-Allowlist-Report-Only": "();report-to=default",
-			"Content-Security-Policy": "base-uri 'none';connect-src 'self';default-src 'none';form-action 'self';frame-ancestors 'none';img-src 'self';manifest-src 'self';report-to default;report-uri https://9a3890fa-a783-51c2-b20f-0dbe457d526f.report-to.org;script-src 'self';script-src-attr 'report-sample';style-src 'self';style-src-attr 'report-sample';upgrade-insecure-requests;worker-src 'self'",
+			"Content-Security-Policy": "base-uri 'none';connect-src 'self';default-src 'report-sample' 'report-sha256';form-action 'self';frame-ancestors 'none';img-src 'self';manifest-src 'self';report-to default;report-uri https://9a3890fa-a783-51c2-b20f-0dbe457d526f.report-to.org;script-src 'self' 'report-sample' 'report-sha256';script-src-attr 'report-sample' 'report-sha256';style-src 'self' 'report-sample' 'report-sha256';style-src-attr 'report-sample' 'report-sha256';upgrade-insecure-requests;worker-src 'self'",
 			"Content-Security-Policy-Report-Only": "base-uri 'none';default-src 'report-sample' 'report-sha256';form-action 'none';frame-ancestors 'none';report-to default;report-uri https://9a3890fa-a783-51c2-b20f-0dbe457d526f.report-to.org;require-trusted-types-for 'script'",
 			"Cross-Origin-Embedder-Policy": "require-corp;report-to=default",
 			"Cross-Origin-Opener-Policy": "same-origin;report-to=default",

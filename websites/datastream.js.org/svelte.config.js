@@ -18,42 +18,7 @@ const config = {
 			"@styles": resolve("./src/styles"),
 		},
 		appDir: "_",
-		csp: {
-			...tardisec.kit.csp,
-			mode: "hash",
-			directives: {
-				"default-src": ["none"], // 'report-sha256'
-				"base-uri": ["none"],
-				"connect-src": ["self"],
-				"form-action": ["self"],
-				"frame-ancestors": ["none"],
-				"img-src": ["self"],
-				"manifest-src": ["self"],
-				"script-src": ["self"],
-				"script-src-attr": ["report-sample"],
-				//"script-src-elem": ['self'],
-				"style-src": ["self"],
-				"style-src-attr": ["report-sample"],
-				//"style-src-elem": ['self'],
-				//'trusted-types':[],
-				//'require-trusted-types-for': ['script'],
-				"upgrade-insecure-requests": true,
-				"worker-src": ["self"],
-				"report-to": ["default"],
-				//'report-uri': [`https://${domain}.report-to.org`]
-			},
-			reportOnly: {
-				"base-uri": ["none"],
-				"default-src": ["none", "report-sample", "'report-sha256'"],
-				"form-action": ["none"],
-				"frame-ancestors": ["none"],
-				"report-to": ["default"],
-				"report-uri": [
-					"https://9a3890fa-a783-51c2-b20f-0dbe457d526f.report-to.org",
-				],
-				"require-trusted-types-for": ["script"],
-			},
-		},
+		csp: tardisec.kit.csp,
 		csrf: {
 			trustedOrigins: [origin],
 		},
