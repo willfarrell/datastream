@@ -4,8 +4,6 @@
         import Main from "@design-system/elements/main.svelte";
         import P from "@design-system/elements/p.svelte";
         import { page } from "$app/state";
-
-        const message = $derived(page.error?.message ?? "An error occurred");
 </script>
 
 <svelte:head>
