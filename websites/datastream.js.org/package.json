@@ -33,7 +33,7 @@
 		"esbuild": "^0.28.1",
 		"mdsvex": "^0.12.0",
 		"svelte": "^5.56.3",
-		"svgo": "^4.0.0",
+		"svgo": "^4.0.2",
 		"vite": "^8.1.0",
 		"vite-plugin-llms": "^1.0.0",
 		"vite-plugin-mkcert": "^2.1.0",
