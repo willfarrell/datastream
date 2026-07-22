@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/monorepo",
-	"version": "0.6.1",
+	"version": "0.7.0",
 	"description": "Streams made easy.",
 	"private": true,
 	"type": "module",
@@ -102,7 +102,8 @@
 			}
 		},
 		"miniflare": {
-			"ws": "^8.21.0"
+			"ws": "^8.21.0",
+			"sharp": ">=0.35.0"
 		},
 		"wrangler": {
 			"esbuild": ">=0.28.1"
