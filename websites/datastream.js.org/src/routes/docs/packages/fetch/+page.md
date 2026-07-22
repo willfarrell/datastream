@@ -59,7 +59,22 @@ Also exported as `fetchResponseStream`.
 | `offsetParam` | `string` | — | Query param for offset-based pagination |
 | `offsetAmount` | `number` | — | Offset increment per page |
 
-Pass an array of option objects to fetch from multiple URLs in sequence.
+Pass an array of option objects to fetch from multiple URLs. By default they run one at a time; set `concurrency` (see below) to fetch in parallel.
+
+### Concurrency
+
+Pass `concurrency` in the second argument (stream options) to fetch array items in parallel. Results are still yielded in array order, and request starts remain spaced by `rateLimit`. Defaults to `1` (sequential).
+
+```javascript
+fetchReadableStream(
+  [
+    { url: 'https://api.example.com/a', dataPath: 'data' },
+    { url: 'https://api.example.com/b', dataPath: 'data' },
+    { url: 'https://api.example.com/c', dataPath: 'data' },
+  ],
+  { concurrency: 3 },
+)
+```
 
 ### Pagination strategies
 
