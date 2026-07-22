@@ -31,7 +31,7 @@ export const objectBatchStream = (
 	let previousId;
 	let batch;
 	const transform = (chunk, enqueue) => {
-		const id = keys.map((key) => chunk[key]).join(" ");
+		const id = JSON.stringify(keys.map((key) => chunk[key]));
 		if (previousId !== id) {
 			if (batch) {
 				enqueue(batch);
@@ -163,7 +163,9 @@ export const objectKeyMapStream = ({ keys }, streamOptions = {}) => {
 
 export const objectValueMapStream = ({ key, values }, streamOptions = {}) => {
 	const transform = (chunk, enqueue) => {
-		chunk[key] = values[chunk[key]];
+		if (Object.hasOwn(values, chunk[key])) {
+			chunk[key] = values[chunk[key]];
+		}
 		enqueue(chunk);
 	};
 	return createTransformStream(transform, streamOptions);

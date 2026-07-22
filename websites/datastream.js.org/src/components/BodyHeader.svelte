@@ -12,7 +12,7 @@ import Span from "@design-system/elements/span.svelte";
 import webComponentUrl from "@willfarrell-ds/vanilla/components/ds-input-focus.js?worker&url";
 import { page } from "$app/state";
 
-const { params, data, form } = page;
+const { data, form } = page;
 
 const navTopLinks = {
 	[`v${data.version}`]: true,

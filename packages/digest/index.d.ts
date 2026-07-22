@@ -12,7 +12,11 @@ export type DigestAlgorithm =
 	| "SHA2-512"
 	| "SHA3-256"
 	| "SHA3-384"
-	| "SHA3-512";
+	| "SHA3-512"
+	// Native aliases accepted on both builds, normalized to the canonical name.
+	| "SHA256"
+	| "SHA384"
+	| "SHA512";
 
 type DigestStreamResult = DatastreamPassThrough & {
 	result: () => StreamResult<string>;

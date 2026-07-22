@@ -1,4 +1,7 @@
 #!/usr/bin/env sh
+set -e
+
+find packages -type f \( -name '*.node.mjs' -o -name '*.web.mjs' -o -name '*.node.mjs.map' -o -name '*.web.mjs.map' \) -delete
 
 for package in packages/*; do
   modules=$(jq -r '.exports | keys[] as $k | "\($k)"' ${package}/package.json)

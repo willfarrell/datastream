@@ -1,8 +1,5 @@
 <script>
 import LayoutAsideNav from "@design-system/components/LayoutAsideNav.svelte";
-import { page } from "$app/state";
-
-const { params, data, form } = page;
 
 const nav = {
 	"Getting Started": {
@@ -17,6 +14,8 @@ const nav = {
 		aws: "/docs/packages/aws",
 		indexeddb: "/docs/packages/indexeddb",
 		ipfs: "/docs/packages/ipfs",
+		kafka: "/docs/packages/kafka",
+		duckdb: "/docs/packages/duckdb",
 	},
 	"Data Formats": {
 		csv: "/docs/packages/csv",
@@ -25,6 +24,9 @@ const nav = {
 		object: "/docs/packages/object",
 		base64: "/docs/packages/base64",
 		charset: "/docs/packages/charset",
+		arrow: "/docs/packages/arrow",
+		protobuf: "/docs/packages/protobuf",
+		"schema-registry": "/docs/packages/schema-registry",
 	},
 	Processing: {
 		validate: "/docs/packages/validate",

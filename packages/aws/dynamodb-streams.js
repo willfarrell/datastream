@@ -4,6 +4,7 @@ import {
 	DynamoDBStreamsClient,
 	GetRecordsCommand,
 } from "@aws-sdk/client-dynamodb-streams";
+import { timeout } from "@datastream/core";
 import { awsClientDefaults } from "./client.js";
 
 let client = new DynamoDBStreamsClient(awsClientDefaults);
@@ -30,7 +31,9 @@ export const awsDynamoDBStreamsGetRecordsStream = async (
 			expectMore =
 				opts.ShardIterator !== null && (pollingActive || records.length > 0);
 			if (pollingActive && records.length === 0 && pollingDelay > 0) {
-				await new Promise((resolve) => setTimeout(resolve, pollingDelay));
+				// Abortable idle wait: rejects immediately and clears the timer
+				// when streamOptions.signal aborts mid-delay.
+				await timeout(pollingDelay, { signal: streamOptions.signal });
 			}
 		}
 	}

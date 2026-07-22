@@ -14,10 +14,6 @@ export {
 	gzipDecompressStream,
 } from "@datastream/compress/gzip";
 export {
-	protobufDeserializeStream,
-	protobufSerializeStream,
-} from "@datastream/compress/protobuf";
-export {
 	zstdCompressStream,
 	zstdDecompressStream,
 } from "@datastream/compress/zstd";

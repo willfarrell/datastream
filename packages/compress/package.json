@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/compress",
-	"version": "0.5.0",
+	"version": "0.7.0",
 	"description": "Compression and decompression streams for gzip, deflate, brotli, and zstd",
 	"type": "module",
 	"engines": {
@@ -92,22 +92,6 @@
 		"./deflate/webstream": {
 			"types": "./deflate.d.ts",
 			"default": "./deflate.web.mjs"
-		},
-		"./protobuf": {
-			"node": {
-				"import": {
-					"types": "./protobuf.d.ts",
-					"default": "./protobuf.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./protobuf.d.ts",
-				"default": "./protobuf.web.mjs"
-			}
-		},
-		"./protobuf/webstream": {
-			"types": "./protobuf.d.ts",
-			"default": "./protobuf.web.mjs"
 		}
 	},
 	"types": "index.d.ts",
@@ -119,7 +103,8 @@
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:benchmark": "node __benchmarks__/index.js"
+		"test:perf": "node --test index.perf.js",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
 	"license": "MIT",
 	"keywords": [
@@ -140,26 +125,16 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.5.0"
+		"@datastream/core": "0.7.0"
 	},
 	"devDependencies": {
-		"brotli-wasm": "^3.0.0",
-		"protobufjs": "^8.6.6",
-		"zstd-codec": "^0.1.0"
+		"brotli-wasm": "^3.0.0"
 	},
 	"peerDependencies": {
-		"brotli-wasm": "^3.0.0",
-		"protobufjs": "^8.6.6",
-		"zstd-codec": "^0.1.0"
+		"brotli-wasm": "^3.0.0"
 	},
 	"peerDependenciesMeta": {
 		"brotli-wasm": {
-			"optional": true
-		},
-		"protobufjs": {
-			"optional": true
-		},
-		"zstd-codec": {
 			"optional": true
 		}
 	}

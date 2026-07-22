@@ -20,13 +20,18 @@ export const awsLambdaReadableStream = (lambdaOptions, streamOptions = {}) => {
 };
 export const awsLambdaResponseStream = awsLambdaReadableStream;
 
+// Fail-fast across the array form: a send() rejection or an InvokeComplete
+// ErrorCode terminates the generator and later invocations do not run. The
+// thrown Error's cause carries the offending FunctionName/index so consumers
+// can identify which invocation failed.
 async function* awsLambdaGenerator(lambdaOptions, streamOptions = {}) {
 	if (!Array.isArray(lambdaOptions)) {
 		lambdaOptions = [lambdaOptions];
 	}
-	for (const options of lambdaOptions) {
-		const response = await defaultClient.send(
-			new InvokeWithResponseStreamCommand(options),
+	for (let index = 0; index < lambdaOptions.length; index++) {
+		const { client, ...invokeOptions } = lambdaOptions[index];
+		const response = await (client ?? defaultClient).send(
+			new InvokeWithResponseStreamCommand(invokeOptions),
 			{ abortSignal: streamOptions.signal },
 		);
 		for await (const chunk of response.EventStream) {
@@ -34,7 +39,11 @@ async function* awsLambdaGenerator(lambdaOptions, streamOptions = {}) {
 				yield chunk.PayloadChunk.Payload;
 			} else if (chunk?.InvokeComplete?.ErrorCode) {
 				throw new Error(chunk.InvokeComplete.ErrorCode, {
-					cause: chunk.InvokeComplete.ErrorDetails,
+					cause: {
+						FunctionName: invokeOptions.FunctionName,
+						index,
+						ErrorDetails: chunk.InvokeComplete.ErrorDetails,
+					},
 				});
 			}
 		}

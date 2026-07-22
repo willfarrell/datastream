@@ -2,48 +2,48 @@
 	"name": "datastream.js.org",
 	"description": "SvelteKit SSR",
 	"private": true,
-	"version": "0.5.0",
+	"version": "0.7.0",
 	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"engineStrict": true,
 	"scripts": {
 		"start": "vite dev",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
-		"build": "npm run build:svelte && npm run build:svg && npm run build:styles:extract && npm run build:styles:optimize",
+		"build": "npm run build:svelte && npm run build:workers && npm run build:svg && npm run build:styles:extract && npm run build:styles:optimize",
 		"build:svelte": "vite build",
+		"build:workers": "cp -R .svelte-kit/output/server/_/immutable/workers .svelte-kit/cloudflare/_/immutable/workers",
 		"build:svg": "npx svgo --multipass --recursive ./.svelte-kit/ -o ./.svelte-kit/",
 		"build:styles:extract": "ds extract --input-dir ./.svelte-kit --theme ./src/styles/theme.css --output-dir src/styles/",
 		"build:styles:optimize": "ds optimize-styles ./.svelte-kit",
 		"release:login": "wrangler login --browser false",
-		"release:domain": "curl https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/datastream/domains -H 'Content-Type: application/json' -H 'Authorization: Bearer ${API_KEY_W_PAGES_EDIT}' -d '{\"name\": \"datastream.js.org\"}'",
+		"release:domain": "curl https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/datastreamjs/domains -H 'Content-Type: application/json' -H 'Authorization: Bearer ${API_KEY_W_PAGES_EDIT}' -d '{\"name\": \"datastream.js.org\"}'",
 		"release:deploy": "wrangler pages deploy"
 	},
 	"dependencies": {
 		"@plausible-analytics/tracker": "0.4.5",
-		"@willfarrell-ds/svelte": "0.0.0-alpha.6",
-		"@willfarrell-ds/vanilla": "0.0.0-alpha.6",
+		"@willfarrell-ds/svelte": "0.0.0-alpha.8",
+		"@willfarrell-ds/vanilla": "0.0.0-alpha.8",
 		"hast-util-to-string": "3.0.1",
 		"mdast-util-to-string": "4.0.0",
 		"uuid": "14.0.1"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-cloudflare": "^7.0.0",
-		"@sveltejs/kit": "^2.64.0",
+		"@sveltejs/kit": "^2.60.1",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
-		"@willfarrell-ds/cli": "0.0.0-alpha.6",
-		"esbuild": "^0.28.1",
+		"@willfarrell-ds/cli": "0.0.0-alpha.8",
+		"esbuild": "^0.28.0",
 		"mdsvex": "^0.12.0",
-		"svelte": "^5.56.3",
+		"svelte": "^5.55.7",
 		"svgo": "^4.0.0",
-		"vite": "^8.1.0",
+		"vite": "^8.0.12",
 		"vite-plugin-llms": "^1.0.0",
-		"vite-plugin-mkcert": "^2.1.0",
+		"vite-plugin-mkcert": "^2.0.0",
 		"vite-plugin-sitemap": "^0.8.0",
 		"vite-plugin-sri": "^0.0.2",
-		"wrangler": "^4.99.0"
-	},
-	"overrides": {
-		"@sveltejs/kit": {
-			"cookie": "0.7.2"
-		}
+		"wrangler": "^4.0.0"
 	}
 }

@@ -9,36 +9,70 @@ const NULL_SENTINEL = Symbol.for("@datastream/null");
 const toSafe = (v) => (v === null ? NULL_SENTINEL : v);
 const fromSafe = (v) => (v === NULL_SENTINEL ? null : v);
 
+// streamToObject accumulates onto an Object.create(null) and previously
+// returned `{ ...value }`. If any chunk carried an own `__proto__` key (e.g.
+// from JSON.parse of untrusted input), the spread copied it as an own
+// enumerable `__proto__` data property on the returned plain object — a
+// surprising contract that confuses prototype-based checks. Strip any own
+// `__proto__` key and return a plain object with a normal prototype.
+const sanitizeObject = (value) => {
+	const out = {};
+	for (const key of Object.keys(value)) {
+		if (key === "__proto__") continue;
+		out[key] = value[key];
+	}
+	return out;
+};
+
 export const pipeline = async (streams, streamOptions = {}) => {
 	for (let idx = 0, l = streams.length; idx < l; idx++) {
 		if (typeof streams[idx].then === "function") {
 			throw new Error(`Promise instead of stream passed in at index ${idx}`);
 		}
 	}
+	// Work on copies so appending the terminal writable (and deriving its
+	// objectMode) doesn't mutate the caller's array or options object.
+	streams = [...streams];
 	// Ensure stream ends with only writable
 	const lastStream = streams[streams.length - 1];
 	if (isReadable(lastStream)) {
-		streamOptions.objectMode = lastStream._readableState.objectMode;
+		streamOptions = {
+			...streamOptions,
+			objectMode: lastStream._readableState.objectMode,
+		};
 		streams.push(createWritableStream(() => {}, streamOptions));
 	}
 	await pipelinePromise(streams, streamOptions);
 	return result(streams);
 };
 
-export const pipejoin = (
-	streams,
-	onError = (e) => {
-		process.nextTick(() => {
-			throw e;
-		});
-	},
-) => {
-	const pipeline = streams.reduce((pipeline, stream, idx) => {
-		if (typeof stream.then === "function") {
+export const pipejoin = (streams, onError) => {
+	for (let idx = 0, l = streams.length; idx < l; idx++) {
+		if (typeof streams[idx].then === "function") {
 			throw new Error(`Promise instead of stream passed in at index ${idx}`);
 		}
-		return pipeline.pipe(stream).on("error", onError);
-	});
+	}
+	let settled = false;
+	const teardown = (error) => {
+		if (settled) return;
+		settled = true;
+		for (const stream of streams) {
+			if (!stream.destroyed) stream.destroy(error);
+		}
+		if (onError) {
+			onError(error);
+		} else {
+			process.nextTick(() => {
+				throw error;
+			});
+		}
+	};
+	let pipeline = streams[0];
+	pipeline.on("error", teardown);
+	for (let idx = 1, l = streams.length; idx < l; idx++) {
+		pipeline = pipeline.pipe(streams[idx]);
+		pipeline.on("error", teardown);
+	}
 	return pipeline;
 };
 
@@ -73,32 +107,44 @@ export const backpressureGauge = (streams) => {
 				// Number.parseInt(  (process.hrtime.bigint() - pauseTimestamp).toString() , 10 ) / 1_000_000 // ms
 				const duration = Date.now() - timestamp;
 				metrics[keys[i]].timeline.push({ timestamp, duration });
+				// Clear so a second resume without an intervening pause can't
+				// record a phantom interval from the stale pause timestamp.
+				timestamp = undefined;
 			}
 		});
-		value.on("end", () => {
+		// Readable streams emit 'end'; writable (sink) streams emit 'finish'
+		// and never 'end', so listen for both (plus 'close' as a backstop) to
+		// record total duration for writable/duplex nodes too. Guard against
+		// double-recording when more than one terminal event fires.
+		const recordTotal = () => {
+			if (metrics[keys[i]].total.timestamp != null) return;
 			const duration = Date.now() - startTimestamp;
 			metrics[keys[i]].total = { timestamp: startTimestamp, duration };
-		});
+		};
+		value.on("end", recordTotal);
+		value.on("finish", recordTotal);
+		value.on("close", recordTotal);
 	}
 	return metrics;
 };
 
-export const streamToArray = (stream, { maxBufferSize } = {}) => {
+export const streamToArray = (
+	stream,
+	{ maxBufferSize = Number.POSITIVE_INFINITY } = {},
+) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const value = [];
 			let size = 0;
 			stream.on("data", (chunk) => {
-				if (maxBufferSize != null) {
-					size += chunk?.length ?? chunk?.byteLength ?? 1;
-					if (size > maxBufferSize) {
-						stream.destroy(
-							new Error(
-								`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
-							),
-						);
-						return;
-					}
+				size += chunk?.length ?? chunk?.byteLength ?? 1;
+				if (size > maxBufferSize) {
+					stream.destroy(
+						new Error(
+							`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
+						),
+					);
+					return;
 				}
 				value.push(fromSafe(chunk));
 			});
@@ -112,41 +158,43 @@ export const streamToArray = (stream, { maxBufferSize } = {}) => {
 		const value = [];
 		let size = 0;
 		for await (const chunk of stream) {
-			if (maxBufferSize != null) {
-				size += chunk?.length ?? chunk?.byteLength ?? 1;
-				if (size > maxBufferSize) {
-					throw new Error(
-						`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
-					);
-				}
+			size += chunk?.length ?? chunk?.byteLength ?? 1;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToArray buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
 			}
-			value.push(chunk);
+			// Decode the null sentinel here too so both consumption paths agree.
+			value.push(fromSafe(chunk));
 		}
 		return value;
 	})();
 };
 
-export const streamToObject = (stream, { maxBufferSize } = {}) => {
+export const streamToObject = (
+	stream,
+	{ maxBufferSize = Number.POSITIVE_INFINITY } = {},
+) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const value = Object.create(null);
 			let size = 0;
 			stream.on("data", (chunk) => {
-				if (maxBufferSize != null) {
-					size += chunk?.length ?? chunk?.byteLength ?? 1;
-					if (size > maxBufferSize) {
-						stream.destroy(
-							new Error(
-								`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
-							),
-						);
-						return;
-					}
+				size += chunk?.length ?? chunk?.byteLength ?? 1;
+				if (size > maxBufferSize) {
+					stream.destroy(
+						new Error(
+							`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
+						),
+					);
+					return;
 				}
-				Object.assign(value, chunk);
+				// Unwrap the null sentinel so a null-bearing object stream doesn't
+				// leak the Symbol; Object.assign(value, null) is a safe no-op.
+				Object.assign(value, fromSafe(chunk));
 			});
 			stream.on("end", () => {
-				resolve({ ...value });
+				resolve(sanitizeObject(value));
 			});
 			stream.on("error", reject);
 		});
@@ -155,38 +203,39 @@ export const streamToObject = (stream, { maxBufferSize } = {}) => {
 		const value = Object.create(null);
 		let size = 0;
 		for await (const chunk of stream) {
-			if (maxBufferSize != null) {
-				size += chunk?.length ?? chunk?.byteLength ?? 1;
-				if (size > maxBufferSize) {
-					throw new Error(
-						`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
-					);
-				}
+			size += chunk?.length ?? chunk?.byteLength ?? 1;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToObject buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
 			}
-			Object.assign(value, chunk);
+			Object.assign(value, fromSafe(chunk));
 		}
-		return { ...value };
+		return sanitizeObject(value);
 	})();
 };
 
-export const streamToString = (stream, { maxBufferSize } = {}) => {
+export const streamToString = (
+	stream,
+	{ maxBufferSize = Number.POSITIVE_INFINITY } = {},
+) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const chunks = [];
 			let size = 0;
 			stream.on("data", (chunk) => {
-				if (maxBufferSize != null) {
-					size += chunk?.length ?? chunk?.byteLength ?? 0;
-					if (size > maxBufferSize) {
-						stream.destroy(
-							new Error(
-								`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
-							),
-						);
-						return;
-					}
+				size += chunk?.length ?? chunk?.byteLength ?? 0;
+				if (size > maxBufferSize) {
+					stream.destroy(
+						new Error(
+							`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
+						),
+					);
+					return;
 				}
-				chunks.push(chunk);
+				// Unwrap the null sentinel; otherwise join("") throws
+				// "Cannot convert a Symbol value to a string".
+				chunks.push(fromSafe(chunk));
 			});
 			stream.on("end", () => {
 				resolve(chunks.join(""));
@@ -198,37 +247,38 @@ export const streamToString = (stream, { maxBufferSize } = {}) => {
 		const chunks = [];
 		let size = 0;
 		for await (const chunk of stream) {
-			if (maxBufferSize != null) {
-				size += chunk?.length ?? chunk?.byteLength ?? 0;
-				if (size > maxBufferSize) {
-					throw new Error(
-						`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
-					);
-				}
+			size += chunk?.length ?? chunk?.byteLength ?? 0;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToString buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
 			}
-			chunks.push(chunk);
+			chunks.push(fromSafe(chunk));
 		}
 		return chunks.join("");
 	})();
 };
 
-export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
+export const streamToBuffer = (
+	stream,
+	{ maxBufferSize = Number.POSITIVE_INFINITY } = {},
+) => {
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const value = [];
 			let size = 0;
 			stream.on("data", (chunk) => {
-				const buf = Buffer.from(chunk);
-				if (maxBufferSize != null) {
-					size += buf.length;
-					if (size > maxBufferSize) {
-						stream.destroy(
-							new Error(
-								`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
-							),
-						);
-						return;
-					}
+				// Unwrap the null sentinel; Buffer.from(symbol) throws
+				// ERR_INVALID_ARG_TYPE. fromSafe(null) -> null -> empty buffer.
+				const buf = Buffer.from(fromSafe(chunk) ?? []);
+				size += buf.length;
+				if (size > maxBufferSize) {
+					stream.destroy(
+						new Error(
+							`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
+						),
+					);
+					return;
 				}
 				value.push(buf);
 			});
@@ -242,14 +292,12 @@ export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
 		const value = [];
 		let size = 0;
 		for await (const chunk of stream) {
-			const buf = Buffer.from(chunk);
-			if (maxBufferSize != null) {
-				size += buf.length;
-				if (size > maxBufferSize) {
-					throw new Error(
-						`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
-					);
-				}
+			const buf = Buffer.from(fromSafe(chunk) ?? []);
+			size += buf.length;
+			if (size > maxBufferSize) {
+				throw new Error(
+					`streamToBuffer buffer exceeds maxBufferSize (${maxBufferSize})`,
+				);
 			}
 			value.push(buf);
 		}
@@ -309,7 +357,7 @@ export const createReadableStream = (input, streamOptions = {}) => {
 	if (typeof input === "string") {
 		return createReadableStreamFromString(input, streamOptions);
 	}
-	if (typeof input === "object" && input.byteLength) {
+	if (input.byteLength) {
 		return createReadableStreamFromArrayBuffer(input, streamOptions);
 	}
 	if (Array.isArray(input)) {
@@ -520,18 +568,13 @@ export const timeout = (ms, { signal } = {}) => {
 		);
 	}
 	return new Promise((resolve, reject) => {
-		let settled = false;
 		const abortHandler = () => {
-			if (settled) return;
-			settled = true;
 			clearTimeout(timerId);
 			signal.removeEventListener("abort", abortHandler);
 			reject(new Error("Aborted", { cause: { code: "AbortError" } }));
 		};
 		if (signal) signal.addEventListener("abort", abortHandler);
 		const timerId = setTimeout(() => {
-			if (settled) return;
-			settled = true;
 			if (signal) signal.removeEventListener("abort", abortHandler);
 			resolve();
 		}, ms);

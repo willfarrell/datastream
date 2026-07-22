@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/object",
-	"version": "0.5.0",
+	"version": "0.7.0",
 	"description": "Object transform streams for picking, omitting, pivoting, batching, and key mapping",
 	"type": "module",
 	"engines": {
@@ -39,7 +39,8 @@
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:benchmark": "node __benchmarks__/index.js"
+		"test:perf": "node --test index.perf.js",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
 	"license": "MIT",
 	"keywords": [
@@ -60,6 +61,6 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.5.0"
+		"@datastream/core": "0.7.0"
 	}
 }

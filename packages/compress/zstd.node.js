@@ -2,40 +2,61 @@
 // SPDX-License-Identifier: MIT
 import { constants, createZstdCompress, createZstdDecompress } from "node:zlib";
 
-export const zstdCompressStream = (options = {}, _streamOptions = {}) => {
-	const { quality, ...rest } = options;
-	return createZstdCompress({
-		...rest,
-		params: rest.params ?? {
+// Default decompression output ceiling (256MiB) so that untrusted compressed
+// input is bounded by default (zip-bomb protection). Pass `maxOutputSize: null`
+// to opt out of the limit entirely.
+const DEFAULT_DECOMPRESS_MAX_OUTPUT_SIZE = 256 * 1024 * 1024;
+
+const guardOutput = (stream, maxOutputSize, label) => {
+	let outputSize = 0;
+	const originalPush = stream.push.bind(stream);
+	stream.push = (chunk, encoding) => {
+		if (chunk !== null) {
+			outputSize += chunk.byteLength ?? Buffer.byteLength(chunk);
+			if (outputSize > maxOutputSize) {
+				stream.push = originalPush;
+				stream.destroy(
+					new Error(
+						`${label} output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+					),
+				);
+				return false;
+			}
+		}
+		return originalPush(chunk, encoding);
+	};
+	const restore = () => {
+		stream.push = originalPush;
+	};
+	stream.on("close", restore);
+	stream.on("error", restore);
+};
+
+export const zstdCompressStream = (options = {}, streamOptions = {}) => {
+	const { quality, maxOutputSize, params } = options;
+	const stream = createZstdCompress({
+		...streamOptions,
+		params: params ?? {
 			[constants.ZSTD_c_compressionLevel]:
 				quality ?? constants.ZSTD_CLEVEL_DEFAULT,
 		},
 	});
+	if (maxOutputSize !== null && maxOutputSize !== undefined) {
+		guardOutput(stream, maxOutputSize, "Compression");
+	}
+	return stream;
 };
-export const zstdDecompressStream = (options = {}, _streamOptions = {}) => {
-	const { maxOutputSize, ...rest } = options;
-	const stream = createZstdDecompress(rest);
-	if (maxOutputSize != null) {
-		let outputSize = 0;
-		const originalPush = stream.push.bind(stream);
-		stream.push = (chunk) => {
-			if (chunk !== null) {
-				outputSize += chunk.length;
-				if (outputSize > maxOutputSize) {
-					stream.push = originalPush;
-					stream.destroy(
-						new Error(
-							`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
-						),
-					);
-					return false;
-				}
-			}
-			return originalPush(chunk);
-		};
-		stream.on("close", () => {
-			stream.push = originalPush;
-		});
+export const zstdDecompressStream = (options = {}, streamOptions = {}) => {
+	const { maxOutputSize, params } = options;
+	const stream = createZstdDecompress(
+		params ? { ...streamOptions, params } : streamOptions,
+	);
+	const limit =
+		maxOutputSize === null
+			? undefined
+			: (maxOutputSize ?? DEFAULT_DECOMPRESS_MAX_OUTPUT_SIZE);
+	if (limit !== undefined) {
+		guardOutput(stream, limit, "Decompression");
 	}
 	return stream;
 };

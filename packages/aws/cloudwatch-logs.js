@@ -5,6 +5,7 @@ import {
 	FilterLogEventsCommand,
 	GetLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
+import { timeout } from "@datastream/core";
 import { awsClientDefaults } from "./client.js";
 
 let client = new CloudWatchLogsClient(awsClientDefaults);
@@ -19,7 +20,6 @@ export const awsCloudWatchLogsGetLogEventsStream = async (
 	const { pollingActive, pollingDelay = 1000, ...cwlOptions } = options;
 	cwlOptions.startFromHead ??= true;
 	async function* command(opts) {
-		let previousToken;
 		let expectMore = true;
 		while (expectMore) {
 			const response = await client.send(new GetLogEventsCommand(opts), {
@@ -29,16 +29,18 @@ export const awsCloudWatchLogsGetLogEventsStream = async (
 			for (const item of events) {
 				yield item;
 			}
-			const tokenUnchanged =
-				response.nextForwardToken === previousToken ||
-				response.nextForwardToken === opts.nextToken;
-			previousToken = response.nextForwardToken;
+			// CloudWatch echoes the token you sent (opts.nextToken) back as
+			// nextForwardToken once there are no further events, so an unchanged
+			// token is the end-of-page / caught-up signal.
+			const tokenUnchanged = response.nextForwardToken === opts.nextToken;
 			opts.nextToken = response.nextForwardToken;
 
 			if (tokenUnchanged) {
 				if (pollingActive) {
 					if (pollingDelay > 0) {
-						await new Promise((resolve) => setTimeout(resolve, pollingDelay));
+						// Abortable idle wait: rejects immediately and clears the
+						// timer when streamOptions.signal aborts mid-delay.
+						await timeout(pollingDelay, { signal: streamOptions.signal });
 					}
 				} else {
 					expectMore = false;

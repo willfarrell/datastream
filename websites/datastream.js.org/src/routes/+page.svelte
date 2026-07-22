@@ -190,6 +190,26 @@ await pipeline(streams)`;
                 <H3><A href="/docs/packages/string">string</A></H3>
                 <P>String streams, splitting, replacing, and counting.</P>
             </Card>
+            <Card class="package" id="arrow">
+                <H3><A href="/docs/packages/arrow">arrow</A></H3>
+                <P>Apache Arrow record batch transform streams.</P>
+            </Card>
+            <Card class="package" id="duckdb">
+                <H3><A href="/docs/packages/duckdb">duckdb</A></H3>
+                <P>DuckDB writable streams for rows and Arrow batches.</P>
+            </Card>
+            <Card class="package" id="kafka">
+                <H3><A href="/docs/packages/kafka">kafka</A></H3>
+                <P>Kafka producer and consumer streams.</P>
+            </Card>
+            <Card class="package" id="protobuf">
+                <H3><A href="/docs/packages/protobuf">protobuf</A></H3>
+                <P>Protobuf encode, decode, and length-prefix framing.</P>
+            </Card>
+            <Card class="package" id="schema-registry">
+                <H3><A href="/docs/packages/schema-registry">schema-registry</A></H3>
+                <P>Confluent and Glue Schema Registry framing.</P>
+            </Card>
         </Ul>
     </Section>
     <Section class="slice vertical">

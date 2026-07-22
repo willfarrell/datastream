@@ -17,6 +17,10 @@ lerna-debug.log*
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
+# Stryker mutation testing output
+reports
+.stryker-tmp
+
 # Runtime data
 pids
 *.pid
@@ -115,6 +119,12 @@ dist
 .idea
 *.iml
 .nova
+
+# Agents
+## /graphify hook install
+.husky/post-checkout
+.husky/post-commit
+graphify-out
 
 # OS
 .DS_Store

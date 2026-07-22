@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/encrypt",
-	"version": "0.5.0",
+	"version": "0.7.0",
 	"description": "Symmetric encryption/decryption streams",
 	"type": "module",
 	"engines": {
@@ -39,7 +39,7 @@
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:benchmark": "node __benchmarks__/index.js"
+		"test:perf": "node --test index.perf.js"
 	},
 	"license": "MIT",
 	"keywords": [
@@ -60,7 +60,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.5.0"
+		"@datastream/core": "0.7.0"
 	},
 	"devDependencies": {
 		"libsodium-wrappers": ">=0.7.0"

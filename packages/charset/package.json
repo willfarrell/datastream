@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/charset",
-	"version": "0.5.0",
+	"version": "0.7.0",
 	"description": "Character encoding detection, decoding, and conversion streams",
 	"type": "module",
 	"engines": {
@@ -87,7 +87,8 @@
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:benchmark": "node __benchmarks__/index.js"
+		"test:perf": "node --test index.perf.js",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
 	"license": "MIT",
 	"keywords": [
@@ -108,8 +109,8 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.5.0",
+		"@datastream/core": "0.7.0",
 		"chardet": "2.2.0",
-		"iconv-lite": "0.7.2"
+		"iconv-lite": "0.7.3"
 	}
 }

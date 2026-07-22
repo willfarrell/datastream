@@ -7,8 +7,6 @@ import {
 	deflateDecompressStream,
 	gzipCompressStream,
 	gzipDecompressStream,
-	protobufDeserializeStream,
-	protobufSerializeStream,
 	zstdCompressStream,
 	zstdDecompressStream,
 } from "@datastream/compress";
@@ -53,23 +51,5 @@ describe("zstd", () => {
 
 	test("zstdDecompressStream returns a stream", () => {
 		expect(zstdDecompressStream()).type.not.toBeAssignableTo<never>();
-	});
-});
-
-describe("protobuf", () => {
-	test("protobufSerializeStream accepts Type", () => {
-		expect(
-			protobufSerializeStream({
-				Type: {} as import("@datastream/compress/protobuf").ProtobufType,
-			}),
-		).type.not.toBeAssignableTo<never>();
-	});
-
-	test("protobufDeserializeStream accepts Type", () => {
-		expect(
-			protobufDeserializeStream({
-				Type: {} as import("@datastream/compress/protobuf").ProtobufType,
-			}),
-		).type.not.toBeAssignableTo<never>();
 	});
 });

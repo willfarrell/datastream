@@ -33,12 +33,14 @@ export const fileWriteStream = (
 	if (basePath != null) {
 		const fd = openSync(
 			path,
-			constants.O_WRONLY |
-				constants.O_CREAT |
-				constants.O_TRUNC |
-				constants.O_NOFOLLOW,
+			constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW,
 		);
-		return createWriteStream(null, { ...makeOptions(streamOptions), fd });
+		// `flags` is ignored by createWriteStream when an `fd` is supplied (the
+		// file is already open), so it is omitted here.
+		return createWriteStream(null, {
+			...makeOptions(streamOptions),
+			fd,
+		});
 	}
 	return createWriteStream(path, makeOptions(streamOptions));
 };

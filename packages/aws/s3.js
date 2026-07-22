@@ -24,12 +24,41 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 	if (!Body) {
 		throw new Error("S3.GetObject not found", { cause: params });
 	}
-	return createReadableStream(Body, streamOptions);
+	const stream = createReadableStream(Body, streamOptions);
+	// Tie the SDK Body (live socket-backed readable) lifecycle to the returned
+	// wrapper: if the consumer errors/aborts, tear down Body so the underlying
+	// HTTP connection is not leaked.
+	const teardownBody = () => {
+		// The node SDK Body is a Readable (destroy). The try/catch swallows teardown
+		// errors so releasing the socket cannot re-throw on an already-failed Body
+		// (and tolerates a Body that does not expose destroy()).
+		try {
+			Body.destroy();
+		} catch {}
+	};
+	// Node build: createReadableStream returns a node Readable; clean up on its
+	// 'error' event (without an error argument, so releasing the socket does not
+	// re-emit an unhandled 'error' on the already-failed Body).
+	stream.on("error", teardownBody);
+	// Any build given an abort signal also wires teardown to the abort signal so
+	// socket teardown on consumer abort is consistent across builds.
+	const { signal } = streamOptions;
+	if (signal) {
+		if (signal.aborted) {
+			teardownBody();
+		} else {
+			signal.addEventListener("abort", teardownBody, { once: true });
+		}
+	}
+	return stream;
 };
 
 export const awsS3PutObjectStream = (options, streamOptions = {}) => {
-	const { onProgress, client, tags, ...params } = options;
+	const { onProgress, client, tags, partSize, queueSize, ...params } = options;
 	const stream = createPassThroughStream(() => {}, streamOptions);
+	// lib-storage defaults to a 5 MiB partSize and a 10,000-part ceiling
+	// (~50 GiB max object). Expose partSize/queueSize so callers can raise the
+	// ceiling for very large streamed objects.
 	const upload = new Upload({
 		client: client ?? defaultClient,
 		params: {
@@ -37,6 +66,8 @@ export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 			Body: stream,
 		},
 		tags,
+		partSize,
+		queueSize,
 	});
 	if (onProgress) {
 		stream.on("httpUploadProgress", onProgress);
@@ -62,26 +93,54 @@ export const awsS3ChecksumStream = (
 	if (!algorithm)
 		throw new Error(`Unsupported ChecksumAlgorithm: ${ChecksumAlgorithm}`);
 	let checksums = [];
-	let bytes = new Uint8Array(0);
+	const pending = [];
+	let pendingLen = 0;
+	const takePart = () => {
+		const part = new Uint8Array(partSize);
+		let filled = 0;
+		while (filled < partSize) {
+			const head = pending[0];
+			// Copy as much of the head chunk as the part still needs. `rest` is
+			// whatever is left of the head afterwards: drop the head once it is fully
+			// consumed, otherwise keep the remainder at the front for the next part.
+			const take = Math.min(head.byteLength, partSize - filled);
+			part.set(head.subarray(0, take), filled);
+			filled += take;
+			const rest = head.subarray(take);
+			if (rest.byteLength === 0) {
+				pending.shift();
+			} else {
+				pending[0] = rest;
+			}
+		}
+		pendingLen -= partSize;
+		return part;
+	};
 	const passThrough = async (chunk) => {
 		if (typeof chunk === "string") {
 			chunk = new TextEncoder().encode(chunk);
+		} else {
+			// Normalize ArrayBuffer/Buffer/Uint8Array to a plain Uint8Array so
+			// takePart's subarray/set views are always valid.
+			chunk = new Uint8Array(chunk);
 		}
-		while (bytes.byteLength + chunk.byteLength > partSize) {
-			chunk = _concatBuffers([bytes, chunk]);
-			const prefixChunk = chunk.slice(0, partSize);
-
-			const checksum = await crypto.subtle.digest(algorithm, prefixChunk);
+		pending.push(chunk);
+		pendingLen += chunk.byteLength;
+		// Digest every whole part the buffered bytes can supply; any trailing
+		// partial part (< partSize) stays buffered for the next chunk or the flush.
+		const wholeParts = Math.floor(pendingLen / partSize);
+		for (let part = 0; part < wholeParts; part++) {
+			const checksum = await crypto.subtle.digest(algorithm, takePart());
 			checksums.push(checksum);
-			chunk = chunk.slice(prefixChunk.byteLength);
-
-			bytes = new Uint8Array(0);
 		}
-		bytes = _concatBuffers([bytes, chunk]);
 	};
 	const flush = async () => {
-		if (bytes.byteLength) {
-			const checksum = await crypto.subtle.digest(algorithm, bytes);
+		if (pendingLen > 0) {
+			// Remainder is < partSize: a single concat of the leftover chunks.
+			const checksum = await crypto.subtle.digest(
+				algorithm,
+				_concatBuffers(pending),
+			);
 			checksums.push(checksum);
 		}
 	};
@@ -95,10 +154,11 @@ export const awsS3ChecksumStream = (
 					_concatBuffers(checksums),
 				);
 				checksum = `${_arrayBufferToBase64(checksum)}-${checksums.length}`;
-			} else if (checksums.length === 1) {
-				checksum = _arrayBufferToBase64(checksums[0]);
 			} else {
-				checksum = "";
+				// Single part -> its base64. Empty input leaves checksums empty, and
+				// _arrayBufferToBase64(undefined) is the empty string, matching the
+				// "no data digested" result without a dedicated branch.
+				checksum = _arrayBufferToBase64(checksums[0]);
 			}
 			checksums = checksums.map(_arrayBufferToBase64);
 		}
@@ -129,13 +189,8 @@ const _concatBuffers = (buffers) => {
 	return tmp.buffer;
 };
 const _arrayBufferToBase64 = (buffer) => {
-	let binary = "";
 	const bytes = new Uint8Array(buffer);
-	const len = bytes.byteLength;
-	for (let i = 0; i < len; i++) {
-		binary += String.fromCharCode(bytes[i]);
-	}
-	return btoa(binary);
+	return btoa(String.fromCharCode(...bytes));
 };
 
 export default {

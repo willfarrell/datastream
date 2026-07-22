@@ -23,16 +23,22 @@ export const stringCountStream = (
 	{ substr, resultKey } = {},
 	streamOptions = {},
 ) => {
+	if (typeof substr !== "string" || substr.length === 0) {
+		throw new Error("stringCountStream requires a non-empty substr");
+	}
 	let value = 0;
+	let carry = "";
 	const passThrough = (chunk) => {
+		const combined = carry + chunk;
 		let cursor = -1;
-		while (cursor < chunk.length) {
-			cursor = chunk.indexOf(substr, cursor + 1);
+		while (true) {
+			cursor = combined.indexOf(substr, cursor + 1);
 			if (cursor === -1) {
 				break;
 			}
 			value += 1;
 		}
+		carry = combined.slice(-(substr.length - 1));
 	};
 	const stream = createPassThroughStream(passThrough, streamOptions);
 	stream.result = () => ({ key: resultKey ?? "count", value });
@@ -54,7 +60,6 @@ export const stringMinimumFirstChunkSize = (
 		buffer += chunk;
 		if (buffer.length >= chunkSize) {
 			enqueue(buffer);
-			buffer = "";
 			done = true;
 		}
 	};
@@ -141,6 +146,9 @@ export const stringSplitStream = (options, streamOptions = {}) => {
 		separator,
 		maxBufferSize = 16_777_216, // 16MB
 	} = options;
+	if (typeof separator !== "string" || separator.length === 0) {
+		throw new Error("stringSplitStream requires a non-empty separator");
+	}
 	let previousChunk = "";
 	const transform = (chunk, enqueue) => {
 		chunk = previousChunk + chunk;

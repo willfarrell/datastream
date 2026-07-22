@@ -2,58 +2,54 @@
 // SPDX-License-Identifier: MIT
 import { createGunzip, createGzip } from "node:zlib";
 
+// Default decompression output ceiling (256MiB) so that untrusted compressed
+// input is bounded by default (zip-bomb protection). Pass `maxOutputSize: null`
+// to opt out of the limit entirely.
+const DEFAULT_DECOMPRESS_MAX_OUTPUT_SIZE = 256 * 1024 * 1024;
+
+const guardOutput = (stream, maxOutputSize, label) => {
+	let outputSize = 0;
+	const originalPush = stream.push.bind(stream);
+	stream.push = (chunk, encoding) => {
+		if (chunk !== null) {
+			outputSize += chunk.byteLength ?? Buffer.byteLength(chunk);
+			if (outputSize > maxOutputSize) {
+				stream.push = originalPush;
+				stream.destroy(
+					new Error(
+						`${label} output exceeds maxOutputSize (${maxOutputSize} bytes)`,
+					),
+				);
+				return false;
+			}
+		}
+		return originalPush(chunk, encoding);
+	};
+	const restore = () => {
+		stream.push = originalPush;
+	};
+	stream.on("close", restore);
+	stream.on("error", restore);
+};
+
 // quality -1 - 9
 export const gzipCompressStream = (options = {}, streamOptions = {}) => {
 	const { quality, maxOutputSize } = options;
 	const stream = createGzip({ ...streamOptions, level: quality });
 	if (maxOutputSize !== null && maxOutputSize !== undefined) {
-		let outputSize = 0;
-		const originalPush = stream.push.bind(stream);
-		stream.push = (chunk) => {
-			if (chunk !== null) {
-				outputSize += chunk.length;
-				if (outputSize > maxOutputSize) {
-					stream.push = originalPush;
-					stream.destroy(
-						new Error(
-							`Compression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
-						),
-					);
-					return false;
-				}
-			}
-			return originalPush(chunk);
-		};
-		stream.on("close", () => {
-			stream.push = originalPush;
-		});
+		guardOutput(stream, maxOutputSize, "Compression");
 	}
 	return stream;
 };
 export const gzipDecompressStream = (options = {}, streamOptions = {}) => {
 	const { maxOutputSize } = options;
 	const stream = createGunzip(streamOptions);
-	if (maxOutputSize != null) {
-		let outputSize = 0;
-		const originalPush = stream.push.bind(stream);
-		stream.push = (chunk) => {
-			if (chunk !== null) {
-				outputSize += chunk.length;
-				if (outputSize > maxOutputSize) {
-					stream.push = originalPush;
-					stream.destroy(
-						new Error(
-							`Decompression output exceeds maxOutputSize (${maxOutputSize} bytes)`,
-						),
-					);
-					return false;
-				}
-			}
-			return originalPush(chunk);
-		};
-		stream.on("close", () => {
-			stream.push = originalPush;
-		});
+	const limit =
+		maxOutputSize === null
+			? undefined
+			: (maxOutputSize ?? DEFAULT_DECOMPRESS_MAX_OUTPUT_SIZE);
+	if (limit !== undefined) {
+		guardOutput(stream, limit, "Decompression");
 	}
 	return stream;
 };
