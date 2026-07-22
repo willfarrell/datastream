@@ -231,6 +231,90 @@ test(`${variant}: fetchResponseStream should fetch json objects in parallel`, as
 	]);
 });
 
+const jsonResponse = (obj) =>
+	new Response(JSON.stringify(obj), {
+		status: 200,
+		statusText: "OK",
+		headers: new Headers({ "Content-Type": "application/json" }),
+	});
+
+test(`${variant}: fetchResponseStream concurrency fetches array items and preserves order`, async (_t) => {
+	fetchSetDefaults({ dataPath: "", headers: { Accept: "application/json" } });
+	const originalFetch = global.fetch;
+	// item 1 resolves SLOWER than 2/3 — output must still be [1,2,3], and forces a refill
+	global.fetch = async (url) => {
+		const v = Number(new URL(url).searchParams.get("v"));
+		if (v === 1) await new Promise((r) => setTimeout(r, 25));
+		return jsonResponse({ value: v });
+	};
+	try {
+		const config = [
+			{ url: "https://example.org/c?v=1" },
+			{ url: "https://example.org/c?v=2" },
+			{ url: "https://example.org/c?v=3" },
+		];
+		const output = await streamToArray(
+			fetchResponseStream(config, { concurrency: 2 }),
+		);
+		deepStrictEqual(output, [{ value: 1 }, { value: 2 }, { value: 3 }]);
+	} finally {
+		global.fetch = originalFetch;
+		fetchSetDefaults({ dataPath: undefined });
+	}
+});
+
+test(`${variant}: fetchResponseStream concurrency paces request starts by rateLimit`, async (_t) => {
+	fetchSetDefaults({ dataPath: "" });
+	const originalFetch = global.fetch;
+	const starts = [];
+	global.fetch = async () => {
+		starts.push(Date.now());
+		return jsonResponse({});
+	};
+	try {
+		const config = [
+			{ url: "https://example.org/p1", rateLimit: 0.03 },
+			{ url: "https://example.org/p2", rateLimit: 0.03 },
+		];
+		await streamToArray(fetchResponseStream(config, { concurrency: 2 }));
+		strictEqual(starts.length, 2);
+		ok(
+			starts[1] - starts[0] >= 25,
+			`2nd start spaced: ${starts[1] - starts[0]}ms`,
+		);
+	} finally {
+		global.fetch = originalFetch;
+		fetchSetDefaults({ dataPath: undefined });
+	}
+});
+
+test(`${variant}: fetchResponseStream concurrency surfaces an item error and settles the window`, async (_t) => {
+	fetchSetDefaults({ dataPath: "" });
+	const originalFetch = global.fetch;
+	global.fetch = async (url) => {
+		if (url.includes("bad"))
+			return new Response("nope", {
+				status: 500,
+				headers: new Headers({ "Content-Type": "application/json" }),
+			});
+		await new Promise((r) => setTimeout(r, 30)); // still in flight when the error hits
+		return jsonResponse({ ok: 1 });
+	};
+	try {
+		const config = [
+			{ url: "https://example.org/bad" },
+			{ url: "https://example.org/slow" },
+		];
+		await streamToArray(fetchResponseStream(config, { concurrency: 2 }));
+		ok(false, "should have thrown");
+	} catch (error) {
+		ok(/ 500 /.test(error.message), error.message);
+	} finally {
+		global.fetch = originalFetch;
+		fetchSetDefaults({ dataPath: undefined });
+	}
+});
+
 test(`${variant}: fetchResponseStream should fetch paginated json in series`, async (_t) => {
 	fetchSetDefaults({ headers: { Accept: "application/json" } });
 	const config = {

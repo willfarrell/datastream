@@ -30,6 +30,12 @@ export interface FetchOptions {
 	rateLimitTimestamp?: number;
 }
 
+export interface FetchStreamOptions extends StreamOptions {
+	// Max array items fetched concurrently (default 1 = sequential). Items are
+	// yielded in array order; request starts are spaced by rateLimit.
+	concurrency?: number;
+}
+
 export function fetchSetDefaults(options: Partial<FetchOptions>): void;
 
 export function fetchWritableStream(
@@ -44,7 +50,7 @@ export { fetchWritableStream as fetchRequestStream };
 
 export function fetchReadableStream(
 	fetchOptions: FetchOptions | FetchOptions[],
-	streamOptions?: StreamOptions,
+	streamOptions?: FetchStreamOptions,
 ): DatastreamReadable;
 export { fetchReadableStream as fetchResponseStream };
 

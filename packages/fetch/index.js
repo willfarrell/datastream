@@ -104,39 +104,83 @@ export const fetchReadableStream = (fetchOptions, streamOptions = {}) => {
 };
 export const fetchResponseStream = fetchReadableStream;
 
+const fetchItem = async (options, streamOptions) => {
+	if (options.offsetParam) {
+		options.qs[options.offsetParam] ??= 0;
+	}
+	if (Object.keys(options.qs).length) {
+		options.url += `?${new URLSearchParams(options.qs)}`.replaceAll("+", "%20");
+	}
+	options.__origin = new URL(options.url).origin;
+	return fetchUnknown(options, streamOptions);
+};
+
+async function* drainResponse(response) {
+	try {
+		for await (const chunk of response) {
+			yield chunk;
+		}
+	} catch (error) {
+		await response?.cancel?.();
+		await response?.return?.();
+		throw error;
+	}
+}
+
 async function* fetchGenerator(fetchOptions, streamOptions) {
-	let rateLimitTimestamp = 0;
 	if (!Array.isArray(fetchOptions)) fetchOptions = [fetchOptions];
+	const concurrency = Math.max(1, streamOptions.concurrency ?? 1);
+	if (concurrency > 1) {
+		yield* fetchConcurrent(fetchOptions, concurrency, streamOptions);
+		return;
+	}
+
+	let rateLimitTimestamp = 0;
 	for (let options of fetchOptions) {
 		options = mergeOptions(options);
 		options.rateLimitTimestamp ??= rateLimitTimestamp;
-
-		if (options.offsetParam) {
-			options.qs[options.offsetParam] ??= 0;
-		}
-
-		if (Object.keys(options.qs).length) {
-			options.url += `?${new URLSearchParams(options.qs)}`.replaceAll(
-				"+",
-				"%20",
-			);
-		}
-		options.__origin = new URL(options.url).origin;
-		const response = await fetchUnknown(options, streamOptions);
-		try {
-			for await (const chunk of response) {
-				yield chunk;
-			}
-		} catch (error) {
-			// Binary branch: response is a Web ReadableStream with .cancel().
-			// JSON branch: response is the fetchJson async generator with
-			// .return(). Call both so resources are released uniformly.
-			await response?.cancel?.();
-			await response?.return?.();
-			throw error;
-		}
-		// ensure there is rate limiting between req with different options
+		const response = await fetchItem(options, streamOptions);
+		yield* drainResponse(response); // stream chunk-by-chunk (backpressure)
 		rateLimitTimestamp = options.rateLimitTimestamp;
+	}
+}
+
+async function* fetchConcurrent(fetchOptions, concurrency, streamOptions) {
+	let clock = 0;
+	const pace = async (rateLimit) => {
+		const now = Date.now();
+		const at = clock > now ? clock : now;
+		clock = at + 1000 * rateLimit;
+		if (at > now) {
+			await timeout(at - now, streamOptions);
+		}
+	};
+	const runItem = async (item) => {
+		const options = mergeOptions(item);
+		await pace(options.rateLimit);
+		options.rateLimit = 0;
+		const response = await fetchItem(options, streamOptions);
+		const output = [];
+		for await (const chunk of drainResponse(response)) {
+			output.push(chunk); // buffer so results can be yielded in array order
+		}
+		return output;
+	};
+
+	const inFlight = [];
+	let next = 0;
+	try {
+		while (next < fetchOptions.length && inFlight.length < concurrency) {
+			inFlight.push(runItem(fetchOptions[next++]));
+		}
+		while (inFlight.length) {
+			yield* await inFlight.shift();
+			if (next < fetchOptions.length) {
+				inFlight.push(runItem(fetchOptions[next++]));
+			}
+		}
+	} finally {
+		await Promise.allSettled(inFlight);
 	}
 }
 
