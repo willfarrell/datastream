@@ -1313,7 +1313,9 @@ if (variant === "webstream") {
 		chunk instanceof ArrayBuffer || ArrayBuffer.isView(chunk);
 	const installStrictCompression = () => {
 		globalThis.CompressionStream = class {
-			constructor() {
+			// Mirror the real WHATWG signature `new CompressionStream(format)` so the
+			// identity stand-in has the same arity (the format is intentionally ignored).
+			constructor(_format) {
 				const ts = new TransformStream({
 					transform(chunk, controller) {
 						if (!isBufferSource(chunk)) {
