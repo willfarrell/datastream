@@ -15,6 +15,8 @@ const catchError = (input, e) => {
 		"duckdb: identifier must be a non-empty string",
 		// DuckDB type coercion failures (e.g. out-of-range float → INTEGER)
 		"Failed to cast value:",
+		// Integer-valued float beyond int64 range (e.g. fc.float() ≥ 2^63)
+		"bigint out of int64 range",
 		// Cannot store objects/arrays/symbols/functions into typed columns
 		"Cannot create values of type ANY. Specify a specific type.",
 		// Column count mismatch between batch and table

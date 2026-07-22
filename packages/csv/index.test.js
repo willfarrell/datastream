@@ -172,6 +172,16 @@ test(`${variant}: csvParseStream should parse single-column CSV`, async (_t) => 
 	deepStrictEqual(output, [["a"], ["b"], ["c"]]);
 });
 
+test(`${variant}: csvParseStream should parse a blank row between rows`, async (_t) => {
+	// The blank row makes the parser's newline resync land exactly on the current
+	// position (nextNl === pos), exercising the row-terminator cache boundary.
+	const streams = [createReadableStream("a\r\n\r\nb\r\n"), csvParseStream()];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+
+	deepStrictEqual(output, [["a"], [""], ["b"]]);
+});
+
 test(`${variant}: csvParseStream should handle chunk boundary inside quoted field`, async (_t) => {
 	const streams = [
 		createReadableStream(['"hello,', ' world",42\r\n']),

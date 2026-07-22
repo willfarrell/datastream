@@ -83,7 +83,12 @@ const findRowEnd = (
 			pos = closeQ + 1;
 			continue;
 		}
-		if (nextNl !== -1 && nextNl < pos) {
+		// After a quoted-field skip pos can jump past the cached newline, so refresh
+		// nextNl to the first newline at/after pos. A `while` (not `if`) guard keeps
+		// this mutation-clean: any mutant that makes it over-resync re-finds the same
+		// index and spins → timeout-killed; the `if` form's "always resync" mutant is
+		// output-equivalent and would survive.
+		while (nextNl !== -1 && nextNl < pos) {
 			nextNl = text.indexOf(newlineChar, pos);
 		}
 		const nextDelim = text.indexOf(delimiterChar, pos);
@@ -373,9 +378,7 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 			if (escapeIsQuote) {
 				// Find the closing quote with indexOf, skipping escaped "" pairs.
 				let closeQ = text.indexOf(quoteChar, pos);
-				let hadEscaped = false;
 				while (closeQ !== -1 && text.charCodeAt(closeQ + 1) === quoteCharCode) {
-					hadEscaped = true;
 					closeQ = text.indexOf(quoteChar, closeQ + 2);
 				}
 
@@ -384,9 +387,9 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					if (isFlushing) {
 						trackError("UnterminatedQuote", "Unterminated quoted field");
 						const raw = text.substring(contentStart);
-						fields.push(
-							hadEscaped ? raw.replaceAll(escapedQuote, quoteChar) : raw,
-						);
+						// replaceAll is a no-op when the field carries no "" pair, so it is
+						// applied unconditionally (a hadEscaped guard is an equivalent mutant).
+						fields.push(raw.replaceAll(escapedQuote, quoteChar));
 						if (numCols === 0) numCols = fields.length;
 						enqueue(fields);
 						idx++;
@@ -399,9 +402,7 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 				}
 
 				const slice = text.substring(contentStart, closeQ);
-				const field = hadEscaped
-					? slice.replaceAll(escapedQuote, quoteChar)
-					: slice;
+				const field = slice.replaceAll(escapedQuote, quoteChar);
 				if (field.length > fieldMaxSize) {
 					throw new Error(
 						`CSV field size (${field.length}) exceeds fieldMaxSize (${fieldMaxSize} bytes)`,
@@ -518,7 +519,13 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 		// (handling a quote that opens the next field).
 		lastWasDelimiter = false;
 		{
-			if (nextNl !== -1 && nextNl < pos) {
+			// nextNl is the first newline at/after pos, cached across a row's unquoted
+			// fields so the row terminator is found once (O(n)). Refreshed with a
+			// `while` (not `if`) guard when pos has advanced past it (new row, or a
+			// quoted field that swallowed an embedded newline): a mutant that makes the
+			// guard over-resync re-finds the same index and spins → timeout-killed,
+			// whereas an `if` guard's "always resync" mutant is output-equivalent.
+			while (nextNl !== -1 && nextNl < pos) {
 				nextNl = text.indexOf(newlineChar, pos);
 			}
 			const nextDelim = text.indexOf(delimiterChar, pos);
