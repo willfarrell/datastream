@@ -49,7 +49,7 @@
 		"audit": "npm audit fix --workspaces",
 		"release:license:add": "license-check-and-add add -f .license.config.json",
 		"release:license:remove": "license-check-and-add remove -f .license.config.json",
-		"release:sync": "npm version $npm_package_version --workspaces; find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@datastream/(.*)\\\": ([^,]*)|\\\"@datastream/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm && npm install",
+		"release:sync": "npm version $npm_package_version --workspaces; v=$(npm pkg get version | tr -d '\"'); find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@datastream/(.*)\\\": ([^,]*)|\\\"@datastream/\\1\\\": \\\"$v\\\"|g\" {} \\; && npm run rm && npm install",
 		"release:tag": "git tag $npm_package_version"
 	},
 	"repository": {
