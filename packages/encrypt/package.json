@@ -63,7 +63,7 @@
 		"@datastream/core": "0.7.0"
 	},
 	"devDependencies": {
-		"libsodium-wrappers": ">=0.7.0"
+		"libsodium-wrappers": ">=0.8.4"
 	},
 	"peerDependencies": {
 		"libsodium-wrappers": ">=0.7.0"

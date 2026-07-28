@@ -76,20 +76,20 @@
 		"@commitlint/cli": "^21.0.0",
 		"@commitlint/config-conventional": "^21.0.0",
 		"@stryker-mutator/core": "^9.0.0",
-		"@types/node": "^26.1.1",
+		"@types/node": "^26.0.0",
 		"esbuild": "^0.28.0",
-		"fast-check": "^4.8.0",
+		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
-		"tinybench": "^6.0.2",
-		"tstyche": "^7.2.0"
+		"tinybench": "^6.0.0",
+		"tstyche": "^7.0.0"
 	},
 	"overrides": {
 		"qs": "^6.15.2",
 		"@sveltejs/kit": {
 			"cookie": "^0.7.2"
 		},
-		"@willfarrell-ds/cli": {
-			"mathjs": ">=15.2.0"
+		"js-beautify": {
+			"brace-expansion": ">=5.0.8"
 		},
 		"license-check-and-add": {
 			"minimatch": "^10.2.5"
@@ -100,13 +100,6 @@
 					"js-yaml": ">=4.2.0"
 				}
 			}
-		},
-		"miniflare": {
-			"ws": "^8.21.0",
-			"sharp": ">=0.35.0"
-		},
-		"wrangler": {
-			"esbuild": ">=0.28.1"
 		}
 	},
 	"workspaces": [
