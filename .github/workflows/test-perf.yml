@@ -70,5 +70,7 @@ jobs:
         run: |
           npm run build --if-present
       - name: Benchmarking tests
+        env:
+          PACKAGE: ${{ matrix.package }}
         run: |
-          node --test --test-concurrency=1 "packages/${{ matrix.package }}/index.perf.js"
+          node --test --test-concurrency=1 "packages/${PACKAGE}/index.perf.js"

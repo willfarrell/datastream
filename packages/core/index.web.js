@@ -138,6 +138,10 @@ export const streamToBuffer = async (stream, { maxBufferSize } = {}) => {
 	return out;
 };
 
+export const backpressureGauge = (_streams) => {
+	throw new Error("backpressureGauge: Not supported");
+};
+
 export const isReadable = (stream) => {
 	// Short-circuit non-objects so the `.readable` access can't throw on
 	// null/undefined/primitives (Node's instanceof check safely returns false).
@@ -472,6 +476,11 @@ export const shallowEqual = (a, b) => {
 	return true;
 };
 
+// ponytail: JSON.stringify comparison, no web stdlib equivalent of node:util's
+// isDeepStrictEqual (which the node build uses). Known ceiling: this is
+// key-order sensitive, treats NaN as equal to NaN, ignores undefined-valued
+// keys, flattens Date/Map/Set, and throws on circular references. Upgrade path
+// is a shared recursive compare - worth writing once the web build has tests.
 export const deepEqual = (a, b) => {
 	try {
 		return JSON.stringify(a) === JSON.stringify(b);
@@ -489,18 +498,13 @@ export const timeout = (ms, { signal } = {}) => {
 		);
 	}
 	return new Promise((resolve, reject) => {
-		let settled = false;
 		const abortHandler = () => {
-			if (settled) return;
-			settled = true;
 			clearTimeout(timerId);
 			signal.removeEventListener("abort", abortHandler);
 			reject(new Error("Aborted", { cause: { code: "AbortError" } }));
 		};
 		if (signal) signal.addEventListener("abort", abortHandler);
 		const timerId = setTimeout(() => {
-			if (settled) return;
-			settled = true;
 			if (signal) signal.removeEventListener("abort", abortHandler);
 			resolve();
 		}, ms);

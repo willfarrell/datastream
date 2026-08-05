@@ -879,15 +879,15 @@ test(`${variant}: deepClone throws for non-cloneable values`, () => {
 	}
 });
 
-test(`${variant}: deepEqual throws for circular references`, () => {
+test(`${variant}: deepEqual handles circular references`, () => {
 	const a = {};
 	a.self = a;
-	try {
-		deepEqual(a, a);
-		throw new Error("Should have thrown");
-	} catch (e) {
-		ok(e.message.includes("stringify chunk"));
-	}
+	const b = {};
+	b.self = b;
+	strictEqual(deepEqual(a, a), true);
+	strictEqual(deepEqual(a, b), true);
+	b.other = 1;
+	strictEqual(deepEqual(a, b), false);
 });
 
 // *** shared helpers *** //
@@ -923,9 +923,17 @@ test(`${variant}: shallowEqual compares own keys`, () => {
 	strictEqual(shallowEqual(null, { a: 1 }), false);
 });
 
-test(`${variant}: deepEqual via JSON serialization`, () => {
+test(`${variant}: deepEqual compares structurally`, () => {
 	strictEqual(deepEqual({ a: { b: 1 } }, { a: { b: 1 } }), true);
 	strictEqual(deepEqual({ a: { b: 1 } }, { a: { b: 2 } }), false);
+	// The cases a JSON.stringify comparison gets wrong.
+	strictEqual(deepEqual({ a: 1, b: 2 }, { b: 2, a: 1 }), true);
+	strictEqual(deepEqual({ a: undefined }, {}), false);
+	strictEqual(deepEqual(Number.NaN, Number.NaN), true);
+	strictEqual(deepEqual(new Date(0), new Date(0)), true);
+	strictEqual(deepEqual(new Date(0), new Date(1)), false);
+	strictEqual(deepEqual(new Set([1]), new Set([1])), true);
+	strictEqual(deepEqual(new Set([1]), new Set([2])), false);
 });
 
 // *** Node NULL_SENTINEL collector regression *** //
@@ -1922,7 +1930,7 @@ test(`${variant}: createTransformStream awaits an async flush before finishing`,
 	deepStrictEqual(order, ["t", "flush-start", "flush-end"]);
 });
 
-// --- deepClone / deepEqual preserve the original error as `cause` (kills
+// --- deepClone preserves the original error as `cause` (kills
 // ObjectLiteral -> {} which drops the cause). ---
 test(`${variant}: deepClone attaches the original error as cause`, (_t) => {
 	try {
@@ -1930,18 +1938,6 @@ test(`${variant}: deepClone attaches the original error as cause`, (_t) => {
 		throw new Error("Should have thrown");
 	} catch (e) {
 		ok(e.message.includes("clone chunk"));
-		ok(e.cause instanceof Error, "expected a cause error");
-	}
-});
-
-test(`${variant}: deepEqual attaches the original error as cause`, (_t) => {
-	const a = {};
-	a.self = a;
-	try {
-		deepEqual(a, a);
-		throw new Error("Should have thrown");
-	} catch (e) {
-		ok(e.message.includes("stringify chunk"));
 		ok(e.cause instanceof Error, "expected a cause error");
 	}
 });

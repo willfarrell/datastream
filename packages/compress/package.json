@@ -98,7 +98,9 @@
 	"files": [
 		"*.mjs",
 		"*.map",
-		"*.d.ts"
+		"*.d.ts",
+		"guard.node.js",
+		"native.web.js"
 	],
 	"scripts": {
 		"test": "npm run test:unit",

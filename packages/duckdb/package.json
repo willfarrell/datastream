@@ -69,7 +69,7 @@
 	"peerDependencies": {
 		"@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
 		"@duckdb/node-api": "^1.5.4-r.1",
-		"apache-arrow": "21.1.0"
+		"apache-arrow": "^21.1.0"
 	},
 	"peerDependenciesMeta": {
 		"@duckdb/duckdb-wasm": {

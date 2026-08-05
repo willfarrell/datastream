@@ -7,6 +7,7 @@
 // - not supported in safari
 import { createTransformStream } from "@datastream/core";
 import brotliPromise from "brotli-wasm"; // Import the default export
+import { resolveDecompressLimit, toBytes } from "./native.web.js";
 
 const { CompressStream, DecompressStream, BrotliStreamResultCode } =
 	await brotliPromise; // Import is async in browsers due to wasm requirements!
@@ -14,15 +15,6 @@ const { CompressStream, DecompressStream, BrotliStreamResultCode } =
 // Fixed-size output buffer; the streaming loop drains NeedsMoreOutput so any
 // chunk/output size is handled correctly.
 const OUTPUT_SIZE = 16_384; // 16KB
-
-// Default decompression output ceiling (256MiB) so that untrusted compressed
-// input is bounded by default (zip-bomb protection). Pass `maxOutputSize: null`
-// to opt out of the limit entirely.
-const DEFAULT_DECOMPRESS_MAX_OUTPUT_SIZE = 256 * 1024 * 1024;
-
-const textEncoder = new TextEncoder();
-const toBytes = (chunk) =>
-	typeof chunk === "string" ? textEncoder.encode(chunk) : chunk;
 
 // https://github.com/httptoolkit/brotli-wasm/issues/14
 export const brotliCompressStream = (options = {}, streamOptions = {}) => {
@@ -62,11 +54,7 @@ export const brotliCompressStream = (options = {}, streamOptions = {}) => {
 	return createTransformStream(transform, flush, streamOptions);
 };
 export const brotliDecompressStream = (options = {}, streamOptions = {}) => {
-	const { maxOutputSize } = options;
-	const limit =
-		maxOutputSize === null
-			? undefined
-			: (maxOutputSize ?? DEFAULT_DECOMPRESS_MAX_OUTPUT_SIZE);
+	const limit = resolveDecompressLimit(options.maxOutputSize);
 	const engine = new DecompressStream();
 	let outputSize = 0;
 	const transform = (chunk, enqueue) => {
