@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/protobuf",
-	"version": "0.7.0",
+	"version": "0.7.1",
 	"description": "Protobuf encode/decode and length-prefix framing transform streams",
 	"type": "module",
 	"engines": {
@@ -65,7 +65,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.7.0"
+		"@datastream/core": "0.7.1"
 	},
 	"devDependencies": {
 		"protobufjs": "^8.0.0"
