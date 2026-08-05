@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/monorepo",
-	"version": "0.7.0",
+	"version": "0.7.1",
 	"description": "Streams made easy.",
 	"private": true,
 	"type": "module",
@@ -17,13 +17,10 @@
 		"git:test-staged": "which node && node -v && npm run test:unit",
 		"lint": "biome check --write --no-errors-on-unmatched",
 		"build": "bin/esbuild",
-		"pretest": "npm run build",
-		"test": "npm run test:lint && npm run test:unit && npm run test:mutation && npm run test:dast  && npm run test:types && npm run test:perf && npm run test:sast",
+		"test": "npm run test:lint && npm run test:unit && npm run test:mutation && npm run test:dast && npm run test:types && npm run test:perf && npm run test:sast",
 		"test:lint": "biome ci --no-errors-on-unmatched",
 		"test:lint:staged": "biome check --staged --no-errors-on-unmatched",
-		"test:unit": "npm run test:unit:node && npm run test:unit:web",
-		"test:unit:node": "node --test --conditions=node --test-force-exit --experimental-test-coverage --test-coverage-exclude=packages/file/** --test-coverage-exclude=**/*.web.js --test-coverage-exclude=**/*.web.mjs --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/*.fuzz.js --test-coverage-exclude=**/*.perf.js --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100",
-		"test:unit:web": "node --test --conditions=webstream --experimental-test-coverage --test-coverage-exclude=packages/file/** --test-coverage-exclude=**/*.web.js --test-coverage-exclude=**/*.web.mjs --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/*.fuzz.js --test-coverage-exclude=**/*.perf.js --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100",
+		"test:unit": "npm run build && node --test --conditions=node --test-force-exit --experimental-test-coverage --test-coverage-exclude=packages/file/** --test-coverage-exclude=**/*.web.js --test-coverage-exclude=**/*.web.mjs --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/*.fuzz.js --test-coverage-exclude=**/*.perf.js --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100",
 		"test:sast": "npm run test:sast:license && npm run test:sast:lockfile && npm run test:sast:semgrep && npm run test:sast:trufflehog && npm run test:sast:gitleaks && npm run test:sast:actionlint && npm run test:sast:zizmor && npm run test:sast:trivy",
 		"test:sast:actionlint": "actionlint",
 		"test:sast:gitleaks": "npm run test:sast:gitleaks:dir && npm run test:sast:gitleaks:git",
@@ -76,20 +73,20 @@
 		"@commitlint/cli": "^21.0.0",
 		"@commitlint/config-conventional": "^21.0.0",
 		"@stryker-mutator/core": "^9.0.0",
-		"@types/node": "^25.0.0",
+		"@types/node": "^26.0.0",
 		"esbuild": "^0.28.0",
-		"fast-check": "^4.8.0",
+		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
-		"tinybench": "^6.0.2",
-		"tstyche": "^7.2.0"
+		"tinybench": "^6.0.0",
+		"tstyche": "^7.0.0"
 	},
 	"overrides": {
 		"qs": "^6.15.2",
 		"@sveltejs/kit": {
 			"cookie": "^0.7.2"
 		},
-		"@willfarrell-ds/cli": {
-			"mathjs": ">=15.2.0"
+		"js-beautify": {
+			"brace-expansion": ">=5.0.8"
 		},
 		"license-check-and-add": {
 			"minimatch": "^10.2.5"
@@ -100,13 +97,6 @@
 					"js-yaml": ">=4.2.0"
 				}
 			}
-		},
-		"miniflare": {
-			"ws": "^8.21.0",
-			"sharp": ">=0.35.0"
-		},
-		"wrangler": {
-			"esbuild": ">=0.28.1"
 		}
 	},
 	"workspaces": [

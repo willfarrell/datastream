@@ -11,7 +11,12 @@ export default {
 		command: `node --test --conditions=node --test-force-exit ./${base}/**/*.test.js`,
 	},
 	coverageAnalysis: "off",
-	mutate: [`${base}/**/*.node.mjs`, "!**/*.map", "!**/node_modules/**"],
+	mutate: [
+		`${base}/**/*.node.mjs`,
+		`${base}/**/guard.node.js`,
+		"!**/*.map",
+		"!**/node_modules/**",
+	],
 	plugins: ["@stryker-mutator/*"],
 	reporters: ["progress", "clear-text"],
 	thresholds: { high: 100, low: 100, break: 100 },

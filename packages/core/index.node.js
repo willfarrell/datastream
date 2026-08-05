@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { Readable, Transform, Writable } from "node:stream";
 import { pipeline as pipelinePromise } from "node:stream/promises";
+import { isDeepStrictEqual } from "node:util";
 
 // Node.js streams interpret push(null) as EOF.
 // Use a sentinel so null values flow through object-mode streams.
@@ -551,15 +552,7 @@ export const shallowEqual = (a, b) => {
 	return true;
 };
 
-export const deepEqual = (a, b) => {
-	try {
-		return JSON.stringify(a) === JSON.stringify(b);
-	} catch (e) {
-		throw new Error("Failed to stringify chunk, possibly circular reference", {
-			cause: e,
-		});
-	}
-};
+export const deepEqual = isDeepStrictEqual;
 
 export const timeout = (ms, { signal } = {}) => {
 	if (signal?.aborted) {

@@ -502,6 +502,27 @@ test(`${variant}: objectSkipConsecutiveDuplicatesStream isNestedObject should us
 	]);
 });
 
+// deepEqual used to be JSON.stringify(a) === JSON.stringify(b), so records that
+// were structurally identical but had a different key order (routine after
+// JSON.parse or objectPickStream) were not recognised as duplicates.
+test(`${variant}: objectSkipConsecutiveDuplicatesStream isNestedObject ignores key order`, async (_t) => {
+	const input = [
+		{ a: 1, b: { c: 2, d: 3 } },
+		{ b: { d: 3, c: 2 }, a: 1 },
+		{ a: 1, b: { c: 2, d: 4 } },
+	];
+	const streams = [
+		createReadableStream(input),
+		objectSkipConsecutiveDuplicatesStream({ isNestedObject: true }),
+	];
+	const stream = pipejoin(streams);
+	const output = await streamToArray(stream);
+	deepStrictEqual(output, [
+		{ a: 1, b: { c: 2, d: 3 } },
+		{ a: 1, b: { c: 2, d: 4 } },
+	]);
+});
+
 // *** objectPivotWideToLongStream shallow copy regression *** //
 test(`${variant}: objectPivotWideToLongStream should not mutate input chunks`, async (_t) => {
 	const input = [{ id: 1, x: 10, y: 20 }];

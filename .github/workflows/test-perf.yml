@@ -9,15 +9,43 @@ concurrency:
 
 env:
   NODE_VERSION: 24.x
+  # ponytail: CI wants regression signal, not precise numbers; shrink tinybench's per-bench time floor (default 5000). Raise/unset for accurate local runs.
+  BENCH_TIME: "1000"
 
 permissions:
   contents: read
 
 jobs:
-  unit:
-    name: Tests (perf)
+  setup:
+    name: List packages
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    outputs:
+      packages: ${{ steps.list.outputs.packages }}
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+          disable-telemetry: true
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: List packages
+        id: list
+        run: |
+          echo "packages=$(find packages -mindepth 2 -maxdepth 2 -name 'index.perf.js' -printf '%h\n' | sed 's#packages/##' | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+
+  perf:
+    name: Tests (perf)
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJson(needs.setup.outputs.packages) }}
 
     steps:
       - name: Harden runner
@@ -34,6 +62,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
+          cache: npm
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts
@@ -41,5 +70,7 @@ jobs:
         run: |
           npm run build --if-present
       - name: Benchmarking tests
+        env:
+          PACKAGE: ${{ matrix.package }}
         run: |
-          npm run test:perf
+          node --test --test-concurrency=1 "packages/${PACKAGE}/index.perf.js"
