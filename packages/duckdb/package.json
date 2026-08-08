@@ -85,7 +85,7 @@
 	"devDependencies": {
 		"@datastream/arrow": "0.7.1",
 		"@duckdb/duckdb-wasm": "1.33.1-dev57.0",
-		"@duckdb/node-api": "1.5.5-r.2",
+		"@duckdb/node-api": "1.5.5-r.3",
 		"apache-arrow": "21.2.0"
 	}
 }
