@@ -24,12 +24,14 @@ const tardisecMiddleware = async ({ event, resolve }) => {
 	// allowlist at build time, so append it here when absent.
 	// error during build:
 	// [Error loading svelte.config.js: The `csp.directives['trusted-types']` option must include 'svelte-trusted-html']
-	const csp = response.headers.get("Content-Security-Policy");
-	if (csp && !csp.includes("require-trusted-types-for")) {
-		response.headers.set(
-			"Content-Security-Policy",
-			`${csp};require-trusted-types-for 'script'`,
-		);
+	for (const header of [
+		"Content-Security-Policy",
+		"Content-Security-Policy-Report-Only",
+	]) {
+		const csp = response.headers.get(header);
+		if (csp && !csp.includes("require-trusted-types-for")) {
+			response.headers.set(header, `${csp};require-trusted-types-for 'script'`);
+		}
 	}
 
 	return response;

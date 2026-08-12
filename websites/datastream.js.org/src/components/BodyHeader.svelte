@@ -48,9 +48,9 @@ const navPrimary = null;
     {#snippet end()}
         <Search>
         <Form method="GET" action="/search">
-           	<Div role="group">
-				<InputSearch id="q" placeholder="Search ⌘+K" size="18" is="ds-input-focus" data-keys="$mod+K" value={form?.q} />
-				<Button><Icon src="/img/icons.svg#search" /><Span class="visually-hidden">Search</Span></Button>
+           	<Div class="group">
+				<InputSearch id="q" placeholder="Search ⌘+K" size="18" is="ds-input-focus" data-keys="$mod+K" value={form?.q ?? ""} />
+				<Button type="submit"><Icon src="/img/icons.svg#search" /><Span class="visually-hidden">Search</Span></Button>
 			</Div>
         </Form></Search>
     {/snippet}
