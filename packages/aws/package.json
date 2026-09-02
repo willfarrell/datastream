@@ -190,7 +190,7 @@
 		"@datastream/core": "0.7.1"
 	},
 	"peerDependencies": {
-		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
+		"@aws-sdk/client-cloudwatch-logs": "^3.1114.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
 		"@aws-sdk/client-dynamodb-streams": "^3.0.0",
 		"@aws-sdk/client-glue": "^3.1109.0",
@@ -238,7 +238,7 @@
 		}
 	},
 	"devDependencies": {
-		"@aws-sdk/client-cloudwatch-logs": "^3.0.0",
+		"@aws-sdk/client-cloudwatch-logs": "^3.1114.0",
 		"@aws-sdk/client-dynamodb": "^3.0.0",
 		"@aws-sdk/client-dynamodb-streams": "^3.0.0",
 		"@aws-sdk/client-glue": "^3.1109.0",
