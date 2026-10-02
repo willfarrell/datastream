@@ -24,7 +24,7 @@
 	},
 	"dependencies": {
 		"@plausible-analytics/tracker": "0.4.5",
-		"@willfarrell-ds/svelte": "0.0.0-alpha.8",
+		"@willfarrell-ds/svelte": "0.0.0-beta.0",
 		"@willfarrell-ds/vanilla": "0.0.0-alpha.8",
 		"hast-util-to-string": "3.0.1",
 		"mdast-util-to-string": "4.0.0",
