@@ -32,7 +32,7 @@
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-cloudflare": "^7.0.0",
-		"@sveltejs/kit": "^2.0.0",
+		"@sveltejs/kit": "^2.70.3",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
 		"@willfarrell-ds/cli": "0.0.0-alpha.8",
 		"esbuild": "^0.28.2",
