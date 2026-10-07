@@ -29,7 +29,7 @@ All options and configuration are assumed to be trusted as they are configured b
 
 ## Trust Boundaries
 
-datastream processes data through streams. The configuration of datastream is trusted. It's up to the implementing developer to apply input validation to ensure data is properly structured and safe to use. User inputs to all packages are fuzzed.
+datastream processes data through streams. The configuration of datastream is trusted; the data flowing through the streams (files, HTTP responses, queue messages, compressed or encrypted payloads) is not. Parsers and decoders therefore ship with finite default limits: buffer sizes, message and body sizes, decompressed output, pagination page counts and error-list lengths. Exceeding a limit throws a `RangeError`; passing `null` removes a limit and should only be done for trusted input. Each package's documentation lists its limits and defaults. It's still up to the implementing developer to validate that data is structured correctly for their use (for example with `@datastream/validate`). User inputs to all packages are fuzzed.
 
 ## Reporting a Vulnerability
 
@@ -38,7 +38,7 @@ seriously. Thank you for improving the security of our open source
 software. We appreciate your efforts and responsible disclosure and will
 make every effort to acknowledge your contributions.
 
-Report security vulnerabilities by emailing the lead maintainer at:
+Report security vulnerabilities privately through [GitHub's private vulnerability reporting](https://github.com/willfarrell/datastream/security/advisories/new), or by emailing the lead maintainer at:
 ```
 willfarrell@proton.me
 ```

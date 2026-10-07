@@ -15,6 +15,7 @@ describe("JsonError", () => {
 			id: string;
 			message: string;
 			idx: number[];
+			count: number;
 		}>();
 	});
 });
@@ -28,6 +29,19 @@ describe("ndjsonParseStream", () => {
 	test("accepts maxBufferSize", () => {
 		expect(
 			ndjsonParseStream({ maxBufferSize: 1024 }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts null limits and maxErrorRows", () => {
+		expect(
+			ndjsonParseStream({ maxBufferSize: null, maxErrorRows: null }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			jsonParseStream({
+				maxBufferSize: null,
+				maxValueSize: null,
+				maxErrorRows: 10,
+			}),
 		).type.not.toBeAssignableTo<never>();
 	});
 

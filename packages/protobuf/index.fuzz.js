@@ -23,8 +23,8 @@ const Type = new protobuf.Type("Msg")
 const catchError = (input, e) => {
 	if (
 		e.message.includes("maxMessageSize") ||
-		e.message.includes("maxOutputSize") ||
 		e.message.includes("incomplete message") ||
+		e.message.includes("length prefix exceeds 10 bytes") ||
 		/invalid wire type/i.test(e.message) ||
 		/invalid tag/i.test(e.message) ||
 		/invalid varint/i.test(e.message) ||
@@ -104,8 +104,8 @@ test("fuzz protobufDecodeStream with random byte inputs", async () => {
 	);
 });
 
-// *** protobufDecodeStream maxOutputSize guard *** //
-test("fuzz protobufDecodeStream with maxOutputSize", async () => {
+// *** protobufDecodeStream maxMessageSize guard *** //
+test("fuzz protobufDecodeStream with maxMessageSize", async () => {
 	await fc.assert(
 		fc.asyncProperty(
 			fc.array(
@@ -116,7 +116,7 @@ test("fuzz protobufDecodeStream with maxOutputSize", async () => {
 				{ minLength: 1, maxLength: 10 },
 			),
 			fc.integer({ min: 1, max: 512 }),
-			async (input, maxOutputSize) => {
+			async (input, maxMessageSize) => {
 				try {
 					const encoded = await streamToArray(
 						pipejoin([
@@ -126,7 +126,7 @@ test("fuzz protobufDecodeStream with maxOutputSize", async () => {
 					);
 					await pipeline([
 						createReadableStream(encoded),
-						protobufDecodeStream({ Type, maxOutputSize }),
+						protobufDecodeStream({ Type, maxMessageSize }),
 					]);
 				} catch (e) {
 					catchError(input, e);

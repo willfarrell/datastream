@@ -8,23 +8,28 @@ import {
 import { timeout } from "@datastream/core";
 import { awsClientDefaults } from "./client.js";
 
-let client = new CloudWatchLogsClient(awsClientDefaults);
+// Created on first use, so importing the module (or always passing a per-call
+// client) never constructs an unused SDK client.
+let defaultClient;
+const getDefaultClient = () =>
+	(defaultClient ??= new CloudWatchLogsClient(awsClientDefaults));
 export const awsCloudWatchLogsSetClient = (cwlClient) => {
-	client = cwlClient;
+	defaultClient = cwlClient;
 };
 
 export const awsCloudWatchLogsGetLogEventsStream = async (
 	options,
 	streamOptions = {},
 ) => {
-	const { pollingActive, pollingDelay = 1000, ...cwlOptions } = options;
+	const { pollingActive, pollingDelay = 1000, client, ...cwlOptions } = options;
 	cwlOptions.startFromHead ??= true;
 	async function* command(opts) {
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new GetLogEventsCommand(opts), {
-				abortSignal: streamOptions.signal,
-			});
+			const response = await (client ?? getDefaultClient()).send(
+				new GetLogEventsCommand(opts),
+				{ abortSignal: streamOptions.signal },
+			);
 			const events = response.events ?? [];
 			for (const item of events) {
 				yield item;
@@ -55,12 +60,14 @@ export const awsCloudWatchLogsFilterLogEventsStream = async (
 	options,
 	streamOptions = {},
 ) => {
+	const { client, ...filterOptions } = options;
 	async function* command(opts) {
 		let expectMore = true;
 		while (expectMore) {
-			const response = await client.send(new FilterLogEventsCommand(opts), {
-				abortSignal: streamOptions.signal,
-			});
+			const response = await (client ?? getDefaultClient()).send(
+				new FilterLogEventsCommand(opts),
+				{ abortSignal: streamOptions.signal },
+			);
 			for (const item of response.events ?? []) {
 				yield item;
 			}
@@ -68,11 +75,5 @@ export const awsCloudWatchLogsFilterLogEventsStream = async (
 			expectMore = !!response.nextToken;
 		}
 	}
-	return command({ ...options });
-};
-
-export default {
-	setClient: awsCloudWatchLogsSetClient,
-	getLogEventsStream: awsCloudWatchLogsGetLogEventsStream,
-	filterLogEventsStream: awsCloudWatchLogsFilterLogEventsStream,
+	return command(filterOptions);
 };

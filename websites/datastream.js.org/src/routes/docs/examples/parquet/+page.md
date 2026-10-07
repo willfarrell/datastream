@@ -8,10 +8,9 @@ description: Read and write Apache Parquet files using datastream with hyparquet
 Read a Parquet file from S3, extract specific columns, and write as CSV:
 
 ```javascript
-import { pipeline, createReadableStream, streamToBuffer } from '@datastream/core'
-import { awsS3GetObjectStream } from '@datastream/aws'
-import { objectReadableStream } from '@datastream/object'
-import { csvFormatStream } from '@datastream/csv'
+import { pipeline, streamToBuffer, createReadableStream } from '@datastream/core'
+import { awsS3GetObjectStream } from '@datastream/aws/s3'
+import { csvInjectHeaderStream, csvFormatStream } from '@datastream/csv'
 import { fileWriteStream } from '@datastream/file'
 import { parquetRead } from 'hyparquet'
 
@@ -19,29 +18,34 @@ const buffer = await streamToBuffer(
   await awsS3GetObjectStream({ Bucket: 'data-lake', Key: 'users.parquet' }),
 )
 
+const columns = ['id', 'name', 'email']
 const rows = []
 await parquetRead({
-  file: {
-    byteLength: buffer.byteLength,
-    read: (start, end) => buffer.slice(start, end),
-  },
-  columns: ['id', 'name', 'email'],
-  onComplete: (data) => rows.push(...data),
+  // hyparquet reads from any { byteLength, slice(start, end) }, such as an ArrayBuffer
+  file: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+  columns,
+  onComplete: (data) => rows.push(...data), // one array per row, in `columns` order
 })
 
-const result = await pipeline([
-  objectReadableStream(rows),
-  csvFormatStream({ header: true }),
-  fileWriteStream({ path: './users.csv' }),
+await pipeline([
+  createReadableStream(rows),
+  csvInjectHeaderStream({ header: columns }),
+  csvFormatStream(),
+  await fileWriteStream({ path: './users.csv' }), // file streams are async: always await
 ])
 ```
 
 ### Write CSV to Parquet
 
-Read a CSV file, parse into objects, and write as Parquet to S3:
+Read a CSV file, parse into objects, and write as Parquet to S3. `pipejoin` returns the joined stream so `streamToArray` can collect the rows (`pipeline` resolves to the result object instead):
 
 ```javascript
-import { pipeline, streamToArray } from '@datastream/core'
+import {
+  pipejoin,
+  pipeline,
+  streamToArray,
+  createReadableStream,
+} from '@datastream/core'
 import { fileReadStream } from '@datastream/file'
 import {
   csvDetectDelimitersStream,
@@ -50,9 +54,9 @@ import {
   csvCoerceValuesStream,
 } from '@datastream/csv'
 import { objectFromEntriesStream } from '@datastream/object'
-import { createReadableStreamFromArrayBuffer } from '@datastream/core'
-import { awsS3PutObjectStream } from '@datastream/aws'
+import { awsS3PutObjectStream } from '@datastream/aws/s3'
 import { tableFromJSON, tableToIPC } from 'apache-arrow'
+import { Table, writeParquet } from 'parquet-wasm'
 
 const detectDelimiters = csvDetectDelimitersStream()
 const detectHeader = csvDetectHeaderStream({
@@ -63,8 +67,8 @@ const detectHeader = csvDetectHeaderStream({
 })
 
 const rows = await streamToArray(
-  await pipeline([
-    fileReadStream({ path: './users.csv' }),
+  pipejoin([
+    await fileReadStream({ path: './users.csv' }),
     detectDelimiters,
     detectHeader,
     csvParseStream({
@@ -80,12 +84,13 @@ const rows = await streamToArray(
   ]),
 )
 
-const table = tableFromJSON(rows)
-const { writeParquet } = await import('parquet-wasm')
-const parquetBuffer = writeParquet(table)
+// parquet-wasm takes its own Table, built from Arrow IPC bytes.
+// In the browser, call its default export (initWasm) once before use.
+const arrowTable = tableFromJSON(rows)
+const parquetBuffer = writeParquet(Table.fromIPCStream(tableToIPC(arrowTable, 'stream')))
 
 await pipeline([
-  createReadableStreamFromArrayBuffer(parquetBuffer),
+  createReadableStream(parquetBuffer),
   awsS3PutObjectStream({ Bucket: 'data-lake', Key: 'users.parquet' }),
 ])
 ```

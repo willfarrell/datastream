@@ -94,9 +94,15 @@ Subscribes to one or more topics and emits each message as a chunk. Returns a Pr
 | `consumer` | `Consumer` | — | Consumer from `kafkaConnect` (required) |
 | `topics` | `string \| string[]` | — | Topic(s) to subscribe to (required) |
 | `fromBeginning` | `boolean` | `false` | Start from the earliest offset |
-| `autoCommit` | `boolean` | `true` | Auto-commit offsets |
+| `autoCommit` | `boolean` | `false` | Let kafkajs auto-commit offsets. See [Committing offsets](#committing-offsets) |
 | `partitionsConsumedConcurrently` | `number` | `1` | Concurrent partition processing |
-| `signal` | `AbortSignal` | — | Aborting stops the consumer |
+
+### Stream options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `signal` | `AbortSignal` | — | Aborting stops the consumer (ends the stream). Passed in the second argument, like every datastream factory |
+| `highWaterMark` | `number` | `100` | Messages buffered before backpressure pauses kafkajs |
 
 ### Emitted chunk
 
@@ -104,7 +110,13 @@ Subscribes to one or more topics and emits each message as a chunk. Returns a Pr
 { topic, partition, offset, key, value, headers, timestamp }
 ```
 
-### Example
+### Committing offsets
+
+**Breaking change:** `autoCommit` now defaults to `false` (it used to be `true`).
+
+kafkajs auto-commits a message's offset as soon as its `eachMessage` handler returns. Here the handler returns once the message is buffered in the readable stream (up to `highWaterMark` messages), not once your pipeline has processed it. With `autoCommit: true`, a crash or `destroy()` loses every message that was committed but still sitting in the buffer.
+
+With the default `autoCommit: false`, commit each message after you have processed it. Kafka expects the offset of the *next* message, so commit `offset + 1`:
 
 ```javascript
 import { kafkaConnect, kafkaConsumeStream } from '@datastream/kafka'
@@ -118,11 +130,26 @@ const stream = await kafkaConsumeStream({ consumer, topics: 'events' })
 
 for await (const message of stream) {
   console.log(message.value)
+  await consumer.commitOffsets([
+    {
+      topic: message.topic,
+      partition: message.partition,
+      offset: (BigInt(message.offset) + 1n).toString(),
+    },
+  ])
 }
 
 await stream.stop()
 ```
 
+To get the old behaviour back (at-most-once delivery: buffered messages can be lost on a crash), pass `autoCommit: true`:
+
+```javascript
+const stream = await kafkaConsumeStream({ consumer, topics: 'events', autoCommit: true })
+```
+
+A message that kafkajs delivers after the stream has stopped (after `stop()`, `destroy()`, or an aborted `signal`) is not pushed. Its handler throws, so kafkajs does not commit it and the message is redelivered on the next run.
+
 ## Platform support
 
-Available on Node.js (via `kafkajs`). Not available in the browser.
+Node.js only (via `kafkajs`, which needs raw TCP sockets). Like `@datastream/aws`, the package has no `browser` export condition.

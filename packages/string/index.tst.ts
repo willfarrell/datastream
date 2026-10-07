@@ -3,23 +3,12 @@
 import {
 	stringCountStream,
 	stringLengthStream,
-	stringMinimumChunkSize,
-	stringMinimumFirstChunkSize,
-	stringReadableStream,
+	stringMinimumChunkSizeStream,
+	stringMinimumFirstChunkSizeStream,
 	stringReplaceStream,
 	stringSplitStream,
 } from "@datastream/string";
 import { describe, expect, test } from "tstyche";
-
-describe("stringReadableStream", () => {
-	test("accepts string input", () => {
-		expect(stringReadableStream("hello")).type.not.toBeAssignableTo<never>();
-	});
-
-	test("accepts array input", () => {
-		expect(stringReadableStream(["a", "b"])).type.not.toBeAssignableTo<never>();
-	});
-});
 
 describe("stringLengthStream", () => {
 	test("returns stream with result method", () => {
@@ -42,18 +31,18 @@ describe("stringCountStream", () => {
 	});
 });
 
-describe("stringMinimumFirstChunkSize", () => {
+describe("stringMinimumFirstChunkSizeStream", () => {
 	test("accepts chunkSize option", () => {
 		expect(
-			stringMinimumFirstChunkSize({ chunkSize: 2048 }),
+			stringMinimumFirstChunkSizeStream({ chunkSize: 2048 }),
 		).type.not.toBeAssignableTo<never>();
 	});
 });
 
-describe("stringMinimumChunkSize", () => {
+describe("stringMinimumChunkSizeStream", () => {
 	test("accepts chunkSize option", () => {
 		expect(
-			stringMinimumChunkSize({ chunkSize: 2048 }),
+			stringMinimumChunkSizeStream({ chunkSize: 2048 }),
 		).type.not.toBeAssignableTo<never>();
 	});
 });
@@ -64,12 +53,40 @@ describe("stringReplaceStream", () => {
 			stringReplaceStream({ pattern: /a/, replacement: "b" }),
 		).type.not.toBeAssignableTo<never>();
 	});
+
+	test("accepts a function replacement and match options", () => {
+		expect(
+			stringReplaceStream({
+				pattern: /a(b)/g,
+				replacement: (match: string, p1: string, offset: number) =>
+					`${match}${p1}${offset}`,
+				maxMatchLength: 2,
+				lookbehind: 4,
+			}),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects a non-string, non-function replacement", () => {
+		expect(stringReplaceStream).type.not.toBeCallableWith({
+			pattern: "a",
+			replacement: 1,
+		});
+	});
 });
 
 describe("stringSplitStream", () => {
 	test("requires separator", () => {
 		expect(
 			stringSplitStream({ separator: "\n" }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts maxBufferSize number or null", () => {
+		expect(
+			stringSplitStream({ separator: "\n", maxBufferSize: null }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			stringReplaceStream({ pattern: "a", replacement: "b", maxBufferSize: 1 }),
 		).type.not.toBeAssignableTo<never>();
 	});
 });

@@ -1,0 +1,93 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
+// CompressionStream
+// - https://caniuse.com/?search=CompressionStream
+// - doesn't support `br` - https://github.com/httptoolkit/brotli-wasm
+// - not supported on firefox - https://bugzilla.mozilla.org/show_bug.cgi?id=1586639
+// - not supported in safari
+import { createTransformStream } from "@datastream/core";
+import brotliPromise from "brotli-wasm"; // Import the default export
+import { resolveDecompressLimit, toBytes } from "./native.browser.js";
+
+const { CompressStream, DecompressStream, BrotliStreamResultCode } =
+	await brotliPromise; // Import is async in browsers due to wasm requirements!
+
+// Fixed-size output buffer; the streaming loop drains NeedsMoreOutput so any
+// chunk/output size is handled correctly.
+const OUTPUT_SIZE = 16_384; // 16KB
+
+// https://github.com/httptoolkit/brotli-wasm/issues/14
+export const brotliCompressStream = (options = {}, streamOptions = {}) => {
+	const { quality, maxOutputSize } = options;
+	const engine = new CompressStream(quality); // brotli-wasm defaults to 11
+	const limit = maxOutputSize ?? Number.POSITIVE_INFINITY;
+	let outputSize = 0;
+	const guard = (buf, enqueue) => {
+		outputSize += buf.byteLength;
+		if (outputSize > limit) {
+			throw new RangeError(
+				`Compression output exceeds maxOutputSize (${limit} bytes)`,
+			);
+		}
+		enqueue(buf);
+	};
+	const transform = (chunk, enqueue) => {
+		const input = toBytes(chunk);
+		let inputOffset = 0;
+		let code;
+		do {
+			const result = engine.compress(input.slice(inputOffset), OUTPUT_SIZE);
+			guard(result.buf, enqueue);
+			inputOffset += result.input_offset;
+			code = result.code;
+		} while (code === BrotliStreamResultCode.NeedsMoreOutput);
+	};
+	const flush = (enqueue) => {
+		let code;
+		do {
+			const result = engine.compress(undefined, OUTPUT_SIZE);
+			guard(result.buf, enqueue);
+			code = result.code;
+		} while (code === BrotliStreamResultCode.NeedsMoreOutput);
+	};
+	return createTransformStream(transform, flush, streamOptions);
+};
+export const brotliDecompressStream = (options = {}, streamOptions = {}) => {
+	const limit = resolveDecompressLimit(options.maxOutputSize);
+	const engine = new DecompressStream();
+	let outputSize = 0;
+	// Last engine result; anything but ResultSuccess at flush (including no input
+	// at all) means the brotli stream was cut short.
+	let code;
+	const transform = (chunk, enqueue) => {
+		const input = toBytes(chunk);
+		let inputOffset = 0;
+		do {
+			const result = engine.decompress(input.slice(inputOffset), OUTPUT_SIZE);
+			outputSize += result.buf.byteLength;
+			if (outputSize > limit) {
+				throw new RangeError(
+					`Decompression output exceeds maxOutputSize (${limit} bytes)`,
+				);
+			}
+			enqueue(result.buf);
+			inputOffset += result.input_offset;
+			code = result.code;
+		} while (code === BrotliStreamResultCode.NeedsMoreOutput);
+		// The loop only stops early on ResultSuccess, so leftover input after it
+		// means trailing/garbage data; strict decoders reject it rather than
+		// silently dropping it.
+		if (inputOffset < input.byteLength) {
+			throw new Error(
+				"Decompression has trailing bytes after end of brotli stream",
+			);
+		}
+	};
+	const flush = () => {
+		// Same message as node:zlib so both builds fail alike on truncation.
+		if (code !== BrotliStreamResultCode.ResultSuccess) {
+			throw new Error("unexpected end of file");
+		}
+	};
+	return createTransformStream(transform, flush, streamOptions);
+};

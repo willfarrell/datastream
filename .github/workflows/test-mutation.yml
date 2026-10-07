@@ -2,13 +2,14 @@ name: Tests (mutation)
 
 on:
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: 24.x
+  NODE_VERSION: 26.x
 
 permissions:
   contents: read
@@ -22,53 +23,110 @@ jobs:
       packages: ${{ steps.list.outputs.packages }}
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            github.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   github.com:443
       - name: List packages
         id: list
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          echo "packages=$(find packages -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+          # ponytail: only mutate packages the PR touches. A package's mutation
+          # score depends on its own source + tests, so dependency-only PRs
+          # (dependabot) run nothing; stryker/build/workflow edits and manual
+          # dispatch (no BASE_REF) run everything.
+          all() { find packages -maxdepth 1 -mindepth 1 -type d -printf '%f\n'; }
+          if [ -z "$BASE_REF" ]; then
+            packages=$(all)
+          else
+            git fetch --no-tags --depth=1 origin "$BASE_REF"
+            changed=$(git diff --name-only FETCH_HEAD HEAD)
+            if echo "$changed" | grep -qE '^(stryker(\.node-test)?\.config\.mjs|bin/esbuild|package\.json|packages/variant\.js|\.github/workflows/test-mutation\.yml)$'; then
+              packages=$(all)
+            else
+              packages=$(echo "$changed" | grep -E '^packages/[^/]+/' | cut -d/ -f2 | sort -u)
+            fi
+          fi
+          echo "packages=$(echo "$packages" | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
 
   mutation:
-    name: Tests (mutation)
+    name: Tests (mutation, ${{ matrix.package }}, ${{ matrix.variant }})
     needs: setup
+    if: needs.setup.outputs.packages != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         package: ${{ fromJson(needs.setup.outputs.packages) }}
+        variant: [node, browser]
+        exclude:
+          # aws and azure are node-only (no browser build), so they
+          # have no browser test run (see test:unit:browser) and no browser mutants.
+          - package: aws
+            variant: browser
+          - package: azure
+            variant: browser
 
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            nodejs.org:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   nodejs.org:443
+      #   objects.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
           cache: npm
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Build
         run: |
           npm run build --if-present
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Mutation tests
         env:
           MUTATE_PACKAGE: ${{ matrix.package }}
+          MUTATE_VARIANT: ${{ matrix.variant }}
         run: |
           npx stryker run

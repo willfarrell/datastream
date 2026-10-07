@@ -38,14 +38,27 @@ describe("protobufDecodeStream", () => {
 		expect(protobufDecodeStream({ Type })).type.not.toBeAssignableTo<never>();
 	});
 
-	test("accepts payload extractor and maxOutputSize", () => {
+	test("accepts payload extractor and maxMessageSize", () => {
 		expect(
 			protobufDecodeStream<{ data: Uint8Array }>({
 				Type,
 				payload: (chunk) => chunk.data,
-				maxOutputSize: 1024,
+				maxMessageSize: 1024,
 			}),
 		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts null maxMessageSize (unlimited)", () => {
+		expect(
+			protobufDecodeStream({ Type, maxMessageSize: null }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects removed maxOutputSize", () => {
+		expect(protobufDecodeStream).type.not.toBeCallableWith({
+			Type,
+			maxOutputSize: 1024,
+		});
 	});
 });
 

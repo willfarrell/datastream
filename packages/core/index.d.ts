@@ -43,17 +43,16 @@ export function pipeline(
 	streams: DatastreamStream[],
 	streamOptions?: StreamOptions,
 ): Promise<Record<string, unknown>>;
-export function pipejoin(
-	streams: DatastreamStream[],
-	onError?: (error: Error) => void,
-): DatastreamStream;
+/** Errors tear the chain down and surface on the returned stream. */
+export function pipejoin(streams: DatastreamStream[]): DatastreamStream;
 export function result(
 	streams: DatastreamStream[],
 ): Promise<Record<string, unknown>>;
 
 // Stream converters
 export interface StreamCollectorOptions {
-	maxBufferSize?: number;
+	/** Unlimited when undefined or null; exceeding it rejects with a RangeError. */
+	maxBufferSize?: number | null;
 }
 
 export function streamToArray<T = unknown>(
@@ -82,17 +81,15 @@ export function makeOptions(options?: StreamOptions): Record<string, unknown>;
 
 // Stream creators
 export function createReadableStream<T = unknown>(
-	input?: string | T[] | Iterable<T> | AsyncIterable<T>,
+	input?:
+		| string
+		| ArrayBufferLike
+		| ArrayBufferView
+		| T[]
+		| Iterable<T>
+		| AsyncIterable<T>,
 	streamOptions?: StreamOptions,
 ): DatastreamReadable<T>;
-export function createReadableStreamFromString(
-	input: string,
-	streamOptions?: StreamOptions,
-): DatastreamReadable<string>;
-export function createReadableStreamFromArrayBuffer(
-	input: ArrayBuffer | ArrayBufferLike,
-	streamOptions?: StreamOptions,
-): DatastreamReadable<Uint8Array>;
 
 export function createPassThroughStream<T = unknown>(
 	passThrough?: ((chunk: T) => void | Promise<void>) | null,
@@ -113,13 +110,23 @@ export function createTransformStream<I = unknown, O = unknown>(
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<I, O>;
 
+export interface WritableStreamOptions extends StreamOptions {
+	/**
+	 * Runs once when the writable is torn down before it finishes by something
+	 * other than its own write/close failing: an upstream/pipe error, a writer
+	 * abort (browser) / destroy() (node), or `signal` firing. Receives the abort
+	 * reason (undefined if none). May be async; its own failure is ignored.
+	 */
+	abort?: (reason: unknown) => void | Promise<void>;
+}
+
 export function createWritableStream<T = unknown>(
 	write?: ((chunk: T) => void | Promise<void>) | null,
-	close?: (() => void | Promise<void>) | StreamOptions,
-	streamOptions?: StreamOptions,
+	close?: (() => void | Promise<void>) | WritableStreamOptions,
+	streamOptions?: WritableStreamOptions,
 ): DatastreamWritable<T>;
 
-// Backpressure (Node.js only)
+// Backpressure (Node.js only: the browser build does not export it)
 export function backpressureGauge(streams: Record<string, unknown>): Record<
 	string,
 	{
@@ -136,7 +143,10 @@ export function timeout(
 
 // Shared helpers
 export function resolveLazy<T>(value: T | (() => T)): T;
-export function shallowClone<T extends object>(obj: T): T;
-export function deepClone<T>(obj: T): T;
-export function shallowEqual(a: unknown, b: unknown): boolean;
-export function deepEqual(a: unknown, b: unknown): boolean;
+// Streaming UTF-8 decode: byte chunks keep multi-byte chars split across
+// chunks intact, string chunks pass through; flush() emits trailing bytes.
+export function createChunkDecoder(options?: TextDecoderOptions): {
+	decode: (chunk: string | AllowSharedBufferSource) => string;
+	flush: () => string;
+};
+export function concatBytes(chunks: readonly Uint8Array[]): Uint8Array;

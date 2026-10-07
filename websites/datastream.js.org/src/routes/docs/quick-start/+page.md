@@ -21,7 +21,7 @@ Read a CSV string, parse it, and collect the results:
 
 ```javascript
 import { pipeline, createReadableStream } from '@datastream/core'
-import { csvParseStream } from '@datastream/csv'
+import { csvDetectDelimitersStream, csvDetectHeaderStream, csvParseStream } from '@datastream/csv'
 import { objectFromEntriesStream, objectCountStream } from '@datastream/object'
 
 const csvData = 'name,age,city\r\nAlice,30,Toronto\r\nBob,25,Vancouver\r\nCharlie,35,Montreal'
@@ -52,7 +52,7 @@ const result = await pipeline([
 ])
 
 console.log(result)
-// { csvDetectDelimiters: { delimiterChar: ',', ... }, csvDetectHeader: { header: ['name','age','city'] }, count: 3 }
+// { csvDetectDelimiters: { delimiterChar: ',', ... }, csvDetectHeader: { header: ['name','age','city'] }, csvErrors: {}, objectCount: 3 }
 ```
 
 ## Add validation
@@ -106,15 +106,34 @@ console.log(result)
 
 ## Add file I/O
 
-Read from and write to files (Node.js):
+Read from and write to files (Node.js). `csvFormatStream` formats array rows, so convert the objects back to arrays with `csvObjectToArrayStream` and prepend the header row with `csvInjectHeaderStream`:
 
 ```javascript
 import { pipeline } from '@datastream/core'
 import { fileReadStream, fileWriteStream } from '@datastream/file'
-import { csvDetectDelimitersStream, csvDetectHeaderStream, csvParseStream, csvFormatStream } from '@datastream/csv'
+import {
+  csvDetectDelimitersStream,
+  csvDetectHeaderStream,
+  csvParseStream,
+  csvObjectToArrayStream,
+  csvInjectHeaderStream,
+  csvFormatStream,
+} from '@datastream/csv'
 import { objectFromEntriesStream } from '@datastream/object'
 import { validateStream } from '@datastream/validate'
 import { gzipCompressStream } from '@datastream/compress'
+
+const headers = ['name', 'age', 'city']
+const schema = {
+  type: 'object',
+  required: headers,
+  properties: {
+    name: { type: 'string' },
+    age: { type: 'number' },
+    city: { type: 'string' },
+  },
+  additionalProperties: false,
+}
 
 const detectDelimiters = csvDetectDelimitersStream()
 const detectHeader = csvDetectHeaderStream({
@@ -125,7 +144,7 @@ const detectHeader = csvDetectHeaderStream({
 })
 
 const result = await pipeline([
-  fileReadStream({ path: './input.csv' }),
+  await fileReadStream({ path: './input.csv' }), // file streams are async: always await
   detectDelimiters,
   detectHeader,
   csvParseStream({
@@ -138,14 +157,16 @@ const result = await pipeline([
     keys: () => detectHeader.result().value.header,
   }),
   validateStream({ schema }),
-  csvFormatStream({ header: true }),
+  csvObjectToArrayStream({ headers }),
+  csvInjectHeaderStream({ header: headers }),
+  csvFormatStream(),
   gzipCompressStream(),
-  fileWriteStream({ path: './output.csv.gz' }),
+  await fileWriteStream({ path: './output.csv.gz' }),
 ])
 ```
 
 ## Next steps
 
 - Learn about [Core Concepts](/docs/core-concepts) — stream types, pipeline patterns, and error handling
-- Browse [Recipes](/docs/recipes) for complete real-world examples
+- Browse [Examples](/docs/examples/csv-etl) for complete real-world examples
 - Explore the [core](/docs/packages/core) package API reference

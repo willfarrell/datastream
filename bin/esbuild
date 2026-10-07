@@ -1,29 +1,39 @@
 #!/usr/bin/env sh
 set -e
 
-find packages -type f \( -name '*.node.mjs' -o -name '*.web.mjs' -o -name '*.node.mjs.map' -o -name '*.web.mjs.map' \) -delete
+find packages -type f \( -name '*.node.mjs' -o -name '*.browser.mjs' -o -name '*.node.mjs.map' -o -name '*.browser.mjs.map' \) -delete
 
-BUNDLE=""
 
-for package in packages/*; do
+# Trailing slash: only directories (packages/variant.js is a test helper, not a package)
+for package in packages/*/; do
+  package=${package%/}
   modules=$(jq -r '.exports | keys[] as $k | "\($k)"' ${package}/package.json)
-  #length=${#modules[@]}
+  # Only build the platforms the package exports: node-only packages (aws, kafka) have no
+  # "browser" condition, browser-only ones (indexeddb) no "node" condition. This also keeps
+  # stale opposite-platform sources from producing unshipped outputs.
+  browser=$(jq '[.exports | .. | objects | has("browser")] | any' ${package}/package.json)
+  node=$(jq '[.exports | .. | objects | has("node")] | any' ${package}/package.json)
   for module in $modules; do
     if [ "${module}" = "." ]; then
       module=index
     else
       module="${module#./}"
     fi
-    if [ -f ${package}/${module}.js ]; then
-      node_modules/.bin/esbuild $BUNDLE --platform=node    --target=node24 --format=esm ${package}/${module}.js      --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.mjs
-      node_modules/.bin/esbuild $BUNDLE --platform=browser                 --format=esm ${package}/${module}.js      --sourcemap=external --allow-overwrite --outfile=${package}/${module}.web.mjs
+    if [ "${node}" = "true" ]; then
+      if [ -f ${package}/${module}.js ]; then
+        node_modules/.bin/esbuild --platform=node    --target=node26 --format=esm ${package}/${module}.js      --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.mjs
+      fi
+      if [ -f ${package}/${module}.node.js ]; then
+        node_modules/.bin/esbuild --platform=node    --target=node26 --format=esm ${package}/${module}.node.js --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.mjs
+      fi
     fi
-    if [ -f ${package}/${module}.node.js ]; then
-      node_modules/.bin/esbuild $BUNDLE --platform=node    --target=node24 --format=esm ${package}/${module}.node.js --sourcemap=external --allow-overwrite --outfile=${package}/${module}.node.mjs
+    if [ "${browser}" = "true" ]; then
+      if [ -f ${package}/${module}.js ]; then
+        node_modules/.bin/esbuild --platform=browser                 --format=esm ${package}/${module}.js      --sourcemap=external --allow-overwrite --outfile=${package}/${module}.browser.mjs
+      fi
+      if [ -f ${package}/${module}.browser.js ]; then
+        node_modules/.bin/esbuild --platform=browser                 --format=esm ${package}/${module}.browser.js  --sourcemap=external --allow-overwrite --outfile=${package}/${module}.browser.mjs
+      fi
     fi
-    if [ -f ${package}/${module}.web.js ]; then
-      node_modules/.bin/esbuild $BUNDLE --platform=browser                 --format=esm ${package}/${module}.web.js  --sourcemap=external --allow-overwrite --outfile=${package}/${module}.web.mjs
-    fi
-
   done
 done

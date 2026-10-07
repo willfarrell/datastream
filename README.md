@@ -8,7 +8,7 @@
 <p>
   <a href="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
   <a href="https://github.com/willfarrell/datastream/actions/workflows/test-dast.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-dast.yml/badge.svg" alt="GitHub Actions dast test status"></a>
-  <a href="https://github.com/willfarrell/datastream/actions/workflows/test-perf.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-perf.yml/badge.svg" alt="GitHub Actions perf test status"></a>
+  <a href="https://github.com/willfarrell/datastream/actions/workflows/test-bench.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-bench.yml/badge.svg" alt="GitHub Actions perf test status"></a>
   <a href="https://github.com/willfarrell/datastream/actions/workflows/test-sast.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-sast.yml/badge.svg" alt="GitHub Actions SAST test status"></a>
   <a href="https://github.com/willfarrell/datastream/actions/workflows/test-lint.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-lint.yml/badge.svg" alt="GitHub Actions lint test status"></a>
   <br/>
@@ -25,7 +25,7 @@
   <a href="https://biomejs.dev"><img alt="Checked with Biome" src="https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome"></a>
   <a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>
   <a href="https://github.com/willfarrell/datastream/blob/main/package.json#L25">
-  <img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-95%25-brightgreen"></a>
+  <img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-100%25-brightgreen"></a>
 </p>
 </div>
 
@@ -45,13 +45,7 @@
   - createTransformStream
   - createWritableStream
   - resolveLazy
-  - shallowClone
-  - deepClone
-  - shallowEqual
-  - deepEqual
   - timeout
-  - createReadableStreamFromString (Node only)
-  - createReadableStreamFromArrayBuffer (Node only)
   - backpressureGauge (Node only)
 
 ## Streams
@@ -64,16 +58,14 @@
 ### Basics
 
 - [`@datastream/string`](packages/string)
-  - stringReadableStream [Readable]
   - stringLengthStream [PassThrough]
   - stringCountStream [PassThrough]
-  - stringMinimumFirstChunkSize [Transform]
-  - stringMinimumChunkSize [Transform]
-  - stringSkipConsecutiveDuplicates [Transform]
+  - stringMinimumFirstChunkSizeStream [Transform]
+  - stringMinimumChunkSizeStream [Transform]
+  - stringSkipConsecutiveDuplicatesStream [Transform]
   - stringReplaceStream [Transform]
   - stringSplitStream [Transform]
 - [`@datastream/object`](packages/object)
-  - objectReadableStream [Readable]
   - objectCountStream [PassThrough]
   - objectBatchStream [Transform]
   - objectPivotLongToWideStream [Transform]
@@ -95,7 +87,8 @@
   - fileReadStream [Readable]
   - fileWriteStream [Writable]
 - [`@datastream/fetch`](packages/fetch)
-  - fetchResponseStream [Readable]
+  - fetchReadableStream (alias fetchResponseStream) [Readable]
+  - fetchWritableStream (alias fetchRequestStream) [Writable]
 - [`@datastream/base64`](packages/base64)
   - base64EncodeStream [Transform]
   - base64DecodeStream [Transform]
@@ -110,15 +103,23 @@
   - deflateDecompressStream [Transform]
   - brotliCompressStream [Transform]
   - brotliDecompressStream [Transform]
-  - zstdCompressStream [Transform]
-  - zstdDecompressStream [Transform]
+  - zstdCompressStream [Transform] (Node only)
+  - zstdDecompressStream [Transform] (Node only)
 - [`@datastream/digest`](packages/digest)
   - digestStream [PassThrough]
 
 ### Advanced
 
-- [`@datastream/csv[/{parse,format}]`](packages/csv)
+- [`@datastream/csv`](packages/csv)
+  - csvDetectDelimitersStream [PassThrough]
+  - csvDetectHeaderStream [PassThrough]
   - csvParseStream [Transform]
+  - csvRemoveEmptyRowsStream [Transform]
+  - csvRemoveMalformedRowsStream [Transform]
+  - csvCoerceValuesStream [Transform]
+  - csvArrayToObjectStream [Transform]
+  - csvObjectToArrayStream [Transform]
+  - csvInjectHeaderStream [Transform]
   - csvFormatStream [Transform]
 - [`@datastream/json`](packages/json)
   - jsonParseStream [Transform]
@@ -141,7 +142,7 @@
   - duckdbConnect (connection helper)
   - duckdbAppenderStream [Writable]
   - duckdbArrowInsertStream [Writable]
-- [`@datastream/indexeddb`](packages/indexeddb)
+- [`@datastream/indexeddb`](packages/indexeddb) (browser only)
   - indexedDBReadStream [Readable]
   - indexedDBWriteStream [Writable]
 - [`@datastream/ipfs`](packages/ipfs)
@@ -157,10 +158,30 @@
   - confluentUnframeStream [Transform]
   - glueFrameStream [Transform]
   - glueUnframeStream [Transform]
-- [`@datastream/kafka`](packages/kafka)
+- [`@datastream/kafka`](packages/kafka) (Node only)
   - kafkaConnect (producer/consumer connection helper)
   - kafkaConsumeStream [Readable]
   - kafkaProduceStream [Writable]
+- [`@datastream/aws/{cloudwatch-logs,dynamodb,dynamodb-streams,kinesis,lambda,s3,sns,sqs}`](packages/aws) (Node only; import from the subpath)
+  - awsCloudWatchLogsGetLogEventsStream [Readable]
+  - awsCloudWatchLogsFilterLogEventsStream [Readable]
+  - awsDynamoDBQueryStream [Readable]
+  - awsDynamoDBScanStream [Readable]
+  - awsDynamoDBExecuteStatementStream [Readable]
+  - awsDynamoDBGetItemStream [Readable]
+  - awsDynamoDBPutItemStream [Writable]
+  - awsDynamoDBDeleteItemStream [Writable]
+  - awsDynamoDBStreamsGetRecordsStream [Readable]
+  - awsKinesisGetRecordsStream [Readable]
+  - awsKinesisPutRecordsStream [Writable]
+  - awsLambdaReadableStream [Readable]
+  - awsS3GetObjectStream [Readable]
+  - awsS3PutObjectStream [PassThrough]
+  - awsS3ChecksumStream [PassThrough]
+  - awsSNSPublishMessageStream [Writable]
+  - awsSQSReceiveMessageStream [Readable]
+  - awsSQSSendMessageStream [Writable]
+  - awsSQSDeleteMessageStream [Writable]
 - [`@datastream/aws/msk-iam`](packages/aws)
   - awsMskIamMechanism (kafkajs OAUTHBEARER SASL config)
 - [`@datastream/aws/glue-schema-registry`](packages/aws)
@@ -172,6 +193,70 @@
 npm install @datastream/core @datastream/{module}
 ```
 
+## Upgrading to the next major
+
+Every package has breaking changes. Upgrade all `@datastream/*` packages together.
+
+### All packages
+
+- Node.js 26 or newer is required.
+- No default exports. Use named imports: `import { csvParseStream } from '@datastream/csv'`.
+- The web build moved from `index.web.mjs` and the `/webstream` subpath to the `browser` export condition and the `/browser` subpath (for example `@datastream/core/browser`).
+- Features a platform can't support have no build for it: `@datastream/aws` and `@datastream/kafka` are Node.js only, `@datastream/indexeddb` is browser only, and zstd in `@datastream/compress` is Node.js only.
+- Limit options (`maxBufferSize`, `maxFieldSize`, `maxInputSize`, `maxOutputSize`, `maxMessageSize`, `maxErrorRows`, `maxPages`, `maxBodySize`, ...): `undefined` means the documented default, `null` means unlimited, and going over a limit throws a `RangeError`.
+- Every stream factory name ends in `Stream`.
+
+### Per package
+
+- **core**
+  - `pipejoin(streams, onError)`: `onError` is gone. Errors surface on the returned stream.
+  - `createReadableStreamFromString` and `createReadableStreamFromArrayBuffer` are gone. Use `createReadableStream`, which accepts strings, arrays, iterables, `ArrayBuffer`s and typed arrays.
+  - `shallowClone`, `deepClone`, `shallowEqual` and `deepEqual` are no longer exported.
+  - `backpressureGauge` is not exported by the browser build.
+  - `streamTo*` `maxBufferSize` accepts `null` and throws a `RangeError`.
+  - `createWritableStream` takes a new `abort(reason)` option.
+  - `streamOptions.chunkSize` only sets the slice size of `createReadableStream`.
+- **string**
+  - `stringReadableStream` is gone. Use `createReadableStream`.
+  - Only the `*Stream` names remain: `stringMinimumFirstChunkSizeStream`, `stringMinimumChunkSizeStream`, `stringSkipConsecutiveDuplicatesStream`.
+  - The `stringCountStream` result key is now `stringCount`.
+- **object**
+  - `objectReadableStream` is gone. Use `createReadableStream`.
+  - The `objectCountStream` result key is now `objectCount`.
+- **csv**
+  - `csvArrayToObject` is now `csvArrayToObjectStream`, and `csvObjectToArray` is now `csvObjectToArrayStream`.
+  - `fieldMaxSize` is now `maxFieldSize`. The `chunkSize` option is gone.
+  - `csvCoerceValuesStream` no longer adds a result entry.
+  - `csvFormatStream` escapes formula-like cells by default (`escapeFormulae: true`).
+  - Error streams keep at most `maxErrorRows` row indexes per error (default 1000). Each error also has a `count` with the true total.
+- **json**
+  - The `ndjsonParseStream` result key is now `ndjsonErrors`. `jsonParseStream` keeps `jsonErrors`.
+  - Error entries have a `count`, and `maxErrorRows` defaults to 1000.
+- **validate**
+  - `maxErrorRows` defaults to 1000 (was unlimited). `maxErrorKeys` (default 1000) caps the number of distinct errors.
+- **file**, **encrypt**
+  - `fileReadStream`, `fileWriteStream`, `encryptStream` and `decryptStream` return a Promise in every build. Always `await` them.
+- **digest**
+  - `digestStream` returns the stream directly in both builds.
+- **fetch**
+  - `concurrency` moved from `streamOptions` to the fetch options.
+  - `fetchWritableStream` takes a `resultKey` option (default `output`).
+  - New limits: `maxPages` (default 10,000), `maxBodySize` (default 16 MiB), `retryAfterMax` (default 60 s).
+- **compress**
+  - zstd is Node.js only. The browser build does not export the zstd streams, and `@datastream/compress/zstd` has no browser build.
+- **kafka**
+  - Node.js only.
+  - `signal` moved from the `kafkaConsumeStream` options to `streamOptions`.
+  - `autoCommit` defaults to `false`. Commit offsets after processing, or pass `autoCommit: true`.
+- **protobuf**
+  - `protobufDecodeStream` `maxOutputSize` is now `maxMessageSize`. It is checked per message.
+- **schema-registry**
+  - `glueUnframeStream` `maxDecompressedBytes` is now `maxOutputSize`, and `glueFrameStream` also takes `maxOutputSize` (default 256 MiB for both).
+  - The frame stream result keys are now `confluentFrameSchemaId` and `glueFrameSchemaVersionId`. The unframe streams keep `confluentSchemaId` and `glueSchemaVersionId`.
+  - Each chunk must hold exactly one whole frame. Frames split across chunks are not reassembled.
+- **indexeddb**
+  - Browser only. The Node.js stub is gone.
+
 ## Flows
 
 ```mermaid
@@ -180,9 +265,9 @@ stateDiagram-v2
     [*] --> fileRead: path
     [*] --> fetchResponse: URL
     [*] --> sqlCopyTo*: SQL
-    [*] --> stringReadable: string
-    [*] --> stringReadable: string[]
-    [*] --> objectReadable: object[]
+    [*] --> createReadable: string
+    [*] --> createReadable: string[]
+    [*] --> createReadable: object[]
     [*] --> createReadable: blob
 
     readable --> charsetDetect: binary
@@ -213,8 +298,6 @@ stateDiagram-v2
         fetchResponse
         sqlCopyTo*
         createReadable
-        stringReadable
-        objectReadable
         awsS3Get
         awsDynamoDBQuery
         awsDynamoDBScan

@@ -29,7 +29,7 @@ test("fuzz fileReadStream w/ path", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.string(), async (path) => {
 			try {
-				fileReadStream({ path, types });
+				await fileReadStream({ path, types });
 			} catch (e) {
 				catchError(path, e);
 			}
@@ -47,7 +47,7 @@ test("fuzz fileWriteStream w/ path", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.string(), async (path) => {
 			try {
-				fileWriteStream({ path, types });
+				await fileWriteStream({ path, types });
 			} catch (e) {
 				catchError(path, e);
 			}
@@ -75,7 +75,7 @@ test("fuzz fileReadStream w/ types", async () => {
 			async (fuzzTypes) => {
 				try {
 					// Only test the type enforcement logic, not the actual file open
-					fileReadStream({ path: "/dev/null", types: fuzzTypes });
+					await fileReadStream({ path: "/dev/null", types: fuzzTypes });
 				} catch (e) {
 					catchError(fuzzTypes, e);
 				}
@@ -90,9 +90,9 @@ test("fuzz fileReadStream w/ types", async () => {
 });
 
 // *** path traversal protection regression *** //
-test("fileReadStream should reject path traversal when basePath is set", () => {
+test("fileReadStream should reject path traversal when basePath is set", async () => {
 	try {
-		fileReadStream({
+		await fileReadStream({
 			path: "/etc/passwd",
 			basePath: "/tmp/safe",
 			types: [],
@@ -103,9 +103,9 @@ test("fileReadStream should reject path traversal when basePath is set", () => {
 	}
 });
 
-test("fileReadStream should reject relative path traversal when basePath is set", () => {
+test("fileReadStream should reject relative path traversal when basePath is set", async () => {
 	try {
-		fileReadStream({
+		await fileReadStream({
 			path: "/tmp/safe/../../etc/passwd",
 			basePath: "/tmp/safe",
 			types: [],
@@ -116,9 +116,9 @@ test("fileReadStream should reject relative path traversal when basePath is set"
 	}
 });
 
-test("fileWriteStream should reject path traversal when basePath is set", () => {
+test("fileWriteStream should reject path traversal when basePath is set", async () => {
 	try {
-		fileWriteStream({
+		await fileWriteStream({
 			path: "/etc/shadow",
 			basePath: "/tmp/safe",
 			types: [],

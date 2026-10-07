@@ -5,11 +5,11 @@ import type { DatastreamTransform, StreamOptions } from "@datastream/core";
 export interface DeflateCompressOptions {
 	quality?: number;
 	level?: number;
-	maxOutputSize?: number;
+	maxOutputSize?: number | null;
 }
 
 export interface DeflateDecompressOptions {
-	maxOutputSize?: number;
+	maxOutputSize?: number | null;
 }
 
 export function deflateCompressStream(

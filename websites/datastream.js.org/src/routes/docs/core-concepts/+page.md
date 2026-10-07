@@ -35,7 +35,7 @@ const result = await pipeline([
 ])
 
 console.log(result)
-// { count: 2, length: 10 }
+// { objectCount: 2, length: 10 }
 ```
 
 If the last stream is Readable or Transform (no Writable at the end), `pipeline` automatically appends a no-op Writable so the pipeline completes.
@@ -57,6 +57,8 @@ const output = await streamToArray(river)
 // [2, 4, 6]
 ```
 
+An error in any of the joined streams surfaces on the returned stream, so `streamToArray(river)` (or whatever consumes it) rejects with that error.
+
 ## The `.result()` pattern
 
 PassThrough streams collect metrics without modifying data. After the pipeline completes, retrieve results:
@@ -67,8 +69,9 @@ import { csvParseStream } from '@datastream/csv'
 import { objectCountStream } from '@datastream/object'
 import { digestStream } from '@datastream/digest'
 
+const data = 'id,name\r\n1,Alice\r\n2,Bob\r\n'
 const count = objectCountStream()
-const digest = await digestStream({ algorithm: 'SHA2-256' })
+const digest = digestStream({ algorithm: 'SHA2-256' })
 
 const result = await pipeline([
   createReadableStream(data),
@@ -78,14 +81,14 @@ const result = await pipeline([
 ])
 
 console.log(result)
-// { digest: 'SHA2-256:abc123...', count: 1000 }
+// { digest: 'SHA2-256:…', csvErrors: {}, objectCount: 3 }
 ```
 
 Each PassThrough stream returns `{ key, value }` from its `.result()` method. `pipeline()` combines them into a single object. You can customize the key with the `resultKey` option:
 
 ```javascript
 const count = objectCountStream({ resultKey: 'rowCount' })
-// result: { rowCount: 1000 }
+// result: { rowCount: 3 }
 ```
 
 ## Stream options
@@ -95,7 +98,7 @@ All stream factory functions accept a `streamOptions` parameter:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `highWaterMark` | `number` | — | Backpressure threshold — how many chunks to buffer before pausing |
-| `chunkSize` | `number` | `16384` (16KB) | Size hint for chunking strategies |
+| `chunkSize` | `number` | `16384` (16KB) | Slice size used when a Readable is created from a string or buffer |
 | `signal` | `AbortSignal` | — | Signal to abort the pipeline |
 
 ```javascript
@@ -108,6 +111,30 @@ await pipeline([
 
 // Abort from elsewhere:
 controller.abort()
+```
+
+## Limits
+
+Streams that buffer, parse, or decompress untrusted input have size limits (`maxBufferSize`, `maxFieldSize`, `maxInputSize`, `maxOutputSize`, `maxMessageSize`, `maxErrorRows`, `maxPages`, `maxBodySize`, ...). They all follow the same rules:
+
+- Leave the option out (or pass `undefined`) to get the documented default.
+- Pass `null` for no limit.
+- Going over a limit throws a `RangeError`, which rejects the pipeline.
+
+```javascript
+import { pipeline, createReadableStream } from '@datastream/core'
+import { csvParseStream } from '@datastream/csv'
+
+const data = `id,note\r\n1,"${'x'.repeat(100)}"\r\n`
+
+try {
+  await pipeline([createReadableStream(data), csvParseStream({ maxFieldSize: 64 })])
+} catch (e) {
+  console.log(e instanceof RangeError, e.message) // true 'CSV field size (100) exceeds maxFieldSize (64 bytes)'
+}
+
+// No limit on field size:
+await pipeline([createReadableStream(data), csvParseStream({ maxFieldSize: null })])
 ```
 
 ## Error handling

@@ -10,7 +10,7 @@ import {
 	csvDetectHeaderStream,
 	csvFormatStream,
 	csvInjectHeaderStream,
-	csvObjectToArray,
+	csvObjectToArrayStream,
 	csvParseStream,
 	csvQuotedParser,
 	csvRemoveEmptyRowsStream,
@@ -128,6 +128,85 @@ test("fuzz csvParseStream w/ csv-like input", async () => {
 		}),
 		{
 			numRuns: 1_000,
+			verbose: 2,
+			examples: [],
+		},
+	);
+});
+
+// Splitting the input into arbitrary string or byte chunks must not change
+// what the detect -> header -> parse pipeline produces.
+test("fuzz csv pipeline is independent of chunking", async () => {
+	const run = async (chunks) => {
+		const detect = csvDetectDelimitersStream();
+		const lazy = {
+			delimiterChar: () => detect.result().value.delimiterChar,
+			newlineChar: () => detect.result().value.newlineChar,
+			quoteChar: () => detect.result().value.quoteChar,
+		};
+		const header = csvDetectHeaderStream(lazy);
+		const parse = csvParseStream(lazy);
+		const rows = await streamToArray(
+			pipejoin([createReadableStream(chunks), detect, header, parse]),
+		);
+		return {
+			detected: detect.result().value,
+			header: header.result().value.header,
+			rows,
+			errors: parse.result().value,
+		};
+	};
+	const split = (input, cuts) => {
+		const at = [...new Set(cuts.map((c) => c % (input.length + 1)))].sort(
+			(a, b) => a - b,
+		);
+		const chunks = [];
+		let prev = 0;
+		for (const cut of at) {
+			chunks.push(input.slice(prev, cut));
+			prev = cut;
+		}
+		chunks.push(input.slice(prev));
+		return chunks;
+	};
+	await fc.assert(
+		fc.asyncProperty(
+			fc.string({
+				unit: fc.constantFrom(
+					"a",
+					"é",
+					",",
+					";",
+					'"',
+					"'",
+					"\r",
+					"\n",
+					"\uFEFF",
+				),
+				maxLength: 60,
+			}),
+			fc.array(fc.nat(), { maxLength: 10 }),
+			fc.boolean(),
+			async (input, cuts, asBytes) => {
+				const expected = await run([input]);
+				const source = asBytes ? new TextEncoder().encode(input) : input;
+				const chunks = split(source, cuts);
+				const actual = await run(chunks);
+				// Detection only sees the data buffered up to the first line, so it may
+				// legitimately differ with chunking; compare the rest only when it matches.
+				if (
+					JSON.stringify(actual.detected) !== JSON.stringify(expected.detected)
+				)
+					return;
+				if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+					throw new Error(
+						`chunked output differs: ${JSON.stringify({ input, chunks: chunks.map(String), expected, actual })}`,
+					);
+				}
+			},
+		),
+		{
+			numRuns: 5_000,
 			verbose: 2,
 			examples: [],
 		},
@@ -295,7 +374,7 @@ test("fuzz csvFormatStream w/ object input via compose", async () => {
 				try {
 					const streams = [
 						createReadableStream(input),
-						csvObjectToArray({ headers }),
+						csvObjectToArrayStream({ headers }),
 						csvInjectHeaderStream({ header: headers }),
 						csvFormatStream(),
 					];

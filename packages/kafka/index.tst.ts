@@ -58,14 +58,20 @@ describe("kafkaConsumeStream", () => {
 		).type.not.toBeAssignableTo<never>();
 	});
 
-	test("accepts an array of topics and a signal", () => {
+	test("accepts an array of topics and a signal in streamOptions", () => {
 		expect(
-			kafkaConsumeStream({
-				consumer,
-				topics: ["a", "b"],
-				fromBeginning: true,
-				signal: new AbortController().signal,
-			}),
+			kafkaConsumeStream(
+				{ consumer, topics: ["a", "b"], fromBeginning: true },
+				{ signal: new AbortController().signal },
+			),
 		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("does not accept signal in options", () => {
+		expect(kafkaConsumeStream).type.not.toBeCallableWith({
+			consumer,
+			topics: "t",
+			signal: new AbortController().signal,
+		});
 	});
 });

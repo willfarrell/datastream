@@ -11,15 +11,7 @@ Transform, reshape, filter, and aggregate object streams.
 npm install @datastream/object
 ```
 
-## `objectReadableStream` <span class="badge">Readable</span>
-
-Creates a Readable stream from an array of objects.
-
-```javascript
-import { objectReadableStream } from '@datastream/object'
-
-const stream = objectReadableStream([{ a: 1 }, { a: 2 }, { a: 3 }])
-```
+To stream an array of objects, use `createReadableStream` from `@datastream/core`.
 
 ## `objectCountStream` <span class="badge">PassThrough</span>
 
@@ -29,7 +21,7 @@ Counts the number of chunks that pass through.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `resultKey` | `string` | `"count"` | Key in pipeline result |
+| `resultKey` | `string` | `"objectCount"` | Key in pipeline result |
 
 ### Example
 
@@ -44,7 +36,7 @@ const result = await pipeline([
 ])
 
 console.log(result)
-// { count: 3 }
+// { objectCount: 3 }
 ```
 
 ## `objectFromEntriesStream` <span class="badge">Transform</span>
@@ -69,6 +61,25 @@ objectFromEntriesStream({ keys: ['name', 'age', 'city'] })
 objectFromEntriesStream({
   keys: () => detectHeader.result().value.header,
 })
+```
+
+## `objectToEntriesStream` <span class="badge">Transform</span>
+
+The reverse of `objectFromEntriesStream`: converts each object to an array of its values, in `keys` order. Missing keys become `undefined`. `csvObjectToArrayStream` is built on it, so use it to prepare object rows for `csvFormatStream`.
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `keys` | `string[] \| () => string[]` | — | Keys to read, in output order, or lazy function |
+
+### Example
+
+```javascript
+import { objectToEntriesStream } from '@datastream/object'
+
+// { name: 'Alice', age: 30, city: 'Toronto' } → ['Alice', 30]
+objectToEntriesStream({ keys: ['name', 'age'] })
 ```
 
 ## `objectPickStream` <span class="badge">Transform</span>
@@ -218,6 +229,9 @@ Groups consecutive objects with the same key values into arrays. Use with `objec
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `keys` | `string[]` | — | Keys to group by |
+| `maxBatchSize` | `number \| null` | unlimited | Emit a batch once it reaches this many objects, even if the next object has the same key values. Bounds memory when a group can be very large. `null` = unlimited |
+
+`maxBatchSize` is unlimited by default because a cap splits a group across batches, and `objectPivotLongToWideStream` turns each batch into its own row, so one entity would come out as several partial rows. Only set it when you don't pivot the batches or can handle split groups.
 
 ### Example
 
@@ -225,8 +239,12 @@ Groups consecutive objects with the same key values into arrays. Use with `objec
 import { objectBatchStream } from '@datastream/object'
 
 // Input: [{id:1,k:'a'}, {id:1,k:'b'}, {id:2,k:'c'}]
-// Output: [[{id:1,k:'a'}, {id:1,k:'b'}]], [[{id:2,k:'c'}]]
+// Output: [{id:1,k:'a'}, {id:1,k:'b'}], [{id:2,k:'c'}]
 objectBatchStream({ keys: ['id'] })
+
+// Input: [{id:1,k:'a'}, {id:1,k:'b'}, {id:1,k:'c'}]
+// Output: [{id:1,k:'a'}, {id:1,k:'b'}], [{id:1,k:'c'}]
+objectBatchStream({ keys: ['id'], maxBatchSize: 2 })
 ```
 
 ## `objectPivotLongToWideStream` <span class="badge">Transform</span>
@@ -275,7 +293,7 @@ Pivots wide format to long format. Emits multiple chunks per input object.
 import { objectPivotWideToLongStream } from '@datastream/object'
 
 // Input: { id: 1, temp: 20, humidity: 60 }
-// Output: { id: 1, keyParam: 'temp', valueParam: 20 }, { id: 1, keyParam: 'humidity', valueParam: 60 }
+// Output: { id: 1, metric: 'temp', value: 20 }, { id: 1, metric: 'humidity', value: 60 }
 objectPivotWideToLongStream({
   keys: ['temp', 'humidity'],
   keyParam: 'metric',
@@ -291,7 +309,7 @@ Skips consecutive duplicate objects. Uses shallow equality by default (compares 
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `isNestedObject` | `boolean` | `false` | Use `JSON.stringify` for deep comparison instead of shallow equality |
+| `isNestedObject` | `boolean` | `false` | Compare structurally (key-order insensitive; `node:util` `isDeepStrictEqual` on Node.js, an equivalent compare in the browser) instead of shallow equality |
 
 ### Example
 
@@ -303,7 +321,7 @@ import { objectSkipConsecutiveDuplicatesStream } from '@datastream/object'
 // Output: [{a:1}, {a:2}, {a:1}]
 objectSkipConsecutiveDuplicatesStream()
 
-// Deep — compares nested objects via JSON.stringify
+// Deep — compares nested objects by value
 // Input: [{a:{b:1}}, {a:{b:1}}, {a:{b:2}}]
 // Output: [{a:{b:1}}, {a:{b:2}}]
 objectSkipConsecutiveDuplicatesStream({ isNestedObject: true })

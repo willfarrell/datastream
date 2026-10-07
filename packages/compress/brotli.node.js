@@ -24,8 +24,3 @@ export const brotliDecompressStream = (options = {}, streamOptions = {}) => {
 	const zlibOptions = params ? { ...streamOptions, params } : streamOptions;
 	return guardDecompress(createBrotliDecompress(zlibOptions), maxOutputSize);
 };
-
-export default {
-	compressStream: brotliCompressStream,
-	decompressStream: brotliDecompressStream,
-};

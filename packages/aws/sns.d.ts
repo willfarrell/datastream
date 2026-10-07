@@ -8,6 +8,8 @@ export function awsSNSPublishMessageStream(
 	options: {
 		client?: unknown;
 		TopicArn?: string;
+		// Max retries of failed entries (default 10); null = unlimited.
+		retryMaxCount?: number | null;
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,

@@ -7,17 +7,29 @@ Read from S3, parse CSV, validate, re-format, and write back:
 
 ```javascript
 import { pipeline } from '@datastream/core'
-import { awsS3GetObjectStream, awsS3PutObjectStream } from '@datastream/aws'
+import { awsS3GetObjectStream, awsS3PutObjectStream } from '@datastream/aws/s3'
 import {
   csvDetectDelimitersStream,
   csvDetectHeaderStream,
   csvParseStream,
   csvRemoveMalformedRowsStream,
+  csvObjectToArrayStream,
+  csvInjectHeaderStream,
   csvFormatStream,
 } from '@datastream/csv'
 import { objectFromEntriesStream } from '@datastream/object'
 import { validateStream } from '@datastream/validate'
 import { gzipCompressStream, gzipDecompressStream } from '@datastream/compress'
+
+const headers = ['id', 'name']
+const schema = {
+  type: 'object',
+  required: headers,
+  properties: {
+    id: { type: 'number' },
+    name: { type: 'string', minLength: 1 },
+  },
+}
 
 const detectDelimiters = csvDetectDelimitersStream()
 const detectHeader = csvDetectHeaderStream({
@@ -45,7 +57,9 @@ const result = await pipeline([
     keys: () => detectHeader.result().value.header,
   }),
   validateStream({ schema }),
-  csvFormatStream({ header: true }),
+  csvObjectToArrayStream({ headers }),
+  csvInjectHeaderStream({ header: headers }),
+  csvFormatStream(),
   gzipCompressStream(),
   awsS3PutObjectStream({ Bucket: 'my-bucket', Key: 'output.csv.gz' }),
 ])

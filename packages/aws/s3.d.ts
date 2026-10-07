@@ -25,6 +25,8 @@ export function awsS3PutObjectStream(
 		client?: unknown;
 		onProgress?: (progress: unknown) => void;
 		tags?: Record<string, string>;
+		partSize?: number;
+		queueSize?: number;
 		Bucket?: string;
 		Key?: string;
 		[key: string]: unknown;

@@ -8,12 +8,15 @@ import type {
 	StreamResult,
 } from "@datastream/core";
 import {
+	concatBytes,
+	createChunkDecoder,
 	createReadableStream,
 	createTransformStream,
 	createWritableStream,
 	isReadable,
 	isWritable,
 	makeOptions,
+	pipejoin,
 	pipeline,
 	result,
 	streamToArray,
@@ -168,6 +171,50 @@ describe("createWritableStream", () => {
 			DatastreamWritable<unknown>
 		>();
 	});
+
+	test("accepts an abort hook with or without a close callback", () => {
+		const abort = (_reason: unknown) => {};
+		expect(createWritableStream(() => {}, { abort })).type.toBeAssignableTo<
+			DatastreamWritable<unknown>
+		>();
+		expect(
+			createWritableStream(
+				() => {},
+				() => {},
+				{ abort: async (_reason: unknown) => {} },
+			),
+		).type.toBeAssignableTo<DatastreamWritable<unknown>>();
+	});
+});
+
+describe("pipejoin", () => {
+	test("takes only the streams (no onError callback)", () => {
+		expect(pipejoin).type.not.toBeCallableWith([], () => {});
+		expect(pipejoin([])).type.not.toBeAssignableTo<never>();
+	});
+});
+
+describe("collector limits", () => {
+	test("maxBufferSize accepts a number or null", () => {
+		const stream = createReadableStream();
+		expect(streamToArray(stream, { maxBufferSize: 1 })).type.toBe<
+			Promise<unknown[]>
+		>();
+		expect(streamToString(stream, { maxBufferSize: null })).type.toBe<
+			Promise<string>
+		>();
+	});
+});
+
+describe("createReadableStream bytes", () => {
+	test("accepts ArrayBuffer and views", () => {
+		expect(
+			createReadableStream(new ArrayBuffer(1)),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			createReadableStream(new DataView(new ArrayBuffer(1))),
+		).type.not.toBeAssignableTo<never>();
+	});
 });
 
 describe("timeout", () => {
@@ -179,5 +226,37 @@ describe("timeout", () => {
 		expect(timeout(100, { signal: new AbortController().signal })).type.toBe<
 			Promise<void>
 		>();
+	});
+});
+
+describe("createChunkDecoder", () => {
+	test("decodes bytes or strings to string", () => {
+		const decoder = createChunkDecoder();
+		expect(decoder.decode(new Uint8Array(1))).type.toBe<string>();
+		expect(decoder.decode("a")).type.toBe<string>();
+		expect(decoder.flush()).type.toBe<string>();
+	});
+
+	test("accepts TextDecoder options", () => {
+		expect(createChunkDecoder({ ignoreBOM: true })).type.toBe<{
+			decode: (chunk: string | AllowSharedBufferSource) => string;
+			flush: () => string;
+		}>();
+	});
+
+	test("rejects non-chunk input", () => {
+		expect(createChunkDecoder().decode).type.not.toBeCallableWith(1);
+	});
+});
+
+describe("concatBytes", () => {
+	test("returns Uint8Array", () => {
+		expect(
+			concatBytes([new Uint8Array(1), new Uint8Array(2)]),
+		).type.toBe<Uint8Array>();
+	});
+
+	test("rejects non-array input", () => {
+		expect(concatBytes).type.not.toBeCallableWith(new Uint8Array(1));
 	});
 });

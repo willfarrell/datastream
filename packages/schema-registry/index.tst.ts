@@ -1,8 +1,11 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
+import type { ResultStream } from "@datastream/core";
 import type {
 	ConfluentEnvelope,
+	ConfluentUnframeResult,
 	GlueEnvelope,
+	GlueUnframeResult,
 } from "@datastream/schema-registry";
 import {
 	confluentFrameStream,
@@ -48,6 +51,23 @@ describe("confluentUnframeStream", () => {
 	test("accepts no options", () => {
 		expect(confluentUnframeStream()).type.not.toBeAssignableTo<never>();
 	});
+
+	test("result lists distinct schemaIds", () => {
+		expect(confluentUnframeStream()).type.toBeAssignableTo<
+			ResultStream<ConfluentUnframeResult>
+		>();
+		expect<ConfluentUnframeResult["schemaIds"]>().type.toBe<number[]>();
+		expect<ConfluentUnframeResult["untrackedSchemaIds"]>().type.toBe<number>();
+	});
+
+	test("accepts maxSchemaIds (number or null)", () => {
+		expect(
+			confluentUnframeStream({ maxSchemaIds: 10 }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			confluentUnframeStream({ maxSchemaIds: null }),
+		).type.not.toBeAssignableTo<never>();
+	});
 });
 
 describe("glueFrameStream", () => {
@@ -62,12 +82,56 @@ describe("glueFrameStream", () => {
 			glueFrameStream({ schemaVersionId: "abc", compression: "zlib" }),
 		).type.not.toBeAssignableTo<never>();
 	});
+
+	test("accepts maxOutputSize (number or null)", () => {
+		expect(
+			glueFrameStream({ schemaVersionId: "abc", maxOutputSize: 1024 }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			glueFrameStream({ schemaVersionId: "abc", maxOutputSize: null }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects renamed maxFrameBytes", () => {
+		expect(glueFrameStream).type.not.toBeCallableWith({
+			schemaVersionId: "abc",
+			maxFrameBytes: 1024,
+		});
+	});
 });
 
 describe("glueUnframeStream", () => {
-	test("accepts maxDecompressedBytes", () => {
+	test("accepts maxOutputSize", () => {
 		expect(
-			glueUnframeStream({ maxDecompressedBytes: 1024 }),
+			glueUnframeStream({ maxOutputSize: 1024 }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts maxOutputSize: null (no limit)", () => {
+		expect(
+			glueUnframeStream({ maxOutputSize: null }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects renamed maxDecompressedBytes", () => {
+		expect(glueUnframeStream).type.not.toBeCallableWith({
+			maxDecompressedBytes: 1024,
+		});
+	});
+
+	test("result lists distinct schemaVersionIds", () => {
+		expect(glueUnframeStream()).type.toBeAssignableTo<
+			ResultStream<GlueUnframeResult>
+		>();
+		expect<GlueUnframeResult["schemaVersionIds"]>().type.toBe<string[]>();
+		expect<
+			GlueUnframeResult["untrackedSchemaVersionIds"]
+		>().type.toBe<number>();
+	});
+
+	test("accepts maxSchemaIds (number or null)", () => {
+		expect(
+			glueUnframeStream({ maxSchemaIds: 10 }),
 		).type.not.toBeAssignableTo<never>();
 	});
 });

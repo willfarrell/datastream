@@ -4,43 +4,36 @@
 	"description": "DuckDB writable streams (copy-from) for Node and browser",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
 	"main": "./index.node.mjs",
-	"module": "./index.web.mjs",
+	"module": "./index.browser.mjs",
 	"exports": {
 		".": {
-			"node": {
-				"import": {
-					"types": "./index.d.ts",
-					"default": "./index.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./index.d.ts",
-				"default": "./index.web.mjs"
-			}
-		},
-		"./webstream": {
 			"types": "./index.d.ts",
-			"default": "./index.web.mjs"
+			"browser": "./index.browser.mjs",
+			"node": "./index.node.mjs",
+			"default": "./index.browser.mjs"
+		},
+		"./browser": {
+			"types": "./index.d.ts",
+			"default": "./index.browser.mjs"
 		}
 	},
 	"types": "index.d.ts",
 	"files": [
 		"*.mjs",
 		"*.map",
-		"*.d.ts"
+		"*.d.ts",
+		"shared.js"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:perf": "node --test index.perf.js",
-		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
+		"test:bench": "node --experimental-bench --bench 'index.bench.js'"
 	},
 	"license": "MIT",
 	"keywords": [
@@ -67,8 +60,8 @@
 		"@datastream/core": "0.7.1"
 	},
 	"peerDependencies": {
-		"@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
-		"@duckdb/node-api": "^1.5.4-r.1",
+		"@duckdb/duckdb-wasm": ">=1.33.1-dev57.0 <2",
+		"@duckdb/node-api": ">=1.5.4-r.1 <1.5.5 || >=1.5.5-r.1 <2",
 		"apache-arrow": "^21.1.0"
 	},
 	"peerDependenciesMeta": {

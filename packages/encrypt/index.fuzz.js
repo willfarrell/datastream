@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import test from "node:test";
-import { createReadableStream } from "@datastream/core";
+import { createReadableStream, pipejoin } from "@datastream/core";
 import { decryptStream, encryptStream } from "@datastream/encrypt";
 import fc from "fast-check";
 
@@ -25,16 +25,19 @@ test("fuzz encryptStream AES-256-GCM roundtrip", async () => {
 			fc.uint8Array({ minLength: 0, maxLength: 10_000 }),
 			async (input) => {
 				try {
-					const enc = encryptStream({ key });
+					const enc = await encryptStream({ key });
 					const encryptedChunks = [];
-					const encStream = createReadableStream(input).pipe(enc);
+					const encStream = pipejoin([createReadableStream(input), enc]);
 					for await (const chunk of encStream) {
 						encryptedChunks.push(chunk);
 					}
 					const { iv, authTag } = enc.result().value;
 
-					const dec = decryptStream({ key, iv, authTag });
-					const decStream = createReadableStream(encryptedChunks).pipe(dec);
+					const dec = await decryptStream({ key, iv, authTag });
+					const decStream = pipejoin([
+						createReadableStream(encryptedChunks),
+						dec,
+					]);
 					const decryptedChunks = [];
 					for await (const chunk of decStream) {
 						decryptedChunks.push(chunk);
@@ -62,23 +65,26 @@ test("fuzz encryptStream AES-256-CTR roundtrip", async () => {
 			fc.uint8Array({ minLength: 0, maxLength: 10_000 }),
 			async (input) => {
 				try {
-					const enc = encryptStream({
+					const enc = await encryptStream({
 						key,
 						algorithm: "AES-256-CTR",
 					});
 					const encryptedChunks = [];
-					const encStream = createReadableStream(input).pipe(enc);
+					const encStream = pipejoin([createReadableStream(input), enc]);
 					for await (const chunk of encStream) {
 						encryptedChunks.push(chunk);
 					}
 					const { iv } = enc.result().value;
 
-					const dec = decryptStream({
+					const dec = await decryptStream({
 						key,
 						iv,
 						algorithm: "AES-256-CTR",
 					});
-					const decStream = createReadableStream(encryptedChunks).pipe(dec);
+					const decStream = pipejoin([
+						createReadableStream(encryptedChunks),
+						dec,
+					]);
 					const decryptedChunks = [];
 					for await (const chunk of decStream) {
 						decryptedChunks.push(chunk);
@@ -106,24 +112,27 @@ test("fuzz encryptStream CHACHA20-POLY1305 roundtrip", async () => {
 			fc.uint8Array({ minLength: 0, maxLength: 10_000 }),
 			async (input) => {
 				try {
-					const enc = encryptStream({
+					const enc = await encryptStream({
 						key,
 						algorithm: "CHACHA20-POLY1305",
 					});
 					const encryptedChunks = [];
-					const encStream = createReadableStream(input).pipe(enc);
+					const encStream = pipejoin([createReadableStream(input), enc]);
 					for await (const chunk of encStream) {
 						encryptedChunks.push(chunk);
 					}
 					const { iv, authTag } = enc.result().value;
 
-					const dec = decryptStream({
+					const dec = await decryptStream({
 						key,
 						iv,
 						authTag,
 						algorithm: "CHACHA20-POLY1305",
 					});
-					const decStream = createReadableStream(encryptedChunks).pipe(dec);
+					const decStream = pipejoin([
+						createReadableStream(encryptedChunks),
+						dec,
+					]);
 					const decryptedChunks = [];
 					for await (const chunk of decStream) {
 						decryptedChunks.push(chunk);
@@ -150,18 +159,21 @@ test("fuzz decryptStream with wrong key should fail", async () => {
 		fc.asyncProperty(
 			fc.uint8Array({ minLength: 1, maxLength: 1_000 }),
 			async (input) => {
-				const enc = encryptStream({ key });
+				const enc = await encryptStream({ key });
 				const encryptedChunks = [];
-				const encStream = createReadableStream(input).pipe(enc);
+				const encStream = pipejoin([createReadableStream(input), enc]);
 				for await (const chunk of encStream) {
 					encryptedChunks.push(chunk);
 				}
 				const { iv, authTag } = enc.result().value;
 
 				const wrongKey = randomBytes(32);
-				const dec = decryptStream({ key: wrongKey, iv, authTag });
+				const dec = await decryptStream({ key: wrongKey, iv, authTag });
 				try {
-					const decStream = createReadableStream(encryptedChunks).pipe(dec);
+					const decStream = pipejoin([
+						createReadableStream(encryptedChunks),
+						dec,
+					]);
 					for await (const _chunk of decStream) {
 						// should fail
 					}

@@ -15,6 +15,10 @@ export {
 	awsDynamoDBSetClient,
 } from "@datastream/aws/dynamodb";
 export {
+	awsDynamoDBStreamsGetRecordsStream,
+	awsDynamoDBStreamsSetClient,
+} from "@datastream/aws/dynamodb-streams";
+export {
 	awsKinesisGetRecordsStream,
 	awsKinesisPutRecordsStream,
 	awsKinesisSetClient,

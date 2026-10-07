@@ -15,16 +15,40 @@ import Section from "@design-system/elements/section.svelte";
 import Span from "@design-system/elements/span.svelte";
 import Ul from "@design-system/elements/ul.svelte";
 
-const codeExample = `import { pipeline, createReadableStream } from '@datastream/core'
-import { csvParseStream } from '@datastream/csv'
+const codeExample = `import { pipeline } from '@datastream/core'
+import { fileReadStream, fileWriteStream } from '@datastream/file'
+import {
+  csvDetectHeaderStream,
+  csvParseStream,
+  csvArrayToObjectStream,
+  csvObjectToArrayStream,
+  csvInjectHeaderStream,
+  csvFormatStream,
+} from '@datastream/csv'
 import { validateStream } from '@datastream/validate'
 import { gzipCompressStream } from '@datastream/compress'
 
+const headers = ['name', 'age']
+const schema = {
+  type: 'object',
+  required: headers,
+  properties: {
+    name: { type: 'string' },
+    age: { type: 'number' },
+  },
+}
+
 const streams = [
-  createReadableStream(csvData),
-  csvParseStream({ header: true }),
-  validateStream(schema),
-  gzipCompressStream()
+  await fileReadStream({ path: './people.csv' }),
+  csvDetectHeaderStream(),
+  csvParseStream(),
+  csvArrayToObjectStream({ headers }),
+  validateStream({ schema }),
+  csvObjectToArrayStream({ headers }),
+  csvInjectHeaderStream({ header: headers }),
+  csvFormatStream(),
+  gzipCompressStream(),
+  await fileWriteStream({ path: './people.csv.gz' }),
 ]
 
 await pipeline(streams)`;
@@ -82,7 +106,7 @@ await pipeline(streams)`;
                 <Li class="stat">
                     <H3
                         ><Icon src="/img/icons.svg#list-check" />
-                        <Span>96%+</Span></H3
+                        <Span>100%</Span></H3
                     >
                     <P>Test coverage</P>
                 </Li>
@@ -164,7 +188,7 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="aws">
                 <H3><A href="/docs/packages/aws">aws</A></H3>
-                <P>DynamoDB, S3, SQS, SNS, and Lambda streams.</P>
+                <P>DynamoDB, S3, SQS, SNS, and Lambda streams (Node.js only).</P>
             </Card>
             <Card class="package" id="csv">
                 <H3><A href="/docs/packages/csv">csv</A></H3>
@@ -172,7 +196,7 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="compress">
                 <H3><A href="/docs/packages/compress">compress</A></H3>
-                <P>Brotli, gzip, deflate, and zstd compression.</P>
+                <P>Brotli, gzip, deflate, and zstd (Node.js only) compression.</P>
             </Card>
             <Card class="package" id="charset">
                 <H3><A href="/docs/packages/charset">charset</A></H3>
@@ -200,7 +224,7 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="kafka">
                 <H3><A href="/docs/packages/kafka">kafka</A></H3>
-                <P>Kafka producer and consumer streams.</P>
+                <P>Kafka producer and consumer streams (Node.js only).</P>
             </Card>
             <Card class="package" id="protobuf">
                 <H3><A href="/docs/packages/protobuf">protobuf</A></H3>

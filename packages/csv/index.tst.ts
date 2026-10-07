@@ -3,16 +3,17 @@
 import type {
 	CsvCoerceType,
 	CsvDelimiters,
+	CsvError,
 	CsvParserResult,
 } from "@datastream/csv";
 import {
-	csvArrayToObject,
+	csvArrayToObjectStream,
 	csvCoerceValuesStream,
 	csvDetectDelimitersStream,
 	csvDetectHeaderStream,
 	csvFormatStream,
 	csvInjectHeaderStream,
-	csvObjectToArray,
+	csvObjectToArrayStream,
 	csvParseStream,
 	csvQuotedParser,
 	csvRemoveEmptyRowsStream,
@@ -49,10 +50,28 @@ describe("csvDetectDelimitersStream", () => {
 		expect(stream.result).type.not.toBeAssignableTo<never>();
 	});
 
-	test("accepts chunkSize", () => {
+	test("rejects removed chunkSize", () => {
+		expect(csvDetectDelimitersStream).type.not.toBeCallableWith({
+			chunkSize: 2048,
+		});
+	});
+
+	test("accepts maxBufferSize", () => {
 		expect(
-			csvDetectDelimitersStream({ chunkSize: 2048 }),
+			csvDetectDelimitersStream({ maxBufferSize: 1024 }),
 		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts null maxBufferSize (unlimited)", () => {
+		expect(
+			csvDetectDelimitersStream({ maxBufferSize: null }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects non-number maxBufferSize", () => {
+		expect(csvDetectDelimitersStream).type.not.toBeCallableWith({
+			maxBufferSize: "1024",
+		});
 	});
 });
 
@@ -60,6 +79,30 @@ describe("csvDetectHeaderStream", () => {
 	test("returns stream with result", () => {
 		const stream = csvDetectHeaderStream();
 		expect(stream.result).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts maxBufferSize", () => {
+		expect(
+			csvDetectHeaderStream({ maxBufferSize: 1024 }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts null maxBufferSize (unlimited)", () => {
+		expect(
+			csvDetectHeaderStream({ maxBufferSize: null }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects removed chunkSize", () => {
+		expect(csvDetectHeaderStream).type.not.toBeCallableWith({
+			chunkSize: 2048,
+		});
+	});
+
+	test("rejects non-number maxBufferSize", () => {
+		expect(csvDetectHeaderStream).type.not.toBeCallableWith({
+			maxBufferSize: "1024",
+		});
 	});
 });
 
@@ -88,7 +131,30 @@ describe("csvParseStream", () => {
 
 	test("accepts parser options", () => {
 		expect(
-			csvParseStream({ delimiterChar: ",", chunkSize: 1024 }),
+			csvParseStream({ delimiterChar: "," }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects removed chunkSize", () => {
+		expect(csvParseStream).type.not.toBeCallableWith({ chunkSize: 1024 });
+	});
+
+	test("accepts maxFieldSize", () => {
+		expect(
+			csvParseStream({ maxFieldSize: 1024 }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			csvParseStream({ maxFieldSize: null }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects renamed fieldMaxSize", () => {
+		expect(csvParseStream).type.not.toBeCallableWith({ fieldMaxSize: 1024 });
+	});
+
+	test("accepts null maxErrorRows (unlimited)", () => {
+		expect(
+			csvParseStream({ maxErrorRows: null }),
 		).type.not.toBeAssignableTo<never>();
 	});
 
@@ -96,6 +162,20 @@ describe("csvParseStream", () => {
 		expect(
 			csvParseStream({ delimiterChar: () => "," }),
 		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts maxErrorRows", () => {
+		expect(
+			csvParseStream({ maxErrorRows: 10 }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects non-number maxErrorRows", () => {
+		expect(csvParseStream).type.not.toBeCallableWith({ maxErrorRows: "10" });
+	});
+
+	test("result errors carry a count", () => {
+		expect<CsvError["count"]>().type.toBe<number | undefined>();
 	});
 });
 
@@ -109,11 +189,29 @@ describe("csvRemoveMalformedRowsStream", () => {
 			csvRemoveMalformedRowsStream({ headers: ["a", "b"] }),
 		).type.not.toBeAssignableTo<never>();
 	});
+
+	test("accepts maxErrorRows", () => {
+		expect(
+			csvRemoveMalformedRowsStream({ maxErrorRows: 10 }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			csvRemoveMalformedRowsStream({ maxErrorRows: null }),
+		).type.not.toBeAssignableTo<never>();
+	});
 });
 
 describe("csvRemoveEmptyRowsStream", () => {
 	test("accepts no options", () => {
 		expect(csvRemoveEmptyRowsStream()).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts maxErrorRows", () => {
+		expect(
+			csvRemoveEmptyRowsStream({ maxErrorRows: 10 }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			csvRemoveEmptyRowsStream({ maxErrorRows: null }),
+		).type.not.toBeAssignableTo<never>();
 	});
 });
 
@@ -122,6 +220,13 @@ describe("csvCoerceValuesStream", () => {
 		expect(
 			csvCoerceValuesStream({ columns: { age: "number", active: "boolean" } }),
 		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("has no result or resultKey", () => {
+		expect(csvCoerceValuesStream).type.not.toBeCallableWith({
+			resultKey: "coerce",
+		});
+		expect(csvCoerceValuesStream()).type.not.toHaveProperty("result");
 	});
 
 	test("CsvCoerceType values", () => {
@@ -152,26 +257,36 @@ describe("csvFormatStream", () => {
 			csvFormatStream({ delimiterChar: "\t" }),
 		).type.not.toBeAssignableTo<never>();
 	});
+
+	test("accepts escapeFormulae", () => {
+		expect(
+			csvFormatStream({ escapeFormulae: false }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects non-boolean escapeFormulae", () => {
+		expect(csvFormatStream).type.not.toBeCallableWith({ escapeFormulae: "no" });
+	});
 });
 
-describe("csvArrayToObject", () => {
+describe("csvArrayToObjectStream", () => {
 	test("requires headers", () => {
 		expect(
-			csvArrayToObject({ headers: ["a", "b"] }),
+			csvArrayToObjectStream({ headers: ["a", "b"] }),
 		).type.not.toBeAssignableTo<never>();
 	});
 
 	test("accepts lazy headers", () => {
 		expect(
-			csvArrayToObject({ headers: () => ["a", "b"] }),
+			csvArrayToObjectStream({ headers: () => ["a", "b"] }),
 		).type.not.toBeAssignableTo<never>();
 	});
 });
 
-describe("csvObjectToArray", () => {
+describe("csvObjectToArrayStream", () => {
 	test("requires headers", () => {
 		expect(
-			csvObjectToArray({ headers: ["a", "b"] }),
+			csvObjectToArrayStream({ headers: ["a", "b"] }),
 		).type.not.toBeAssignableTo<never>();
 	});
 });

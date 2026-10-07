@@ -23,6 +23,8 @@ export function awsSQSDeleteMessageStream(
 	options: {
 		client?: unknown;
 		QueueUrl?: string;
+		// Max retries of failed entries (default 10); null = unlimited.
+		retryMaxCount?: number | null;
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
@@ -32,6 +34,8 @@ export function awsSQSSendMessageStream(
 	options: {
 		client?: unknown;
 		QueueUrl?: string;
+		// Max retries of failed entries (default 10); null = unlimited.
+		retryMaxCount?: number | null;
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,

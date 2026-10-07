@@ -2,16 +2,22 @@
 // SPDX-License-Identifier: MIT
 import {
 	createPassThroughStream,
-	createReadableStream,
 	createTransformStream,
-	deepClone,
-	deepEqual,
-	shallowClone,
-	shallowEqual,
 } from "@datastream/core";
+import { deepEqual } from "#deepEqual";
+import { deepClone, shallowClone, shallowEqual } from "./helpers.js";
 
-export const objectReadableStream = (input = [], streamOptions = {}) => {
-	return createReadableStream(input, streamOptions);
+// defineProperty so reserved keys such as "__proto__" become own enumerable
+// data properties instead of mutating the object's prototype (which a plain
+// `object[key] = ...` would do, silently dropping the key). For ordinary keys
+// this is equivalent to a normal assignment.
+const defineValue = (object, key, value) => {
+	Object.defineProperty(object, key, {
+		value,
+		writable: true,
+		enumerable: true,
+		configurable: true,
+	});
 };
 
 export const objectCountStream = ({ resultKey } = {}, streamOptions = {}) => {
@@ -20,33 +26,38 @@ export const objectCountStream = ({ resultKey } = {}, streamOptions = {}) => {
 		value += 1;
 	};
 	const stream = createPassThroughStream(passThrough, streamOptions);
-	stream.result = () => ({ key: resultKey ?? "count", value });
+	stream.result = () => ({ key: resultKey ?? "objectCount", value });
 	return stream;
 };
 
 export const objectBatchStream = (
-	{ keys, maxBatchSize = Infinity },
+	{ keys, maxBatchSize },
 	streamOptions = {},
 ) => {
+	// Unlimited by default (undefined and null alike): a finite default would
+	// split one key group across batches, and objectPivotLongToWideStream turns
+	// each batch into its own row, silently emitting partial rows.
+	const limit = maxBatchSize ?? Number.POSITIVE_INFINITY;
 	let previousId;
-	let batch;
+	let batch = [];
 	const transform = (chunk, enqueue) => {
 		const id = JSON.stringify(keys.map((key) => chunk[key]));
 		if (previousId !== id) {
-			if (batch) {
+			// batch is empty when a maxBatchSize flush just happened
+			if (batch.length) {
 				enqueue(batch);
 			}
 			previousId = id;
 			batch = [];
 		}
 		batch.push(chunk);
-		if (batch.length >= maxBatchSize) {
+		if (batch.length >= limit) {
 			enqueue(batch);
 			batch = [];
 		}
 	};
 	const flush = (enqueue) => {
-		if (batch) {
+		if (batch.length) {
 			enqueue(batch);
 		}
 	};
@@ -67,7 +78,7 @@ export const objectPivotLongToWideStream = (
 
 		for (const chunk of chunks) {
 			const keyParam = keys.map((key) => chunk[key]).join(delimiter);
-			row[keyParam] = chunk[valueParam];
+			defineValue(row, keyParam, chunk[valueParam]);
 		}
 
 		for (const key of keys) {
@@ -153,8 +164,9 @@ export const objectKeyMapStream = ({ keys }, streamOptions = {}) => {
 	const transform = (chunk, enqueue) => {
 		const value = {};
 		for (const key of Object.keys(chunk)) {
-			const newKey = keys[key] ?? key;
-			value[newKey] = chunk[key];
+			// hasOwn: inherited names (constructor, toString, __proto__) are not mappings
+			const newKey = Object.hasOwn(keys, key) ? keys[key] : key;
+			defineValue(value, newKey, chunk[key]);
 		}
 		enqueue(value);
 	};
@@ -172,12 +184,14 @@ export const objectValueMapStream = ({ key, values }, streamOptions = {}) => {
 };
 
 export const objectPickStream = ({ keys }, streamOptions = {}) => {
-	const keySet = Object.fromEntries(keys.map((k) => [k, true]));
+	// Set, not a plain-object lookup: inherited names (constructor, toString,
+	// __proto__) must not match
+	const keySet = new Set(keys);
 	const transform = (chunk, enqueue) => {
 		const value = {};
 		for (const key of Object.keys(chunk)) {
-			if (keySet[key]) {
-				value[key] = chunk[key];
+			if (keySet.has(key)) {
+				defineValue(value, key, chunk[key]);
 			}
 		}
 		enqueue(value);
@@ -186,12 +200,14 @@ export const objectPickStream = ({ keys }, streamOptions = {}) => {
 };
 
 export const objectOmitStream = ({ keys }, streamOptions = {}) => {
-	const keySet = Object.fromEntries(keys.map((k) => [k, true]));
+	// Set, not a plain-object lookup: inherited names (toString, valueOf)
+	// must not be treated as omitted
+	const keySet = new Set(keys);
 	const transform = (chunk, enqueue) => {
 		const value = {};
 		for (const key of Object.keys(chunk)) {
-			if (!keySet[key]) {
-				value[key] = chunk[key];
+			if (!keySet.has(key)) {
+				defineValue(value, key, chunk[key]);
 			}
 		}
 		enqueue(value);
@@ -206,7 +222,7 @@ export const objectFromEntriesStream = ({ keys }, streamOptions = {}) => {
 		resolvedKeys ??= typeof keys === "function" ? keys() : keys;
 		const value = {};
 		for (let i = 0; i < resolvedKeys.length; i++) {
-			value[resolvedKeys[i]] = chunk[i];
+			defineValue(value, resolvedKeys[i], chunk[i]);
 		}
 		enqueue(value);
 	};
@@ -240,22 +256,4 @@ export const objectSkipConsecutiveDuplicatesStream = (
 		}
 	};
 	return createTransformStream(transform, streamOptions);
-};
-
-export default {
-	readableStream: objectReadableStream,
-	countStream: objectCountStream,
-	pickStream: objectPickStream,
-	omitStream: objectOmitStream,
-	batchStream: objectBatchStream,
-	pivotLongToWideStream: objectPivotLongToWideStream,
-	pivotWideToLongStream: objectPivotWideToLongStream,
-	keyValueStream: objectKeyValueStream,
-	keyValuesStream: objectKeyValuesStream,
-	keyJoinStream: objectKeyJoinStream,
-	keyMapStream: objectKeyMapStream,
-	valueMapStream: objectValueMapStream,
-	fromEntriesStream: objectFromEntriesStream,
-	toEntriesStream: objectToEntriesStream,
-	skipConsecutiveDuplicatesStream: objectSkipConsecutiveDuplicatesStream,
 };

@@ -1,7 +1,17 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import { createWritableStream, resolveLazy } from "@datastream/core";
-import { DuckDBInstance } from "@duckdb/node-api";
+import {
+	DuckDBDateValue,
+	DuckDBInstance,
+	DuckDBTimestampValue,
+	DuckDBTypeId,
+} from "@duckdb/node-api";
+import {
+	ARROW_DATE,
+	ARROW_TIMESTAMP,
+	ensureTableAndColumns,
+} from "./shared.js";
 
 export const duckdbConnect = async (path = ":memory:", options) => {
 	// An empty path is a caller mistake (node-api would silently open an in-memory
@@ -16,109 +26,53 @@ export const duckdbConnect = async (path = ":memory:", options) => {
 	return await instance.connect();
 };
 
-// DuckDB has no parameter binding for identifiers, so table/column names are
-// interpolated into SQL. Double the embedded quotes and require a non-empty
-// string so a crafted name can't break out of the quoted identifier.
-const quoteIdent = (name) => {
-	if (typeof name !== "string" || name.length === 0) {
-		throw new TypeError("duckdb: identifier must be a non-empty string");
+const MS_PER_DAY = 86400000;
+
+// Target column types that take a wrapped DuckDB DATE/TIMESTAMP value (the
+// appender casts between them). Any other target keeps arrow's raw epoch-ms
+// number, e.g. a Timestamp into BIGINT stores the milliseconds.
+const TEMPORAL_TARGETS = new Set([
+	DuckDBTypeId.DATE,
+	DuckDBTypeId.TIMESTAMP,
+	DuckDBTypeId.TIMESTAMP_S,
+	DuckDBTypeId.TIMESTAMP_MS,
+	DuckDBTypeId.TIMESTAMP_NS,
+	DuckDBTypeId.TIMESTAMP_TZ,
+]);
+
+// apache-arrow's get() returns Date and Timestamp values as epoch-millisecond
+// numbers, which the appender would bind as BIGINT (no BIGINT -> DATE/TIMESTAMP
+// cast). Wrap them in DuckDB values; the appender casts TIMESTAMP (µs) to the
+// column's own unit. Sub-microsecond nanos are already lost by arrow's get().
+// typeId is only set for a Date/Timestamp column whose target is temporal.
+const toDuckDBValue = (typeId, value) => {
+	if (typeId === ARROW_DATE) {
+		return new DuckDBDateValue(Math.floor(value / MS_PER_DAY));
 	}
-	return `"${name.replaceAll('"', '""')}"`;
+	if (typeId === ARROW_TIMESTAMP) {
+		return new DuckDBTimestampValue(BigInt(Math.round(value * 1000)));
+	}
+	return value;
 };
 
-// A failed existence probe should only be read as "table does not exist" when
-// the error is a missing-table/catalog error. Any other failure (lock,
-// permission, column read error, ...) must propagate so it is not masked by a
-// confusing downstream "table already exists" from CREATE TABLE.
-const isMissingTableError = (error) => {
-	const message = String(error?.message ?? error).toLowerCase();
-	return (
-		message.includes("does not exist") ||
-		message.includes("not found") ||
-		message.includes("catalog error")
+const ensureTable = (db, table, schema) =>
+	ensureTableAndColumns(
+		{
+			run: (sql) => db.run(sql),
+			readColumnNames: async (sql) =>
+				(await db.runAndReadAll(sql)).columnNames(),
+		},
+		table,
+		schema,
 	);
-};
 
-const tableExists = async (db, table) => {
-	try {
-		await db.run(`SELECT 1 FROM ${quoteIdent(table)} LIMIT 0`);
-		return true;
-	} catch (error) {
-		if (isMissingTableError(error)) return false;
-		throw error;
-	}
-};
-
-const fetchColumnNames = async (db, table) => {
-	const reader = await db.runAndReadAll(
-		`SELECT * FROM ${quoteIdent(table)} LIMIT 0`,
-	);
-	return reader.columnNames();
-};
-
-const arrowTypeToDuckDBSQL = (type) => {
-	const name = type?.constructor?.name;
-	switch (name) {
-		case "Bool":
-			return "BOOLEAN";
-		case "Int8":
-			return "TINYINT";
-		case "Int16":
-			return "SMALLINT";
-		case "Int32":
-			return "INTEGER";
-		case "Int64":
-			return "BIGINT";
-		case "Uint8":
-			return "UTINYINT";
-		case "Uint16":
-			return "USMALLINT";
-		case "Uint32":
-			return "UINTEGER";
-		case "Uint64":
-			return "UBIGINT";
-		case "Float32":
-			return "REAL";
-		case "Float64":
-			return "DOUBLE";
-		case "Date_":
-			return "DATE";
-		case "TimestampSecond":
-			return "TIMESTAMP_S";
-		case "TimestampMillisecond":
-			return "TIMESTAMP_MS";
-		case "TimestampMicrosecond":
-			return "TIMESTAMP";
-		case "TimestampNanosecond":
-			return "TIMESTAMP_NS";
-		default:
-			return "VARCHAR";
-	}
-};
-
-const createTableFromArrowSchema = async (db, table, schema) => {
-	const cols = schema.fields
-		.map((f) => `${quoteIdent(f.name)} ${arrowTypeToDuckDBSQL(f.type)}`)
-		.join(", ");
-	await db.run(`CREATE TABLE ${quoteIdent(table)} (${cols})`);
-};
-
-const ensureTableAndColumns = async (db, table, schema) => {
-	if (schema && !(await tableExists(db, table))) {
-		await createTableFromArrowSchema(db, table, schema);
-	}
-	// Always derive the column order from the table's PHYSICAL layout. The
-	// appender appends positionally into physical columns, so trusting the
-	// provided schema.fields order would misalign (or hard-fail with a cast
-	// error) whenever the schema order differs from the physical column order.
-	return fetchColumnNames(db, table);
-};
-
-const appendCell = (appender, value) => {
+// typeId is an Arrow Date/Timestamp id to convert, else undefined (plain rows,
+// non-temporal columns, or a non-temporal target column).
+const appendCell = (appender, value, typeId) => {
 	if (value === null || value === undefined) {
 		appender.appendNull();
 	} else {
-		appender.appendValue(value);
+		appender.appendValue(toDuckDBValue(typeId, value));
 	}
 };
 
@@ -170,7 +124,7 @@ export const duckdbAppenderStream = async (
 
 	const init = async () => {
 		const resolvedSchema = resolveLazy(schema);
-		columnNames = await ensureTableAndColumns(db, table, resolvedSchema);
+		columnNames = await ensureTable(db, table, resolvedSchema);
 		state.appender = await db.createAppender(table);
 	};
 
@@ -212,7 +166,7 @@ export const duckdbArrowInsertStream = async (
 
 	const init = async () => {
 		const resolvedSchema = resolveLazy(schema);
-		columnNames = await ensureTableAndColumns(db, table, resolvedSchema);
+		columnNames = await ensureTable(db, table, resolvedSchema);
 		state.appender = await db.createAppender(table);
 	};
 
@@ -229,20 +183,39 @@ export const duckdbArrowInsertStream = async (
 					`duckdb: record batch column count (${batchColCount}) does not match table "${table}" column count (${colCount})`,
 				);
 			}
+			// Look each table column up by NAME: the appender is positional over the
+			// table's physical columns, but a batch's field order is arbitrary.
+			// DuckDB identifiers are case-insensitive (table "ID" vs Arrow "id"), so
+			// match case-insensitively. Table columns are unique ignoring case and
+			// the counts match, so a batch with fields differing only by case always
+			// leaves some table column unmatched and is rejected below.
+			const fieldNames = new Map(
+				(batch.schema?.fields ?? []).map((f) => [f.name.toLowerCase(), f.name]),
+			);
 			const cols = [];
+			const typeIds = [];
 			for (let i = 0; i < colCount; i++) {
-				const col = batch.getChildAt(i);
+				const name = columnNames[i];
+				const col = batch.getChild(fieldNames.get(name.toLowerCase()) ?? name);
 				if (col === null || col === undefined) {
 					throw new Error(
-						`duckdb: record batch is missing column ${i} for table "${table}"`,
+						`duckdb: record batch is missing column "${name}" for table "${table}"`,
 					);
 				}
 				cols.push(col);
+				// Convert Date/Timestamp only when the TARGET column is temporal.
+				const typeId = col.type?.typeId;
+				typeIds.push(
+					(typeId === ARROW_DATE || typeId === ARROW_TIMESTAMP) &&
+						TEMPORAL_TARGETS.has(state.appender.columnType(i).typeId)
+						? typeId
+						: undefined,
+				);
 			}
 			const rowCount = batch.numRows;
 			for (let r = 0; r < rowCount; r++) {
 				for (let i = 0; i < colCount; i++)
-					appendCell(state.appender, cols[i].get(r));
+					appendCell(state.appender, cols[i].get(r), typeIds[i]);
 				state.appender.endRow();
 			}
 		} catch (error) {
@@ -262,10 +235,4 @@ export const duckdbArrowInsertStream = async (
 		state,
 		streamOptions,
 	);
-};
-
-export default {
-	connect: duckdbConnect,
-	appenderStream: duckdbAppenderStream,
-	arrowInsertStream: duckdbArrowInsertStream,
 };

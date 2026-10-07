@@ -18,10 +18,9 @@ export default defineConfig({
 	build: {
 		assetsInlineLimit: 0,
 	},
-	ssr: {
-		noExternal: ["prismjs"],
-	},
 	optimizeDeps: {
 		exclude: ["@willfarrell-ds/svelte", "@willfarrell-ds/vanilla"],
+		// ds-codeblock imports prismjs (CJS), excluded packages skip that interop
+		include: ["prismjs"],
 	},
 });

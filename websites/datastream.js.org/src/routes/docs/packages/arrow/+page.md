@@ -11,7 +11,7 @@ Apache Arrow record batch transform streams. Convert rows to and from Arrow `Rec
 npm install @datastream/arrow apache-arrow
 ```
 
-`apache-arrow` is a peer dependency.
+`apache-arrow` is a peer dependency: install it alongside the package. Sharing one copy with your own code (and with `@datastream/duckdb`) keeps `instanceof` checks on Arrow types and tables working across packages.
 
 ## `arrowDetectSchemaStream` <span class="badge">PassThrough</span>
 
@@ -41,6 +41,8 @@ Samples the first rows of the stream and infers an Arrow `Schema`. Rows pass thr
 | Anything else | `Utf8` |
 
 Integers outside the signed 32-bit range widen to `Float64` (exact up to 2^53) instead of silently wrapping inside an `Int32` builder.
+
+Values written to a `Utf8` column are stored as text: a `Date` as its ISO 8601 string, an object as JSON, and any other value with `String()`. `null` and `undefined` stay null.
 
 ### Example
 

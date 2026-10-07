@@ -7,7 +7,11 @@ import {
 import { createReadableStream } from "@datastream/core";
 import { awsClientDefaults } from "./client.js";
 
-let defaultClient = new LambdaClient(awsClientDefaults);
+// Created on first use, so importing the module (or always passing a per-call
+// client) never constructs an unused SDK client.
+let defaultClient;
+const getDefaultClient = () =>
+	(defaultClient ??= new LambdaClient(awsClientDefaults));
 export const awsLambdaSetClient = (lambdaClient) => {
 	defaultClient = lambdaClient;
 };
@@ -30,7 +34,7 @@ async function* awsLambdaGenerator(lambdaOptions, streamOptions = {}) {
 	}
 	for (let index = 0; index < lambdaOptions.length; index++) {
 		const { client, ...invokeOptions } = lambdaOptions[index];
-		const response = await (client ?? defaultClient).send(
+		const response = await (client ?? getDefaultClient()).send(
 			new InvokeWithResponseStreamCommand(invokeOptions),
 			{ abortSignal: streamOptions.signal },
 		);
@@ -49,9 +53,3 @@ async function* awsLambdaGenerator(lambdaOptions, streamOptions = {}) {
 		}
 	}
 }
-
-export default {
-	setClient: awsLambdaSetClient,
-	readableStream: awsLambdaReadableStream,
-	responseStream: awsLambdaReadableStream,
-};

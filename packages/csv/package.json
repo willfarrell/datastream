@@ -4,30 +4,23 @@
 	"description": "CSV parsing and formatting transform streams",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
 	"main": "./index.node.mjs",
-	"module": "./index.web.mjs",
+	"module": "./index.browser.mjs",
 	"exports": {
 		".": {
-			"node": {
-				"import": {
-					"types": "./index.d.ts",
-					"default": "./index.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./index.d.ts",
-				"default": "./index.web.mjs"
-			}
-		},
-		"./webstream": {
 			"types": "./index.d.ts",
-			"default": "./index.web.mjs"
+			"browser": "./index.browser.mjs",
+			"node": "./index.node.mjs",
+			"default": "./index.browser.mjs"
+		},
+		"./browser": {
+			"types": "./index.d.ts",
+			"default": "./index.browser.mjs"
 		}
 	},
 	"types": "index.d.ts",
@@ -39,8 +32,7 @@
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:perf": "node --test index.perf.js",
-		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
+		"test:bench": "node --experimental-bench --bench 'index.bench.js'"
 	},
 	"license": "MIT",
 	"keywords": [

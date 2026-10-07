@@ -5,12 +5,8 @@ import { createTransformStream } from "@datastream/core";
 // Resolve a ProtobufTypeInput once: a static Type is returned as-is (the hot
 // path skips recomputation), while a function is invoked per chunk and may
 // return either a Type or a Promise<Type>.
-const makeResolveType = (Type) => {
-	if (typeof Type === "function") {
-		return (chunk) => Type(chunk);
-	}
-	return () => Type;
-};
+const makeResolveType = (Type) =>
+	typeof Type === "function" ? Type : () => Type;
 
 export const protobufEncodeStream = ({ Type } = {}, streamOptions = {}) => {
 	const resolveType = makeResolveType(Type);
@@ -21,21 +17,24 @@ export const protobufEncodeStream = ({ Type } = {}, streamOptions = {}) => {
 	return createTransformStream(transform, streamOptions);
 };
 
+// Default per-message ceiling: a hostile length prefix (unframe) or oversized
+// payload (decode) must not force an unbounded buffer/decode. null opts out.
+const DEFAULT_MAX_MESSAGE_SIZE = 64 * 1024 * 1024;
+
 export const protobufDecodeStream = (
-	{ Type, payload, maxOutputSize = Number.POSITIVE_INFINITY } = {},
+	{ Type, payload, maxMessageSize = DEFAULT_MAX_MESSAGE_SIZE } = {},
 	streamOptions = {},
 ) => {
 	const resolveType = makeResolveType(Type);
 	const getPayload = payload ?? ((chunk) => chunk);
-	let inputSize = 0;
+	// Checked per message, not cumulatively: a cumulative cap with any finite
+	// default would eventually kill every long-lived consumer.
+	const messageLimit = maxMessageSize ?? Number.POSITIVE_INFINITY;
 	const transform = async (chunk, enqueue) => {
 		const bytes = getPayload(chunk);
-		// Default ceiling is Infinity, so the guard is the sole gate and the
-		// comparison stays load-bearing (no redundant null check to mutate away).
-		inputSize += bytes.length;
-		if (inputSize > maxOutputSize) {
-			throw new Error(
-				`Protobuf decode input exceeds maxOutputSize (${maxOutputSize} bytes)`,
+		if (bytes.length > messageLimit) {
+			throw new RangeError(
+				`Protobuf message exceeds maxMessageSize (${maxMessageSize} bytes)`,
 			);
 		}
 		const type = await resolveType(chunk);
@@ -72,9 +71,10 @@ export const protobufLengthPrefixFrameStream = (
 };
 
 export const protobufLengthPrefixUnframeStream = (
-	{ maxMessageSize = Number.POSITIVE_INFINITY } = {},
+	{ maxMessageSize = DEFAULT_MAX_MESSAGE_SIZE } = {},
 	streamOptions = {},
 ) => {
+	const messageLimit = maxMessageSize ?? Number.POSITIVE_INFINITY;
 	// Buffer incoming chunks as a list instead of one growable byte buffer: the
 	// varint length prefix is parsed across chunk boundaries and each message is
 	// copied out exactly once. This keeps the hot path free of per-chunk realloc
@@ -145,13 +145,18 @@ export const protobufLengthPrefixUnframeStream = (
 				complete = true;
 				break;
 			}
+			// A varint is at most 10 bytes; longer overflows `length` to NaN and
+			// silently drops every following message.
+			if (prefixBytes === 10) {
+				throw new Error("Protobuf length prefix exceeds 10 bytes");
+			}
 			scale *= 0x80;
 		}
 		if (!complete) {
 			return null;
 		}
-		if (length > maxMessageSize) {
-			throw new Error(
+		if (length > messageLimit) {
+			throw new RangeError(
 				`Protobuf message exceeds maxMessageSize (${maxMessageSize} bytes)`,
 			);
 		}

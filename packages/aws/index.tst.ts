@@ -11,6 +11,8 @@ import {
 	awsDynamoDBQueryStream,
 	awsDynamoDBScanStream,
 	awsDynamoDBSetClient,
+	awsDynamoDBStreamsGetRecordsStream,
+	awsDynamoDBStreamsSetClient,
 	awsKinesisGetRecordsStream,
 	awsKinesisPutRecordsStream,
 	awsKinesisSetClient,
@@ -28,6 +30,7 @@ import {
 	awsSQSSendMessageStream,
 	awsSQSSetClient,
 } from "@datastream/aws";
+import { awsGlueSchemaRegistryResolver } from "@datastream/aws/glue-schema-registry";
 import { describe, expect, test } from "tstyche";
 
 describe("CloudWatch Logs", () => {
@@ -88,6 +91,21 @@ describe("S3", () => {
 		).type.not.toBeAssignableTo<never>();
 	});
 
+	test("awsS3PutObjectStream accepts numeric partSize and queueSize", () => {
+		expect(awsS3PutObjectStream).type.toBeCallableWith({
+			Bucket: "b",
+			Key: "k",
+			partSize: 8 * 1024 * 1024,
+			queueSize: 8,
+		});
+		expect(awsS3PutObjectStream).type.not.toBeCallableWith({
+			queueSize: "8",
+		});
+		expect(awsS3PutObjectStream).type.not.toBeCallableWith({
+			partSize: "8",
+		});
+	});
+
 	test("awsS3ChecksumStream accepts options", () => {
 		expect(
 			awsS3ChecksumStream({ ChecksumAlgorithm: "SHA256" }),
@@ -130,6 +148,30 @@ describe("DynamoDB", () => {
 		).type.toBeAssignableTo<Promise<unknown>>();
 	});
 
+	test("awsDynamoDBGetItemStream accepts KeysAndAttributes options", () => {
+		expect(awsDynamoDBGetItemStream).type.toBeCallableWith({
+			TableName: "t",
+			Keys: [{}],
+			ConsistentRead: true,
+			ProjectionExpression: "#n",
+			ExpressionAttributeNames: { "#n": "name" },
+		});
+		expect(awsDynamoDBGetItemStream).type.toBeCallableWith({
+			TableName: "t",
+			Keys: [{}],
+			AttributesToGet: ["id"],
+			ReturnConsumedCapacity: "TOTAL",
+		});
+		expect(awsDynamoDBGetItemStream).type.not.toBeCallableWith({
+			ConsistentRead: "yes",
+		});
+		expect(awsDynamoDBGetItemStream).type.not.toBeCallableWith({
+			TableName: "t",
+			Keys: [{}],
+			Unknown: true,
+		});
+	});
+
 	test("awsDynamoDBPutItemStream returns stream", () => {
 		expect(
 			awsDynamoDBPutItemStream({ TableName: "t" }),
@@ -140,6 +182,18 @@ describe("DynamoDB", () => {
 		expect(
 			awsDynamoDBDeleteItemStream({ TableName: "t" }),
 		).type.not.toBeAssignableTo<never>();
+	});
+});
+
+describe("DynamoDB Streams", () => {
+	test("awsDynamoDBStreamsSetClient accepts client", () => {
+		expect(awsDynamoDBStreamsSetClient({})).type.toBe<void>();
+	});
+
+	test("awsDynamoDBStreamsGetRecordsStream returns promise", () => {
+		expect(
+			awsDynamoDBStreamsGetRecordsStream({ ShardIterator: "iter1" }),
+		).type.toBeAssignableTo<Promise<unknown>>();
 	});
 });
 
@@ -194,5 +248,52 @@ describe("SQS", () => {
 		expect(
 			awsSQSDeleteMessageStream({ QueueUrl: "https://sqs.example.com" }),
 		).type.not.toBeAssignableTo<never>();
+	});
+});
+
+describe("Limits accept null (unlimited)", () => {
+	test("retryMaxCount accepts number | null", () => {
+		expect(awsDynamoDBGetItemStream).type.toBeCallableWith({
+			TableName: "t",
+			Keys: [{}],
+			retryMaxCount: null,
+		});
+		expect(awsDynamoDBPutItemStream).type.toBeCallableWith({
+			TableName: "t",
+			retryMaxCount: null,
+		});
+		expect(awsDynamoDBDeleteItemStream).type.toBeCallableWith({
+			TableName: "t",
+			retryMaxCount: 3,
+		});
+		expect(awsKinesisPutRecordsStream).type.toBeCallableWith({
+			StreamName: "s",
+			retryMaxCount: null,
+		});
+		expect(awsSNSPublishMessageStream).type.toBeCallableWith({
+			TopicArn: "arn",
+			retryMaxCount: null,
+		});
+		expect(awsSQSSendMessageStream).type.toBeCallableWith({
+			QueueUrl: "q",
+			retryMaxCount: null,
+		});
+		expect(awsSQSDeleteMessageStream).type.toBeCallableWith({
+			QueueUrl: "q",
+			retryMaxCount: null,
+		});
+		expect(awsKinesisPutRecordsStream).type.not.toBeCallableWith({
+			StreamName: "s",
+			retryMaxCount: "10",
+		});
+	});
+
+	test("glue maxCacheSize accepts number | null", () => {
+		expect(awsGlueSchemaRegistryResolver).type.toBeCallableWith({
+			maxCacheSize: null,
+		});
+		expect(awsGlueSchemaRegistryResolver).type.toBeCallableWith({
+			maxCacheSize: 10,
+		});
 	});
 });

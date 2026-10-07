@@ -1,4 +1,7 @@
-import _default, { fileReadStream, fileWriteStream } from "@datastream/file";
+/// <reference lib="dom" />
+/// <reference types="node" />
+import type { DatastreamReadable, DatastreamWritable } from "@datastream/core";
+import { fileReadStream, fileWriteStream } from "@datastream/file";
 import { describe, expect, test } from "tstyche";
 
 describe("fileReadStream", () => {
@@ -9,20 +12,40 @@ describe("fileReadStream", () => {
 	});
 });
 
+describe("fileReadStream (node)", () => {
+	test("accepts path and basePath", () => {
+		expect(fileReadStream).type.toBeCallableWith({
+			path: "data/in.csv",
+			basePath: "data",
+		});
+	});
+
+	test("returns a Promise of a stream", () => {
+		expect(fileReadStream({ path: "in.csv" })).type.toBe<
+			Promise<DatastreamReadable>
+		>();
+	});
+});
+
+describe("fileWriteStream (node)", () => {
+	test("accepts basePath", () => {
+		expect(fileWriteStream).type.toBeCallableWith({
+			path: "data/out.csv",
+			basePath: "data",
+		});
+	});
+
+	test("returns a Promise of a stream", () => {
+		expect(fileWriteStream({ path: "out.csv" })).type.toBe<
+			Promise<DatastreamWritable>
+		>();
+	});
+});
+
 describe("fileWriteStream", () => {
 	test("accepts options", () => {
 		expect(
 			fileWriteStream({ path: "test.csv" }),
 		).type.not.toBeAssignableTo<never>();
-	});
-});
-
-describe("default export", () => {
-	test("has readStream", () => {
-		expect(_default.readStream).type.toBe<typeof fileReadStream>();
-	});
-
-	test("has writeStream", () => {
-		expect(_default.writeStream).type.toBe<typeof fileWriteStream>();
 	});
 });

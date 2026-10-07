@@ -4,78 +4,53 @@
 	"description": "Character encoding detection, decoding, and conversion streams",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
 	"main": "./index.node.mjs",
-	"module": "./index.web.mjs",
+	"module": "./index.browser.mjs",
 	"exports": {
 		".": {
-			"node": {
-				"import": {
-					"types": "./index.d.ts",
-					"default": "./index.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./index.d.ts",
-				"default": "./index.web.mjs"
-			}
-		},
-		"./webstream": {
 			"types": "./index.d.ts",
-			"default": "./index.web.mjs"
+			"browser": "./index.browser.mjs",
+			"node": "./index.node.mjs",
+			"default": "./index.browser.mjs"
+		},
+		"./browser": {
+			"types": "./index.d.ts",
+			"default": "./index.browser.mjs"
 		},
 		"./detect": {
-			"node": {
-				"import": {
-					"types": "./detect.d.ts",
-					"default": "./detect.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./detect.d.ts",
-				"default": "./detect.web.mjs"
-			}
-		},
-		"./detect/webstream": {
 			"types": "./detect.d.ts",
-			"default": "./detect.web.mjs"
+			"browser": "./detect.browser.mjs",
+			"node": "./detect.node.mjs",
+			"default": "./detect.browser.mjs"
+		},
+		"./detect/browser": {
+			"types": "./detect.d.ts",
+			"default": "./detect.browser.mjs"
 		},
 		"./decode": {
-			"node": {
-				"import": {
-					"types": "./decode.d.ts",
-					"default": "./decode.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./decode.d.ts",
-				"default": "./decode.web.mjs"
-			}
-		},
-		"./decode/webstream": {
 			"types": "./decode.d.ts",
-			"default": "./decode.web.mjs"
+			"browser": "./decode.browser.mjs",
+			"node": "./decode.node.mjs",
+			"default": "./decode.browser.mjs"
+		},
+		"./decode/browser": {
+			"types": "./decode.d.ts",
+			"default": "./decode.browser.mjs"
 		},
 		"./encode": {
-			"node": {
-				"import": {
-					"types": "./encode.d.ts",
-					"default": "./encode.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./encode.d.ts",
-				"default": "./encode.web.mjs"
-			}
-		},
-		"./encode/webstream": {
 			"types": "./encode.d.ts",
-			"default": "./encode.web.mjs"
+			"browser": "./encode.browser.mjs",
+			"node": "./encode.node.mjs",
+			"default": "./encode.browser.mjs"
+		},
+		"./encode/browser": {
+			"types": "./encode.d.ts",
+			"default": "./encode.browser.mjs"
 		}
 	},
 	"types": "index.d.ts",
@@ -87,8 +62,7 @@
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:perf": "node --test index.perf.js",
-		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
+		"test:bench": "node --experimental-bench --bench 'index.bench.js'"
 	},
 	"license": "MIT",
 	"keywords": [

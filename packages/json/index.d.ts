@@ -9,12 +9,19 @@ import type {
 export interface JsonError {
 	id: string;
 	message: string;
+	/** Row indexes, at most `maxErrorRows` of them. */
 	idx: number[];
+	/** True number of occurrences (may exceed `idx.length`). */
+	count: number;
 }
 
 export function ndjsonParseStream(
 	options?: {
-		maxBufferSize?: number;
+		/** Default 16MB; null = unlimited. */
+		maxBufferSize?: number | null;
+		/** idx entries kept per error id. Default 1000; null = unlimited. */
+		maxErrorRows?: number | null;
+		/** Default "ndjsonErrors". */
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
@@ -31,8 +38,13 @@ export function ndjsonFormatStream(
 
 export function jsonParseStream(
 	options?: {
-		maxBufferSize?: number;
-		maxValueSize?: number;
+		/** Default 16MB; null = unlimited. */
+		maxBufferSize?: number | null;
+		/** Default 16MB; null = unlimited. */
+		maxValueSize?: number | null;
+		/** idx entries kept per error id. Default 1000; null = unlimited. */
+		maxErrorRows?: number | null;
+		/** Default "jsonErrors". */
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,

@@ -21,8 +21,9 @@ const aliasMap = {
 };
 
 const normalizeAlgorithm = (algorithm) => {
-	if (algorithmMap[algorithm]) return algorithm;
-	if (aliasMap[algorithm]) return aliasMap[algorithm];
+	// Own keys only: "constructor" etc. are inherited, not algorithms.
+	if (Object.hasOwn(algorithmMap, algorithm)) return algorithm;
+	if (Object.hasOwn(aliasMap, algorithm)) return aliasMap[algorithm];
 	throw new Error(`Unsupported algorithm: ${algorithm}`);
 };
 
@@ -52,5 +53,3 @@ export const digestStream = ({ algorithm, resultKey }, streamOptions = {}) => {
 	};
 	return stream;
 };
-
-export default digestStream;

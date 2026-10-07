@@ -8,15 +8,19 @@ Use the File System Access API to process files in the browser:
 ```javascript
 import { pipeline } from '@datastream/core'
 import { fileReadStream, fileWriteStream } from '@datastream/file'
+import { charsetDecodeStream } from '@datastream/charset'
 import {
   csvDetectDelimitersStream,
   csvDetectHeaderStream,
   csvParseStream,
+  csvObjectToArrayStream,
+  csvInjectHeaderStream,
   csvFormatStream,
 } from '@datastream/csv'
 import { objectFromEntriesStream, objectCountStream } from '@datastream/object'
 
 const types = [{ accept: { 'text/csv': ['.csv'] } }]
+const headers = ['name', 'city'] // columns to write, in order
 
 const detectDelimiters = csvDetectDelimitersStream()
 const detectHeader = csvDetectHeaderStream({
@@ -29,6 +33,7 @@ const count = objectCountStream()
 
 const result = await pipeline([
   await fileReadStream({ types }),
+  charsetDecodeStream({ charset: 'UTF-8' }), // File.stream() yields bytes; the CSV streams expect text
   detectDelimiters,
   detectHeader,
   csvParseStream({
@@ -41,10 +46,12 @@ const result = await pipeline([
     keys: () => detectHeader.result().value.header,
   }),
   count,
-  csvFormatStream({ header: true }),
+  csvObjectToArrayStream({ headers }),
+  csvInjectHeaderStream({ header: headers }),
+  csvFormatStream(),
   await fileWriteStream({ path: 'output.csv', types }),
 ])
 
 console.log(result)
-// { count: 500 }
+// { csvDetectDelimiters: {...}, csvDetectHeader: {...}, csvErrors: {}, objectCount: 500 }
 ```

@@ -4,11 +4,11 @@ import type { DatastreamTransform, StreamOptions } from "@datastream/core";
 
 export interface BrotliCompressOptions {
 	quality?: number;
-	maxOutputSize?: number;
+	maxOutputSize?: number | null;
 }
 
 export interface BrotliDecompressOptions {
-	maxOutputSize?: number;
+	maxOutputSize?: number | null;
 }
 
 export function brotliCompressStream(

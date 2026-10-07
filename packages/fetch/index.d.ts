@@ -28,18 +28,32 @@ export interface FetchOptions {
 	offsetParam?: string;
 	offsetAmount?: number;
 	rateLimitTimestamp?: number;
+	// Max array items fetched concurrently (default 1 = sequential). Read from
+	// the first item of an array; items are yielded in array order and request
+	// starts are spaced by rateLimit.
+	concurrency?: number;
+	// Limits: undefined = default, null = unlimited. Exceeding one throws a
+	// RangeError.
+	// Max attempts on 429 before throwing (default 10); resets after a success.
+	retryMaxCount?: number | null;
+	// Upper bound in ms for a 429 Retry-After wait (default 60_000); null = no
+	// cap (still bounded by 2^31-1, the largest delay setTimeout supports).
+	retryAfterMax?: number | null;
+	// Max JSON pages fetched per request config before throwing (default 10_000).
+	maxPages?: number | null;
+	// Max bytes of a JSON response body (default 16_777_216).
+	maxBodySize?: number | null;
 }
 
-export interface FetchStreamOptions extends StreamOptions {
-	// Max array items fetched concurrently (default 1 = sequential). Items are
-	// yielded in array order; request starts are spaced by rateLimit.
-	concurrency?: number;
+export interface FetchWritableOptions extends FetchOptions {
+	// Key of the response in pipeline results (default "output").
+	resultKey?: string;
 }
 
 export function fetchSetDefaults(options: Partial<FetchOptions>): void;
 
 export function fetchWritableStream(
-	options: FetchOptions,
+	options: FetchWritableOptions,
 	streamOptions?: StreamOptions,
 ): Promise<
 	DatastreamWritable & {
@@ -50,7 +64,7 @@ export { fetchWritableStream as fetchRequestStream };
 
 export function fetchReadableStream(
 	fetchOptions: FetchOptions | FetchOptions[],
-	streamOptions?: FetchStreamOptions,
+	streamOptions?: StreamOptions,
 ): DatastreamReadable;
 export { fetchReadableStream as fetchResponseStream };
 
@@ -58,10 +72,3 @@ export function fetchRateLimit(
 	options: FetchOptions,
 	streamOptions?: StreamOptions,
 ): Promise<Response>;
-
-declare const _default: {
-	setDefaults: typeof fetchSetDefaults;
-	readableStream: typeof fetchReadableStream;
-	responseStream: typeof fetchReadableStream;
-};
-export default _default;

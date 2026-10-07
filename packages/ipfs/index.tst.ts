@@ -1,5 +1,5 @@
 import type { IpfsNode } from "@datastream/ipfs";
-import _default, { ipfsAddStream, ipfsGetStream } from "@datastream/ipfs";
+import { ipfsAddStream, ipfsGetStream } from "@datastream/ipfs";
 import { describe, expect, test } from "tstyche";
 
 const mockNode: IpfsNode = {
@@ -27,15 +27,5 @@ describe("ipfsAddStream", () => {
 				resultKey: "cid",
 			}),
 		).type.not.toBeAssignableTo<never>();
-	});
-});
-
-describe("default export", () => {
-	test("has getStream", () => {
-		expect(_default.getStream).type.toBe<typeof ipfsGetStream>();
-	});
-
-	test("has addStream", () => {
-		expect(_default.addStream).type.toBe<typeof ipfsAddStream>();
 	});
 });

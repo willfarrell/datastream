@@ -27,13 +27,36 @@ Opens a DuckDB connection. Defaults to an in-memory database.
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
 | `path` | `string` | `":memory:"` | Database file path, or `:memory:` |
-| `options` | `object` | — | DuckDB instance options |
+| `options` | `object` | — | Node.js: DuckDB instance options. Browser: `{ bundles }` (see below) |
 
 ```javascript
 import { duckdbConnect } from '@datastream/duckdb'
 
 const db = await duckdbConnect() // in-memory
 ```
+
+### Browser bundles
+
+In the browser, `duckdbConnect` loads the duckdb-wasm module and worker. By default they come from jsDelivr (`getJsDelivrBundles()`). That code has no integrity pin, and browsers refuse to start a `Worker` from a cross-origin URL, so in production host the bundle files yourself and pass them as `bundles`:
+
+```javascript
+import { duckdbConnect } from '@datastream/duckdb'
+
+const db = await duckdbConnect(':memory:', {
+  bundles: {
+    mvp: {
+      mainModule: '/duckdb/duckdb-mvp.wasm',
+      mainWorker: '/duckdb/duckdb-browser-mvp.worker.js',
+    },
+    eh: {
+      mainModule: '/duckdb/duckdb-eh.wasm',
+      mainWorker: '/duckdb/duckdb-browser-eh.worker.js',
+    },
+  },
+})
+```
+
+The files ship in `@duckdb/duckdb-wasm/dist`. `bundles` is passed to duckdb-wasm's `selectBundle()`.
 
 ## `duckdbAppenderStream` <span class="badge">Writable</span>
 
@@ -78,6 +101,11 @@ Inserts Apache Arrow `RecordBatch` objects into a table. Returns a Promise resol
 | `db` | `Connection` | — | DuckDB connection from `duckdbConnect` (required) |
 | `table` | `string` | — | Target table name (required) |
 | `schema` | `Schema \| () => Schema` | — | Arrow schema; when provided and the table does not exist, the table is created from it |
+| `batchRows` | `number` | `100000` | Browser only: rows buffered before each insert. Lower it to reduce memory use |
+
+On Node.js, batch fields are matched to table columns by name, ignoring case (a table column `ID` takes the Arrow field `id`). A batch with a missing column, or a different number of columns than the table, throws.
+
+On Node.js, Arrow `Date` and `Timestamp` values are stored as DuckDB dates/timestamps only when the target column is `DATE` or a `TIMESTAMP` type. Other target columns get the raw epoch-millisecond number (for example, a `Timestamp` into a `BIGINT` column stores milliseconds).
 
 ### Example
 

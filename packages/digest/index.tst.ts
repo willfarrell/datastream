@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
+import type * as digest from "@datastream/digest";
 import type { DigestAlgorithm } from "@datastream/digest";
 import { digestStream } from "@datastream/digest";
 import { describe, expect, test } from "tstyche";
@@ -20,14 +21,21 @@ describe("DigestAlgorithm", () => {
 });
 
 describe("digestStream", () => {
-	test("returns a stream or promise of stream", () => {
+	test("returns the stream synchronously", () => {
 		const result = digestStream({ algorithm: "SHA2-256" });
-		expect(result).type.not.toBeAssignableTo<never>();
+		expect(result).type.not.toBeAssignableTo<Promise<unknown>>();
+		expect(result.result).type.not.toBeAssignableTo<never>();
 	});
 
 	test("accepts resultKey", () => {
 		expect(
 			digestStream({ algorithm: "SHA3-512", resultKey: "hash" }),
 		).type.not.toBeAssignableTo<never>();
+	});
+});
+
+describe("default export", () => {
+	test("is removed", () => {
+		expect<typeof digest>().type.not.toHaveProperty("default");
 	});
 });

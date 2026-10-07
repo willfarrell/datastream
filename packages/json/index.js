@@ -1,27 +1,65 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import { createTransformStream } from "@datastream/core";
+import { createChunkDecoder, createTransformStream } from "@datastream/core";
+
+// A per-stream chunk decoder (streaming TextDecoder) keeps a multibyte char
+// split across byte chunks intact; `buffer += chunk` decoded (node) or
+// comma-joined (browser) each chunk on its own. String chunks pass through.
+
+// Returns a per-stream function that drops a leading byte-order mark from the
+// first non-empty text only. TextDecoder already strips it from byte input,
+// but string chunks (e.g. a file read as text) keep it, and JSON.parse / the
+// array scanner reject U+FEFF. Empty chunks don't count as "first", or a
+// leading "" would let the BOM through. Later U+FEFF chars are data.
+const createBomStripper = () => {
+	let pending = true;
+	return (text) => {
+		if (!pending || text === "") return text;
+		pending = false;
+		return text.charCodeAt(0) === 0xfeff ? text.substring(1) : text;
+	};
+};
+
+// Error map entry per id (csv parity): `idx` keeps at most maxErrorRows row
+// indexes so a stream of bad rows can't grow memory without bound, while
+// `count` records the true total. null = unlimited.
+const createErrorTracker = (errors, maxErrorRows) => {
+	const limit = maxErrorRows ?? Number.POSITIVE_INFINITY;
+	return (id, message, idx) => {
+		errors[id] ??= { id, message, idx: [], count: 0 };
+		const error = errors[id];
+		error.count += 1;
+		if (error.idx.length < limit) error.idx.push(idx);
+	};
+};
+
+const isWhitespace = (ch) =>
+	ch === 0x20 || ch === 0x09 || ch === 0x0a || ch === 0x0d;
 
 // --- NDJSON ---
 
 export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
-	const { maxBufferSize = 16_777_216, resultKey } = options;
+	const {
+		maxBufferSize = 16_777_216,
+		maxErrorRows = 1_000,
+		resultKey,
+	} = options;
+	const bufferLimit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	let buffer = "";
 	let idx = 0;
 	const errors = {};
-
-	const trackError = (id, message) => {
-		if (!errors[id]) errors[id] = { id, message, idx: [] };
-		errors[id].idx.push(idx);
-	};
+	const decoder = createChunkDecoder();
+	const stripBom = createBomStripper();
+	const track = createErrorTracker(errors, maxErrorRows);
+	const trackError = (id, message) => track(id, message, idx);
 
 	const transform = (chunk, enqueue) => {
-		if (buffer.length + chunk.length > maxBufferSize) {
-			throw new Error(
+		if (buffer.length + chunk.length > bufferLimit) {
+			throw new RangeError(
 				`ndjsonParseStream buffer (${buffer.length + chunk.length}) exceeds maxBufferSize (${maxBufferSize})`,
 			);
 		}
-		buffer += chunk;
+		buffer += stripBom(decoder.decode(chunk));
 		let pos = 0;
 		while (true) {
 			const nlIdx = buffer.indexOf("\n", pos);
@@ -45,6 +83,9 @@ export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const flush = (enqueue) => {
+		// Flush bytes held by the streaming decoder (an incomplete trailing
+		// sequence becomes U+FFFD rather than being silently dropped).
+		buffer += decoder.flush();
 		// Parse the trailing (unterminated) line if it has any content. JSON.parse
 		// tolerates surrounding whitespace, so the raw buffer is parsed directly.
 		if (/\S/.test(buffer)) {
@@ -60,7 +101,7 @@ export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const stream = createTransformStream(transform, flush, streamOptions);
-	stream.result = () => ({ key: resultKey ?? "jsonErrors", value: errors });
+	stream.result = () => ({ key: resultKey ?? "ndjsonErrors", value: errors });
 	return stream;
 };
 
@@ -92,8 +133,11 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 	const {
 		maxBufferSize = 16_777_216,
 		maxValueSize = 16_777_216,
+		maxErrorRows = 1_000,
 		resultKey,
 	} = options;
+	const bufferLimit = maxBufferSize ?? Number.POSITIVE_INFINITY;
+	const valueLimit = maxValueSize ?? Number.POSITIVE_INFINITY;
 
 	let buffer = "";
 	let scanPos = 0;
@@ -101,19 +145,19 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 	let inString = false;
 	let escaped = false;
 	let started = false;
-	let sawNonWhitespace = false;
+	let rejected = false;
 	let elementStart = -1;
 	let idx = 0;
 	const errors = {};
+	const decoder = createChunkDecoder();
+	const stripBom = createBomStripper();
 
-	const trackError = (id, message) => {
-		if (!errors[id]) errors[id] = { id, message, idx: [] };
-		errors[id].idx.push(idx);
-	};
+	const track = createErrorTracker(errors, maxErrorRows);
+	const trackError = (id, message) => track(id, message, idx);
 
 	const emitElement = (text, enqueue) => {
-		if (text.length > maxValueSize) {
-			throw new Error(
+		if (text.length > valueLimit) {
+			throw new RangeError(
 				`jsonParseStream value size (${text.length}) exceeds maxValueSize (${maxValueSize})`,
 			);
 		}
@@ -133,6 +177,21 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 		while (scanPos < len) {
 			const ch = buffer.charCodeAt(scanPos);
 
+			// Only whitespace may precede the top-level `[`. Skipping ahead to the
+			// first `[` anywhere would stream a nested array out of e.g.
+			// {"a":[1,2]}; anything else means the input is not a JSON array, so
+			// stop scanning for good.
+			if (!started) {
+				if (ch === 0x5b) {
+					started = true;
+				} else if (!isWhitespace(ch)) {
+					rejected = true;
+					return;
+				}
+				scanPos++;
+				continue;
+			}
+
 			if (escaped) {
 				escaped = false;
 				scanPos++;
@@ -151,16 +210,8 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 
 			if (ch === 0x22) {
 				inString = true;
-				if (started && elementStart === -1) {
+				if (elementStart === -1) {
 					elementStart = scanPos;
-				}
-				scanPos++;
-				continue;
-			}
-
-			if (!started) {
-				if (ch === 0x5b) {
-					started = true;
 				}
 				scanPos++;
 				continue;
@@ -202,13 +253,7 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 				continue;
 			}
 
-			if (
-				elementStart === -1 &&
-				ch !== 0x20 &&
-				ch !== 0x09 &&
-				ch !== 0x0a &&
-				ch !== 0x0d
-			) {
+			if (elementStart === -1 && !isWhitespace(ch)) {
 				elementStart = scanPos;
 			}
 			scanPos++;
@@ -228,17 +273,28 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const transform = (chunk, enqueue) => {
-		if (buffer.length + chunk.length > maxBufferSize) {
-			throw new Error(
+		// Not a JSON array: the rest of the input is ignored.
+		if (rejected) return;
+		if (buffer.length + chunk.length > bufferLimit) {
+			throw new RangeError(
 				`jsonParseStream buffer (${buffer.length + chunk.length}) exceeds maxBufferSize (${maxBufferSize})`,
 			);
 		}
-		if (!sawNonWhitespace && /\S/.test(chunk)) sawNonWhitespace = true;
-		buffer += chunk;
+		buffer += stripBom(decoder.decode(chunk));
 		scan(enqueue);
 	};
 
 	const flush = (enqueue) => {
+		// Flush bytes held by the streaming decoder (a truncated trailing
+		// sequence becomes U+FFFD, i.e. invalid JSON, not silently dropped) and
+		// scan them, so a lone U+FFFD before any `[` is rejected too. Rescanning
+		// an already-rejected buffer just rejects again.
+		buffer += decoder.flush();
+		scan(enqueue);
+		if (rejected) {
+			trackError("NoArrayStart", "Input did not contain a top-level array");
+			return;
+		}
 		// After scan(), the buffer holds exactly the trailing in-progress element
 		// (starting at its first non-whitespace char) or only whitespace when no
 		// element is pending. Emit the raw buffer as an element when it contains
@@ -247,9 +303,6 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 		// special closing-bracket guard is needed.
 		if (/\S/.test(buffer)) {
 			emitElement(buffer, enqueue);
-		}
-		if (!started && sawNonWhitespace) {
-			trackError("NoArrayStart", "Input did not contain a top-level array");
 		}
 		// flush is terminal; the buffer is never read again, so no reset is needed.
 	};

@@ -5,9 +5,8 @@
 	"version": "0.7.1",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"scripts": {
 		"start": "vite dev",
 		"preview": "vite preview",
@@ -19,22 +18,21 @@
 		"build:styles:extract": "ds extract --input-dir ./.svelte-kit --theme ./src/styles/theme.css --output-dir src/styles/",
 		"build:styles:optimize": "ds optimize-styles ./.svelte-kit",
 		"release:login": "wrangler login --browser false",
-		"release:domain": "curl https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/datastreamjs/domains -H 'Content-Type: application/json' -H 'Authorization: Bearer ${API_KEY_W_PAGES_EDIT}' -d '{\"name\": \"datastream.js.org\"}'",
+		"release:domain": "curl https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/datastreamjs/domains -H 'Content-Type: application/json' -H \"Authorization: Bearer ${API_KEY_W_PAGES_EDIT}\" -d '{\"name\": \"datastream.js.org\"}'",
 		"release:deploy": "wrangler pages deploy"
 	},
 	"dependencies": {
 		"@plausible-analytics/tracker": "0.4.5",
-		"@willfarrell-ds/svelte": "0.0.0-alpha.8",
-		"@willfarrell-ds/vanilla": "0.0.0-alpha.8",
+		"@willfarrell-ds/svelte": "0.0.0-beta.0",
+		"@willfarrell-ds/vanilla": "0.0.0-beta.0",
 		"hast-util-to-string": "3.0.1",
-		"mdast-util-to-string": "4.0.0",
-		"uuid": "14.0.1"
+		"mdast-util-to-string": "4.0.0"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-cloudflare": "^7.0.0",
 		"@sveltejs/kit": "^2.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
-		"@willfarrell-ds/cli": "0.0.0-alpha.8",
+		"@willfarrell-ds/cli": "0.0.0-beta.0",
 		"esbuild": "^0.28.0",
 		"mdsvex": "^0.12.0",
 		"svelte": "^5.0.0",

@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: MIT
 import type { DatastreamTransform, StreamOptions } from "@datastream/core";
 
+// Node.js only (node:zlib): the zstd subpath has no browser export condition.
+
 export interface ZstdCompressOptions {
 	quality?: number;
-	maxOutputSize?: number;
+	maxOutputSize?: number | null;
 }
 
 export interface ZstdDecompressOptions {
-	maxOutputSize?: number;
+	maxOutputSize?: number | null;
 }
 
 export function zstdCompressStream(

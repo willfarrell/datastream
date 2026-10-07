@@ -21,8 +21,3 @@ export const zstdDecompressStream = (options = {}, streamOptions = {}) => {
 	);
 	return guardDecompress(stream, maxOutputSize);
 };
-
-export default {
-	compressStream: zstdCompressStream,
-	decompressStream: zstdDecompressStream,
-};

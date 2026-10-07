@@ -4,9 +4,8 @@
 	"private": true,
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"devDependencies": {
 		"license-check-and-add": "4.0.5",
 		"lockfile-lint": "5.0.0"

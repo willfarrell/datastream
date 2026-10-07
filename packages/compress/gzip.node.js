@@ -14,8 +14,3 @@ export const gzipCompressStream = (options = {}, streamOptions = {}) => {
 export const gzipDecompressStream = (options = {}, streamOptions = {}) => {
 	return guardDecompress(createGunzip(streamOptions), options.maxOutputSize);
 };
-
-export default {
-	compressStream: gzipCompressStream,
-	decompressStream: gzipDecompressStream,
-};

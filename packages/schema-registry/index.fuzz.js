@@ -18,15 +18,13 @@ import fc from "fast-check";
 const catchError = (input, e) => {
 	const expectedErrors = [
 		// confluentUnframeStream validation
-		"confluentUnframeStream: missing 0x00 magic byte / frame is too short",
+		"confluentUnframeStream: missing 0x00 magic byte / frame is too short (each chunk must be one whole frame)",
 		// glueUnframeStream validation
-		"glueUnframeStream: missing 0x03 magic byte / frame is too short",
+		"glueUnframeStream: missing 0x03 magic byte / frame is too short (each chunk must be one whole frame)",
 		// glueUnframeStream compression errors (dynamic message with hex byte)
 		"unsupported compression",
-		// glueUnframeStream decompressed size guard
-		"maxDecompressedBytes",
-		// glueFrameStream frame size guard
-		"maxFrameBytes",
+		// glueFrameStream / glueUnframeStream output size guard
+		"schema-registry: maxOutputSize exceeded",
 		// confluentFrameStream schemaId validation
 		"confluentFrameStream: schemaId must be an unsigned 32-bit integer",
 		// glueFrameStream schemaVersionId validation
@@ -37,8 +35,6 @@ const catchError = (input, e) => {
 		"unsupported compression",
 		// asBytes chunk type validation
 		"schema-registry: chunk must be a Uint8Array, ArrayBuffer view, ArrayBuffer, or string",
-		// confluentUnframeStream.result() / glueUnframeStream.result() distinct-id guard
-		"distinct",
 		// zlib decompression failures (malformed payload)
 		"unexpected end of file",
 		"invalid stored block lengths",

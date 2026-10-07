@@ -7,7 +7,7 @@ paths = [
   '''\.svelte-kit/''',
   '''node_modules/''',
   '''.*\.node\.mjs$''',
-  '''.*\.web\.mjs$''',
+  '''.*\.browser\.mjs$''',
   '''.*\.map$''',
 ]
 

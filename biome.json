@@ -23,7 +23,13 @@
 				"noUnusedFunctionParameters": "warn"
 			},
 			"suspicious": {
-				"noExplicitAny": "warn"
+				"noExplicitAny": "warn",
+				"noDoubleEquals": {
+					"level": "error",
+					"options": {
+						"ignoreNull": false
+					}
+				}
 			}
 		}
 	},

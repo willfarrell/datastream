@@ -65,18 +65,16 @@ export function kafkaConsumeStream(
 		consumer: unknown;
 		topics: string | string[];
 		fromBeginning?: boolean;
+		/**
+		 * Let kafkajs auto-commit offsets. Defaults to `false` (was `true`): an
+		 * auto-commit happens once a message is buffered in the stream, not
+		 * processed, so a crash loses buffered messages. Commit `offset + 1` via
+		 * `consumer.commitOffsets` after processing, or pass `true` to opt back in.
+		 */
 		autoCommit?: boolean;
 		partitionsConsumedConcurrently?: number;
-		signal?: AbortSignal;
 	},
 	streamOptions?: StreamOptions,
 ): Promise<
 	DatastreamReadable<KafkaConsumedMessage> & { stop: () => Promise<void> }
 >;
-
-declare const _default: {
-	connect: typeof kafkaConnect;
-	produceStream: typeof kafkaProduceStream;
-	consumeStream: typeof kafkaConsumeStream;
-};
-export default _default;

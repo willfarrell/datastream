@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# Mutation-test packages one at a time: Stryker's inPlace mode rewrites the tree,
+# so runs must never overlap. Usage: bin/stryker [package]
+# Variants follow the export conditions, as in bin/esbuild: a "node" condition
+# gets a node run, a "browser" condition a browser run.
+set -e
+
+if [ -n "$1" ]; then set -- "packages/$1/"; else set -- packages/*/; fi
+
+for package in "$@"; do
+  name=$(basename "${package}")
+  if [ "$(jq '[.exports | .. | objects | has("node")] | any' "${package}package.json")" = "true" ]; then
+    MUTATE_PACKAGE="${name}" node_modules/.bin/stryker run
+  fi
+  if [ "$(jq '[.exports | .. | objects | has("browser")] | any' "${package}package.json")" = "true" ]; then
+    MUTATE_PACKAGE="${name}" MUTATE_VARIANT=browser node_modules/.bin/stryker run
+  fi
+done

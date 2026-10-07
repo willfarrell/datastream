@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: MIT
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { createTransformStream } from "@datastream/core";
-
-const algorithmMap = {
-	"AES-128-GCM": { cipher: "aes-128-gcm", ivSize: 12, keySize: 16 },
-	"AES-256-GCM": { cipher: "aes-256-gcm", ivSize: 12, keySize: 32 },
-	"AES-128-CTR": { cipher: "aes-128-ctr", ivSize: 16, keySize: 16 },
-	"AES-256-CTR": { cipher: "aes-256-ctr", ivSize: 16, keySize: 32 },
-	"CHACHA20-POLY1305": { cipher: "chacha20-poly1305", ivSize: 12, keySize: 32 },
-};
-
-const authAlgorithms = ["AES-128-GCM", "AES-256-GCM", "CHACHA20-POLY1305"];
-const ctrAlgorithms = ["AES-128-CTR", "AES-256-CTR"];
-
-const DEFAULT_MAX_INPUT_SIZE = 64 * 1024 * 1024; // 64MB
+import {
+	authAlgorithms,
+	bufferedInputLimit,
+	byteLimit,
+	decryptInputError,
+	decryptOutputError,
+	encryptInputError,
+	getAlgorithm,
+	validateAad,
+	validateAuthTag,
+	validateIv,
+	validateKey,
+} from "./shared.js";
 
 // NOTE on nonce/IV uniqueness for the AEAD modes (AES-256-GCM,
 // CHACHA20-POLY1305): the default IV is a fresh 96-bit CSPRNG value, which is
@@ -25,100 +25,52 @@ const DEFAULT_MAX_INPUT_SIZE = 64 * 1024 * 1024; // 64MB
 // or supply a unique deterministic nonce per message. Never reuse an explicit
 // iv with the same key.
 
-const validateKey = (key, keySize = 32) => {
-	if (!key || key.length !== keySize) {
-		throw new Error(
-			`Encryption key must be ${keySize} bytes (${keySize * 8} bits), got ${key?.length ?? 0}`,
-		);
-	}
-};
-
-const validateIv = (iv, expectedSize, algorithm) => {
-	if (!iv || iv.length !== expectedSize) {
-		throw new Error(
-			`IV for ${algorithm} must be ${expectedSize} bytes, got ${iv?.length ?? 0}`,
-		);
-	}
-};
-
-const validateAuthTag = (authTag, algorithm) => {
-	if (authTag?.length !== 16) {
-		throw new Error(
-			`authTag for ${algorithm} must be 16 bytes, got ${authTag?.length ?? 0}`,
-		);
-	}
-};
-
-const validateAad = (aad, algorithm) => {
-	if (aad != null && !Buffer.isBuffer(aad) && !(aad instanceof Uint8Array)) {
-		throw new Error("aad must be a Buffer or Uint8Array");
-	}
-	// AAD only has meaning for authenticated modes. Silently dropping it for
-	// AES-256-CTR would give the caller a false sense of integrity binding.
-	if (aad != null && !authAlgorithms.includes(algorithm)) {
-		throw new Error(
-			`aad is not supported for ${algorithm} (not authenticated)`,
-		);
-	}
-};
-
-export const encryptStream = (
+export const encryptStream = async (
 	{ algorithm = "AES-256-GCM", key, iv, aad, maxInputSize, resultKey } = {},
 	streamOptions = {},
 ) => {
-	const config = algorithmMap[algorithm];
-	if (!config) {
-		throw new Error(`Unsupported algorithm: ${algorithm}`);
-	}
-	const { cipher: cipherName, ivSize, keySize } = config;
+	const { ivSize, keySize } = getAlgorithm(algorithm);
 	validateKey(key, keySize);
 	iv ??= randomBytes(ivSize);
 	validateIv(iv, ivSize, algorithm);
 	validateAad(aad, algorithm);
-	const authTagLength = authAlgorithms.includes(algorithm) ? 16 : undefined;
-	const stream = createCipheriv(cipherName, key, iv, {
+	const aead = authAlgorithms.includes(algorithm);
+	const stream = createCipheriv(algorithm.toLowerCase(), key, iv, {
 		...streamOptions,
-		authTagLength,
+		authTagLength: aead ? 16 : undefined,
 	});
-	if (aad != null && authAlgorithms.includes(algorithm)) {
+	// validateAad already rejected aad for the non-AEAD modes.
+	if ((aad ?? null) !== null) {
 		stream.setAAD(aad);
 	}
 	// Input-size guard:
-	//  - When maxInputSize is supplied explicitly, enforce it for all algorithms.
-	//  - AEAD modes default to 64MB (DoS guard; web build buffers the whole
-	//    ciphertext, so parity is important).
-	//  - AES-*-CTR with no explicit maxInputSize: OpenSSL silently wraps its
-	//    128-bit counter at 2^128 blocks, but that is so far beyond any practical
-	//    workload that no runtime guard is needed. Skip the transform override
-	//    to avoid dead-code for an unreachable ceiling.
-	const skipInputGuard =
-		ctrAlgorithms.includes(algorithm) && maxInputSize == null;
-	if (!skipInputGuard) {
-		const effectiveMaxInput = maxInputSize ?? DEFAULT_MAX_INPUT_SIZE;
-		let inputSize = 0n;
-		const limit = BigInt(effectiveMaxInput);
-		const originalWrite = stream._transform.bind(stream);
-		stream._transform = (chunk, encoding, callback) => {
-			inputSize += BigInt(chunk.length);
-			if (inputSize > limit) {
-				callback(
-					new Error(
-						`Encryption input exceeds maxInputSize (${effectiveMaxInput} bytes). Use AES-256-CTR for large data.`,
-					),
-				);
-				return;
-			}
-			originalWrite(chunk, encoding, callback);
-		};
-	}
+	//  - AEAD modes default to 64MB (DoS guard; the browser build buffers the
+	//    whole message, so parity is important). null lifts it.
+	//  - AES-*-CTR streams without buffering, so there is no default: only an
+	//    explicit maxInputSize is enforced. OpenSSL wraps its 128-bit counter at
+	//    2^128 blocks, far beyond any practical workload.
+	const guard = byteLimit(
+		aead
+			? bufferedInputLimit(maxInputSize)
+			: (maxInputSize ?? Number.POSITIVE_INFINITY),
+		encryptInputError,
+	);
+	const originalTransform = stream._transform.bind(stream);
+	stream._transform = (chunk, encoding, callback) => {
+		try {
+			guard(chunk.length);
+		} catch (error) {
+			callback(error);
+			return;
+		}
+		originalTransform(chunk, encoding, callback);
+	};
 	stream.result = () => ({
 		key: resultKey ?? "encrypt",
 		value: {
 			algorithm,
 			iv,
-			...(authAlgorithms.includes(algorithm)
-				? { authTag: stream.getAuthTag() }
-				: {}),
+			...(aead ? { authTag: stream.getAuthTag() } : {}),
 		},
 	});
 	return stream;
@@ -129,32 +81,26 @@ export const encryptStream = (
 // emits decrypted plaintext incrementally and checks the tag only at final();
 // using it directly would release UNAUTHENTICATED plaintext to downstream
 // consumers before the tag is ever verified. Buffering-then-verifying matches
-// the web implementation's authenticated-before-release guarantee.
+// the browser implementation's authenticated-before-release guarantee.
 const aeadDecryptStream = (
-	{ cipherName, key, iv, authTag, aad, maxInputSize, maxOutputSize },
+	{ algorithm, key, iv, authTag, aad, maxInputSize, maxOutputSize },
 	streamOptions,
 ) => {
 	// The decipher here is driven manually via update()/final() and is never
 	// exposed as a stream, so forwarding streamOptions to it has no effect. The
 	// default auth-tag length is already 16 bytes for every AEAD cipher we use,
 	// so no options object is needed.
-	const decipher = createDecipheriv(cipherName, key, iv);
+	const decipher = createDecipheriv(algorithm.toLowerCase(), key, iv);
 	decipher.setAuthTag(authTag);
-	if (aad != null) {
+	if ((aad ?? null) !== null) {
 		decipher.setAAD(aad);
 	}
-	maxInputSize ??= DEFAULT_MAX_INPUT_SIZE;
+	// Bound memory before buffering/verification: we must buffer the whole
+	// ciphertext to verify the tag before releasing plaintext, so cap input.
+	const guard = byteLimit(bufferedInputLimit(maxInputSize), decryptInputError);
 	const chunks = [];
-	let inputSize = 0;
 	const transform = (chunk) => {
-		// Bound memory before buffering/verification: we must buffer the whole
-		// ciphertext to verify the tag before releasing plaintext, so cap input.
-		inputSize += chunk.length;
-		if (inputSize > maxInputSize) {
-			throw new Error(
-				`Decryption input exceeds maxInputSize (${maxInputSize} bytes)`,
-			);
-		}
+		guard(chunk.length);
 		chunks.push(chunk);
 	};
 	const flush = (enqueue) => {
@@ -164,17 +110,16 @@ const aeadDecryptStream = (
 		const head = decipher.update(ciphertext);
 		const tail = decipher.final();
 		const plaintext = Buffer.concat([head, tail]);
-		if (maxOutputSize != null && plaintext.length > maxOutputSize) {
-			throw new Error(
-				`Decryption output exceeds maxOutputSize (${maxOutputSize} bytes)`,
-			);
-		}
+		byteLimit(
+			maxOutputSize ?? Number.POSITIVE_INFINITY,
+			decryptOutputError,
+		)(plaintext.length);
 		enqueue(plaintext);
 	};
 	return createTransformStream(transform, flush, streamOptions);
 };
 
-export const decryptStream = (
+export const decryptStream = async (
 	{
 		algorithm = "AES-256-GCM",
 		key,
@@ -186,44 +131,40 @@ export const decryptStream = (
 	} = {},
 	streamOptions = {},
 ) => {
-	const config = algorithmMap[algorithm];
-	if (!config) {
-		throw new Error(`Unsupported algorithm: ${algorithm}`);
-	}
-	const { cipher: cipherName, ivSize, keySize } = config;
+	const { ivSize, keySize } = getAlgorithm(algorithm);
 	validateKey(key, keySize);
 	validateIv(iv, ivSize, algorithm);
 	validateAad(aad, algorithm);
 	if (authAlgorithms.includes(algorithm)) {
 		validateAuthTag(authTag, algorithm);
 		return aeadDecryptStream(
-			{ cipherName, key, iv, authTag, aad, maxInputSize, maxOutputSize },
+			{ algorithm, key, iv, authTag, aad, maxInputSize, maxOutputSize },
 			streamOptions,
 		);
 	}
-	// AES-256-CTR: unauthenticated, safe to stream incrementally.
-	const stream = createDecipheriv(cipherName, key, iv, streamOptions);
+	// AES-*-CTR: unauthenticated, safe to stream incrementally.
+	const stream = createDecipheriv(
+		algorithm.toLowerCase(),
+		key,
+		iv,
+		streamOptions,
+	);
 	// Only intercept push when an output ceiling is configured; with no ceiling
 	// the decipher is returned untouched (no per-chunk accounting overhead and no
-	// override to leak). Installing the override only when needed also means the
-	// inner accounting never has to re-check `maxOutputSize`.
-	if (maxOutputSize != null) {
-		let outputSize = 0;
+	// override to leak).
+	if ((maxOutputSize ?? null) !== null) {
+		const guard = byteLimit(maxOutputSize, decryptOutputError);
 		const originalPush = stream.push.bind(stream);
 		stream.push = (chunk) => {
 			// EOF marker (null) carries no bytes and must always pass through.
 			if (chunk === null) return originalPush(chunk);
-			outputSize += chunk.length;
-			if (outputSize > maxOutputSize) {
+			try {
+				guard(chunk.length);
+			} catch (error) {
 				// Tear the stream down with the limit error and withhold this chunk.
 				// The push() return value is irrelevant here: a destroyed stream emits
-				// nothing further, so we simply return (undefined) without forwarding
-				// the chunk to originalPush.
-				stream.destroy(
-					new Error(
-						`Decryption output exceeds maxOutputSize (${maxOutputSize} bytes)`,
-					),
-				);
+				// nothing further.
+				stream.destroy(error);
 				return;
 			}
 			return originalPush(chunk);
@@ -237,10 +178,4 @@ export const generateEncryptionKey = ({ bits = 256 } = {}) => {
 		throw new Error(`Unsupported key size: ${bits}. Must be 128 or 256.`);
 	}
 	return randomBytes(bits / 8);
-};
-
-export default {
-	encryptStream,
-	decryptStream,
-	generateEncryptionKey,
 };

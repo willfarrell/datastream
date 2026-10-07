@@ -1,3 +1,4 @@
+import { strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	createReadableStream,
@@ -8,11 +9,10 @@ import {
 import {
 	stringCountStream,
 	stringLengthStream,
-	stringMinimumChunkSize,
-	stringMinimumFirstChunkSize,
-	stringReadableStream,
+	stringMinimumChunkSizeStream,
+	stringMinimumFirstChunkSizeStream,
 	stringReplaceStream,
-	stringSkipConsecutiveDuplicates,
+	stringSkipConsecutiveDuplicatesStream,
 	stringSplitStream,
 } from "@datastream/string";
 import fc from "fast-check";
@@ -25,25 +25,6 @@ const catchError = (input, e) => {
 	console.error(input, e);
 	throw e;
 };
-
-// *** stringReadableStream *** //
-test("fuzz stringReadableStream w/ input", async () => {
-	await fc.assert(
-		fc.asyncProperty(fc.string(), async (input) => {
-			try {
-				const stream = stringReadableStream(input);
-				await streamToArray(stream);
-			} catch (e) {
-				catchError(input, e);
-			}
-		}),
-		{
-			numRuns: 1_000,
-			verbose: 2,
-			examples: [],
-		},
-	);
-});
 
 // *** stringLengthStream *** //
 test("fuzz stringLengthStream w/ input", async () => {
@@ -90,14 +71,14 @@ test("fuzz stringCountStream w/ substr", async () => {
 	);
 });
 
-// *** stringSkipConsecutiveDuplicates *** //
-test("fuzz stringSkipConsecutiveDuplicates w/ input", async () => {
+// *** stringSkipConsecutiveDuplicatesStream *** //
+test("fuzz stringSkipConsecutiveDuplicatesStream w/ input", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.array(fc.string()), async (input) => {
 			try {
 				const streams = [
 					createReadableStream(input),
-					stringSkipConsecutiveDuplicates(),
+					stringSkipConsecutiveDuplicatesStream(),
 				];
 				const stream = pipejoin(streams);
 				await streamToArray(stream);
@@ -127,7 +108,12 @@ test("fuzz stringReplaceStream w/ pattern and replacement", async () => {
 						stringReplaceStream({ pattern, replacement }),
 					];
 					const stream = pipejoin(streams);
-					await streamToArray(stream);
+					const output = await streamToArray(stream);
+					// a string match always fits the held-back window
+					strictEqual(
+						output.join(""),
+						input.join("").replaceAll(pattern, replacement),
+					);
 				} catch (e) {
 					catchError({ input, pattern, replacement }, e);
 				}
@@ -168,8 +154,8 @@ test("fuzz stringSplitStream w/ separator", async () => {
 	);
 });
 
-// *** stringMinimumFirstChunkSize *** //
-test("fuzz stringMinimumFirstChunkSize w/ chunkSize", async () => {
+// *** stringMinimumFirstChunkSizeStream *** //
+test("fuzz stringMinimumFirstChunkSizeStream w/ chunkSize", async () => {
 	await fc.assert(
 		fc.asyncProperty(
 			fc.array(fc.string(), { minLength: 1 }),
@@ -178,7 +164,7 @@ test("fuzz stringMinimumFirstChunkSize w/ chunkSize", async () => {
 				try {
 					const streams = [
 						createReadableStream(input),
-						stringMinimumFirstChunkSize({ chunkSize }),
+						stringMinimumFirstChunkSizeStream({ chunkSize }),
 					];
 					const stream = pipejoin(streams);
 					await streamToArray(stream);
@@ -195,8 +181,8 @@ test("fuzz stringMinimumFirstChunkSize w/ chunkSize", async () => {
 	);
 });
 
-// *** stringMinimumChunkSize *** //
-test("fuzz stringMinimumChunkSize w/ chunkSize", async () => {
+// *** stringMinimumChunkSizeStream *** //
+test("fuzz stringMinimumChunkSizeStream w/ chunkSize", async () => {
 	await fc.assert(
 		fc.asyncProperty(
 			fc.array(fc.string(), { minLength: 1 }),
@@ -205,7 +191,7 @@ test("fuzz stringMinimumChunkSize w/ chunkSize", async () => {
 				try {
 					const streams = [
 						createReadableStream(input),
-						stringMinimumChunkSize({ chunkSize }),
+						stringMinimumChunkSizeStream({ chunkSize }),
 					];
 					const stream = pipejoin(streams);
 					await streamToArray(stream);

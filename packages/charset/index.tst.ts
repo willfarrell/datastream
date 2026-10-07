@@ -1,10 +1,13 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
+
+import type * as charset from "@datastream/charset";
 import {
 	charsetDecodeStream,
 	charsetDetectStream,
 	charsetEncodeStream,
 } from "@datastream/charset";
+import type * as charsetDetect from "@datastream/charset/detect";
 import { describe, expect, test } from "tstyche";
 
 describe("charsetDecodeStream", () => {
@@ -41,5 +44,14 @@ describe("charsetEncodeStream", () => {
 
 	test("accepts no options", () => {
 		expect(charsetEncodeStream()).type.not.toBeAssignableTo<never>();
+	});
+});
+
+describe("getSupportedEncoding", () => {
+	test("is internal (not exported)", () => {
+		expect<typeof charset>().type.not.toHaveProperty("getSupportedEncoding");
+		expect<typeof charsetDetect>().type.not.toHaveProperty(
+			"getSupportedEncoding",
+		);
 	});
 });

@@ -6,22 +6,20 @@
 	"type": "module",
 	"packageManager": "npm@12.0.1+sha512.L5T9i/YAQWQQWqTS/xZxJkei/9zcu99hCeE4qi41IyBVV7mRQad3qc2JfuOktwmH+qwGI/V2rbCL+/UYxb1+RQA==",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"scripts": {
 		"prepare": "husky || true",
 		"git:pre-commit": "npm run git:lint-staged",
-		"git:pre-push": "npm run git:test-staged",
+		"git:pre-push": "npm run git:test",
 		"git:commit-msg": "commitlint --config commitlint.config.cjs --edit",
 		"git:lint-staged": "npm run test:lint:staged",
-		"git:test-staged": "which node && node -v && npm run test:unit",
 		"lint": "biome check --write --no-errors-on-unmatched",
 		"build": "bin/esbuild",
-		"test": "npm run test:lint && npm run test:unit && npm run test:mutation && npm run test:dast && npm run test:types && npm run test:perf && npm run test:sast",
+		"test": "npm run test:lint && npm run test:types && npm run build && npm run test:unit && npm run test:unit:browser && npm run test:dast && npm run test:sast && npm run test:bench && npm run test:mutation",
 		"test:lint": "biome ci --no-errors-on-unmatched",
 		"test:lint:staged": "biome check --staged --no-errors-on-unmatched",
-		"test:unit": "npm run build && node --test --conditions=node --test-force-exit --experimental-test-coverage --test-coverage-exclude=packages/file/** --test-coverage-exclude=**/*.web.js --test-coverage-exclude=**/*.web.mjs --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/*.fuzz.js --test-coverage-exclude=**/*.perf.js --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100",
+		"test:unit": "node --test --experimental-test-coverage --test-coverage-exclude=**/*.browser.js --test-coverage-exclude=**/*.browser.mjs --test-coverage-exclude=**/*.test.js --test-coverage-exclude=**/variant.js --test-coverage-exclude=**/*.fuzz.js --test-coverage-exclude=**/*.bench.js --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100",
 		"test:sast": "npm run test:sast:license && npm run test:sast:lockfile && npm run test:sast:semgrep && npm run test:sast:trufflehog && npm run test:sast:gitleaks && npm run test:sast:actionlint && npm run test:sast:zizmor && npm run test:sast:trivy",
 		"test:sast:actionlint": "actionlint",
 		"test:sast:gitleaks": "npm run test:sast:gitleaks:dir && npm run test:sast:gitleaks:git",
@@ -30,13 +28,13 @@
 		"test:sast:license": "license-check-and-add check -f .license.config.json",
 		"test:sast:lockfile": "lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https",
 		"test:sast:semgrep": "semgrep scan --config auto --error",
-		"test:sast:trivy": "trivy fs --scanners vuln,license --include-dev-deps --ignored-licenses 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT,MPL-2.0,BlueOak-1.0.0,Unlicense,Python-2.0,LGPL-3.0-or-later --exit-code 1 --skip-files '**/bun.lock' --disable-telemetry .",
+		"test:sast:trivy": "trivy fs --scanners vuln,license --include-dev-deps --ignored-licenses 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT,MPL-2.0,BlueOak-1.0.0,Unlicense,Python-2.0,LGPL-3.0-or-later --exit-code 1 --disable-telemetry .",
 		"test:sast:trufflehog": "trufflehog filesystem --only-verified --log-level=-1 ./",
 		"test:sast:zizmor": "zizmor .github",
 		"test:types": "tstyche",
-		"test:mutation": "npm run test:mutation --workspaces --if-present",
-		"test:perf": "node --test --test-concurrency=1 'packages/**/*.perf.js'",
-		"test:dast": "npm run test:dast:fuzz",
+		"test:mutation": "sh bin/stryker",
+		"test:bench": "node --experimental-bench --bench 'packages/**/*.bench.js'",
+		"test:dast": "npm run test:dast:fuzz && npm run test:dast:fuzz:browser",
 		"test:dast:fuzz": "node --test 'packages/**/*.fuzz.js'",
 		"rm": "npm run rm:macos && npm run rm:node_modules && npm run rm:lock",
 		"rm:macos": "find . -name '.DS_Store' -type f -delete",
@@ -45,10 +43,15 @@
 		"update": "corepack up && npm run rm && npm install --workspaces",
 		"outdated": "npm outdated --workspaces",
 		"audit": "npm audit fix --workspaces",
+		"release:staged": "npm whoami >/dev/null && npm query '.workspace:not([private])' | jq -r '.[].name' | xargs -n1 -I{} npm stage list {} --json | jq -r '.[] | \"\\(.packageName)@\\(.version) \\(.actor) \\(.shasum)\"'",
+		"release:approve": "npm query '.workspace:not([private])' | jq -r '.[].name' | xargs -n1 -I{} npm stage list {} --json | jq -r --arg v \"$npm_package_version\" '.[] | select(.version == $v) | .id' | xargs -n1 -o npm stage approve",
 		"release:license:add": "license-check-and-add add -f .license.config.json",
 		"release:license:remove": "license-check-and-add remove -f .license.config.json",
-		"release:sync": "npm version $npm_package_version --workspaces; v=$(npm pkg get version | tr -d '\"'); find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@datastream/(.*)\\\": ([^,]*)|\\\"@datastream/\\1\\\": \\\"$v\\\"|g\" {} \\; && npm run rm && npm install",
-		"release:tag": "git tag $npm_package_version"
+		"release:sync": "npm version $npm_package_version --workspaces; node -e 'const fs=require(\"node:fs\");for(const d of fs.readdirSync(\"packages\")){const f=`packages/${d}/package.json`;if(!fs.existsSync(f))continue;const p=JSON.parse(fs.readFileSync(f));for(const k of [\"dependencies\",\"devDependencies\",\"peerDependencies\"])for(const n in p[k])if(n.startsWith(\"@datastream/\"))p[k][n]=p.version;fs.writeFileSync(f,JSON.stringify(p,null,\"\\t\")+\"\\n\")}' && npm install",
+		"release:tag": "git tag -s -m $npm_package_version $npm_package_version",
+		"test:unit:browser": "node --test --conditions=browser --experimental-test-coverage --test-coverage-include=packages/**/*.browser.mjs --test-coverage-include=packages/**/native.browser.js --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 $(find packages -name '*.test.js' -not -path 'packages/aws/*' -not -path 'packages/azure/*' -not -path 'packages/kafka/*')",
+		"git:test": "which node && node -v && npm run build && npm run test:unit && npm run test:unit:browser",
+		"test:dast:fuzz:browser": "node --test --conditions=browser $(find packages -name 'index.fuzz.js' -not -path 'packages/aws/*' -not -path 'packages/azure/*' -not -path 'packages/kafka/*' -not -path 'packages/compress/*' -not -path 'packages/duckdb/*' -not -path 'packages/file/*')"
 	},
 	"repository": {
 		"type": "git",
@@ -78,14 +81,10 @@
 		"esbuild": "^0.28.0",
 		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
-		"tinybench": "^6.0.0",
 		"tstyche": "^7.0.0"
 	},
 	"overrides": {
 		"qs": "^6.15.2",
-		"miniflare": {
-			"undici": "^7.29.0"
-		},
 		"@sveltejs/kit": {
 			"cookie": "^0.7.2"
 		},
@@ -94,13 +93,6 @@
 		},
 		"license-check-and-add": {
 			"minimatch": "^10.2.5"
-		},
-		"lockfile-lint": {
-			"lockfile-lint-api": {
-				"@yarnpkg/parsers": {
-					"js-yaml": ">=4.2.0"
-				}
-			}
 		}
 	},
 	"workspaces": [

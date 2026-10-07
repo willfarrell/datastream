@@ -44,9 +44,14 @@ export function awsDynamoDBGetItemStream(
 		client?: unknown;
 		Keys?: unknown[];
 		TableName?: string;
+		ConsistentRead?: boolean;
+		ProjectionExpression?: string;
+		ExpressionAttributeNames?: Record<string, string>;
+		AttributesToGet?: string[];
+		ReturnConsumedCapacity?: "INDEXES" | "TOTAL" | "NONE";
 		retryCount?: number;
-		retryMaxCount?: number;
-		[key: string]: unknown;
+		// Max retries of failed entries (default 10); null = unlimited.
+		retryMaxCount?: number | null;
 	},
 	streamOptions?: StreamOptions,
 ): Promise<DatastreamReadable>;
@@ -55,6 +60,8 @@ export function awsDynamoDBPutItemStream(
 	options: {
 		client?: unknown;
 		TableName?: string;
+		// Max retries of failed entries (default 10); null = unlimited.
+		retryMaxCount?: number | null;
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
@@ -64,6 +71,8 @@ export function awsDynamoDBDeleteItemStream(
 	options: {
 		client?: unknown;
 		TableName?: string;
+		// Max retries of failed entries (default 10); null = unlimited.
+		retryMaxCount?: number | null;
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,

@@ -1,5 +1,9 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
+export const indexedDBConnect = async () => {
+	throw new Error("indexedDBConnect: Not supported");
+};
+
 export const indexedDBReadStream = async (
 	_options = {},
 	_streamOptions = {},
@@ -15,6 +19,7 @@ export const indexedDBWriteStream = async (
 };
 
 export default {
+	connect: indexedDBConnect,
 	readStream: indexedDBReadStream,
 	writeStream: indexedDBWriteStream,
 };

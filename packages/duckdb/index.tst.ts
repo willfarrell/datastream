@@ -22,6 +22,12 @@ describe("duckdbConnect", () => {
 		).type.not.toBeAssignableTo<never>();
 	});
 
+	test("accepts browser bundles", () => {
+		expect(duckdbConnect).type.toBeCallableWith(":memory:", {
+			bundles: { mvp: { mainModule: "/m.wasm", mainWorker: "/w.js" } },
+		});
+	});
+
 	test("returns a Promise", () => {
 		expect(duckdbConnect()).type.toBe<Promise<unknown>>();
 	});
@@ -46,5 +52,12 @@ describe("duckdbArrowInsertStream", () => {
 		expect(
 			duckdbArrowInsertStream({ db, table: "t" }),
 		).type.not.toBeAssignableTo<never>();
+	});
+	test("accepts batchRows", () => {
+		expect(duckdbArrowInsertStream).type.toBeCallableWith({
+			db,
+			table: "t",
+			batchRows: 1000,
+		});
 	});
 });

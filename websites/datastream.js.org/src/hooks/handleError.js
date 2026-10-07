@@ -1,5 +1,4 @@
 //import { stderr } from "node:process"; // CloudFlare doesn't support
-import { NIL as uuidNil } from "uuid";
 
 export async function handleError({ error, event }) {
 	console.error(
@@ -9,8 +8,11 @@ export async function handleError({ error, event }) {
 			stack: error.stack,
 			cause: error.cause,
 			status_code: error.statusCode ?? null,
-			request_id: uuidNil,
-			event, // TODO need to remove sensitive data before logging (ip, user agent, )
+			request_id: "00000000-0000-0000-0000-000000000000",
+			// Never the raw event: it carries request headers (ip, user agent,
+			// cookies) and, on Cloudflare, platform.env bindings.
+			path: event.url.pathname,
+			route: event.route.id,
 		})}\n`,
 	);
 }

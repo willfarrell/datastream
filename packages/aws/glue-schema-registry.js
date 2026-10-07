@@ -15,6 +15,8 @@ export const awsGlueSchemaRegistryResolver = ({
 	cacheExpiry = -1,
 	maxCacheSize = 1000,
 } = {}) => {
+	// null = unbounded cache
+	const cacheCap = maxCacheSize ?? Number.POSITIVE_INFINITY;
 	// Cache the lazily-created client per resolver invocation (closure-local) so
 	// each resolver honors its own clientOptions. The module-level defaultClient
 	// is reserved strictly for the explicit setClient() path.
@@ -37,7 +39,7 @@ export const awsGlueSchemaRegistryResolver = ({
 	const inflight = new Map(); // schemaVersionId -> Promise<value>
 
 	const evictIfNeeded = () => {
-		while (cache.size >= maxCacheSize) {
+		while (cache.size >= cacheCap) {
 			const oldest = cache.keys().next().value;
 			cache.delete(oldest);
 		}
@@ -75,11 +77,15 @@ export const awsGlueSchemaRegistryResolver = ({
 				// delete-then-set so a refreshed key lands at the tail of the
 				// Map's insertion order, keeping eviction true-FIFO.
 				cache.delete(schemaVersionId);
-				evictIfNeeded();
-				cache.set(schemaVersionId, {
-					value,
-					expires: cacheExpiry < 0 ? -1 : Date.now() + cacheExpiry,
-				});
+				// maxCacheSize <= 0 disables caching; evicting down to a non-positive
+				// cap would otherwise spin forever on an empty Map.
+				if (cacheCap > 0) {
+					evictIfNeeded();
+					cache.set(schemaVersionId, {
+						value,
+						expires: cacheExpiry < 0 ? -1 : Date.now() + cacheExpiry,
+					});
+				}
 				return value;
 			} finally {
 				inflight.delete(schemaVersionId);
@@ -88,9 +94,4 @@ export const awsGlueSchemaRegistryResolver = ({
 		inflight.set(schemaVersionId, promise);
 		return promise;
 	};
-};
-
-export default {
-	setClient: awsGlueSchemaRegistrySetClient,
-	resolver: awsGlueSchemaRegistryResolver,
 };

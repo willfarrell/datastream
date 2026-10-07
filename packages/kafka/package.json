@@ -4,43 +4,29 @@
 	"description": "Kafka producer and consumer streams (Node, via kafkajs)",
 	"type": "module",
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
 	"main": "./index.node.mjs",
-	"module": "./index.web.mjs",
 	"exports": {
 		".": {
-			"node": {
-				"import": {
-					"types": "./index.d.ts",
-					"default": "./index.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./index.d.ts",
-				"default": "./index.web.mjs"
-			}
-		},
-		"./webstream": {
 			"types": "./index.d.ts",
-			"default": "./index.web.mjs"
+			"node": "./index.node.mjs",
+			"default": "./index.node.mjs"
 		}
 	},
 	"types": "index.d.ts",
 	"files": [
-		"*.mjs",
-		"*.map",
+		"*.node.mjs",
+		"*.node.mjs.map",
 		"*.d.ts"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:perf": "node --test index.perf.js",
-		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
+		"test:bench": "node --experimental-bench --bench 'index.bench.js'"
 	},
 	"license": "MIT",
 	"keywords": [
@@ -48,7 +34,6 @@
 		"kafkajs",
 		"msk",
 		"streaming",
-		"Web Stream API",
 		"Node Stream API"
 	],
 	"author": {

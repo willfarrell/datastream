@@ -138,12 +138,18 @@ export const kafkaConsumeStream = async (
 		consumer,
 		topics,
 		fromBeginning = false,
-		autoCommit = true,
+		// Default false: kafkajs auto-commits once eachMessage resolves, which here
+		// is when the message is merely buffered in the Readable (up to
+		// highWaterMark) — not processed. A crash/destroy would then lose
+		// committed-but-unprocessed messages. Opt in with `autoCommit: true` for
+		// at-most-once delivery, or commit `offset + 1` yourself after processing.
+		autoCommit = false,
 		partitionsConsumedConcurrently = 1,
-		signal,
 	},
 	streamOptions = {},
 ) => {
+	// Like every datastream factory, the AbortSignal lives in streamOptions.
+	const { signal } = streamOptions;
 	if (!consumer) throw new TypeError("kafkaConsumeStream: consumer required");
 	if (!topics || (Array.isArray(topics) && !topics.length)) {
 		throw new TypeError("kafkaConsumeStream: topics required");
@@ -220,7 +226,14 @@ export const kafkaConsumeStream = async (
 		autoCommit,
 		partitionsConsumedConcurrently,
 		eachMessage: async ({ topic, partition, message }) => {
-			if (stopped) return;
+			// Never resolve for a message we did not push: kafkajs would commit its
+			// offset (autoCommit) or treat it as handled, silently losing it. Throw
+			// so it stays uncommitted and is redelivered on the next run.
+			if (stopped) {
+				throw new Error(
+					`kafkaConsumeStream: stream stopped; message at ${topic}[${partition}]@${message.offset} not delivered`,
+				);
+			}
 			const wantsMore = stream.push({
 				topic,
 				partition,
@@ -262,10 +275,4 @@ export const kafkaConsumeStream = async (
 
 	stream.stop = stop;
 	return stream;
-};
-
-export default {
-	connect: kafkaConnect,
-	produceStream: kafkaProduceStream,
-	consumeStream: kafkaConsumeStream,
 };

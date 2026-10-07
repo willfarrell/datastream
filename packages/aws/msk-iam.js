@@ -23,5 +23,3 @@ export const awsMskIamMechanism = ({ region, awsDebugCreds, ttl } = {}) => {
 		},
 	};
 };
-
-export default { mechanism: awsMskIamMechanism };

@@ -6,7 +6,15 @@ import { fetchResponseStream, fetchSetDefaults } from "@datastream/fetch";
 import fc from "fast-check";
 
 const catchError = (input, e) => {
-	const expectedErrors = ["fetch 404 GET", "fetch 500 GET"];
+	const expectedErrors = [
+		"fetch 404 GET",
+		"fetch 500 GET",
+		"exceeded maxPages",
+		"pagination next URL repeats the current page",
+		"response body exceeds maxBodySize",
+		"only GET/HEAD can be re-requested",
+		"Invalid pagination URL",
+	];
 	if (expectedErrors.some((msg) => e.message?.includes(msg))) {
 		return;
 	}

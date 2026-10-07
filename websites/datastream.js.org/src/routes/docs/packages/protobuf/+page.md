@@ -52,23 +52,23 @@ Decodes Protobuf wire bytes into message objects.
 |--------|------|---------|-------------|
 | `Type` | `Type \| (chunk) => Type` | — | Protobuf message type, or a per-chunk resolver (required) |
 | `payload` | `(chunk) => Uint8Array` | identity | Extract the protobuf bytes from each chunk (e.g. from a registry envelope) |
-| `maxOutputSize` | `number` | — | Maximum total input bytes; decoding aborts with an error when exceeded |
+| `maxMessageSize` | `number \| null` | `67108864` (64MiB) | Maximum encoded size of one message; decoding aborts with a `RangeError` when a message is larger. `null` means no limit |
 
-#### Output size protection
+#### Message size protection
 
-Decoding untrusted Protobuf can amplify a small input into large objects. Set `maxOutputSize` to bound total decoded volume by input bytes and abort before memory is exhausted.
+Decoding untrusted Protobuf can amplify a small input into large objects. `maxMessageSize` is checked against each message's encoded bytes before it is decoded, so one oversized message can't exhaust memory. The limit applies per message, not to the stream's total, so a long-running consumer is never stopped by volume alone. Decoded objects can still be larger than their encoded form.
 
 ### Example
 
 ```javascript
 import { protobufDecodeStream } from '@datastream/protobuf'
 
-protobufDecodeStream({ Type: Person, maxOutputSize: 10 * 1024 * 1024 })
+protobufDecodeStream({ Type: Person, maxMessageSize: 10 * 1024 * 1024 })
 ```
 
 ## `protobufLengthPrefixFrameStream` <span class="badge">Transform</span>
 
-Prefixes each chunk with a base-128 varint length, producing a self-delimiting stream of framed records (the same framing Kafka and gRPC-style transports use).
+Prefixes each chunk with a base-128 varint length, producing a self-delimiting stream of framed records. This is Protobuf's standard length-delimited format, as written by Java's `writeDelimitedTo` and protobufjs's `encodeDelimited`. It is **not** gRPC framing: gRPC prefixes each message with a fixed 5-byte header (a 1-byte compressed flag and a 4-byte big-endian length), so these streams can't read or write gRPC message bodies directly.
 
 ## `protobufLengthPrefixUnframeStream` <span class="badge">Transform</span>
 
@@ -78,7 +78,7 @@ Reassembles a varint-length-prefixed byte stream back into individual record fra
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `maxMessageSize` | `number` | — | Reject any frame whose declared length exceeds this, aborting with an error |
+| `maxMessageSize` | `number \| null` | `67108864` (64MB) | Reject any frame whose declared length exceeds this, aborting with a `RangeError`. `null` disables the limit |
 
 Throws on flush if trailing bytes do not form a complete frame, and on a varint that overflows.
 

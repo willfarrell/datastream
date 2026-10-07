@@ -13,5 +13,6 @@ export function awsGlueSchemaRegistryResolver(options?: {
 	client?: unknown;
 	clientOptions?: Record<string, unknown>;
 	cacheExpiry?: number;
-	maxCacheSize?: number;
+	// Max cached schema versions (default 1000); 0 disables caching, null = unlimited.
+	maxCacheSize?: number | null;
 }): (schemaVersionId: string) => Promise<GlueSchemaVersion>;

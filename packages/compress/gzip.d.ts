@@ -4,11 +4,11 @@ import type { DatastreamTransform, StreamOptions } from "@datastream/core";
 
 export interface GzipCompressOptions {
 	quality?: number;
-	maxOutputSize?: number;
+	maxOutputSize?: number | null;
 }
 
 export interface GzipDecompressOptions {
-	maxOutputSize?: number;
+	maxOutputSize?: number | null;
 }
 
 export function gzipCompressStream(

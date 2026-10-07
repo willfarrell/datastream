@@ -12,22 +12,11 @@ import {
 	objectPickStream,
 	objectPivotLongToWideStream,
 	objectPivotWideToLongStream,
-	objectReadableStream,
 	objectSkipConsecutiveDuplicatesStream,
 	objectToEntriesStream,
 	objectValueMapStream,
 } from "@datastream/object";
 import { describe, expect, test } from "tstyche";
-
-describe("objectReadableStream", () => {
-	test("accepts array input", () => {
-		expect(objectReadableStream([{ a: 1 }])).type.not.toBeAssignableTo<never>();
-	});
-
-	test("accepts no input", () => {
-		expect(objectReadableStream()).type.not.toBeAssignableTo<never>();
-	});
-});
 
 describe("objectCountStream", () => {
 	test("returns stream with result", () => {
@@ -46,6 +35,15 @@ describe("objectBatchStream", () => {
 	test("requires keys", () => {
 		expect(
 			objectBatchStream({ keys: ["id"] }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts maxBatchSize number or null", () => {
+		expect(
+			objectBatchStream({ keys: ["id"], maxBatchSize: 10 }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			objectBatchStream({ keys: ["id"], maxBatchSize: null }),
 		).type.not.toBeAssignableTo<never>();
 	});
 });

@@ -24,15 +24,19 @@ Validates each object chunk against a JSON Schema. Invalid rows are dropped by d
 | `onErrorEnqueue` | `boolean` | `false` | If `true`, invalid rows are kept in the stream |
 | `allowCoerceTypes` | `boolean` | `true` | If `false`, emits original data without Ajv coercion |
 | `resultKey` | `string` | `"validate"` | Key in pipeline result |
+| `maxErrorRows` | `number \| null` | `1000` | Max row indexes recorded in each error's `idx` array. Further failing rows are still validated (and dropped) but not recorded. `null` = unlimited |
+| `maxErrorKeys` | `number \| null` | `1000` | Max distinct error entries (ids) in the result. Errors with a new id beyond this are not recorded. `null` = unlimited |
+
+`maxErrorRows` and `maxErrorKeys` bound the memory used by the result when validating large or untrusted input.
 
 ### Result
 
-Errors grouped by schema path:
+Errors grouped by schema path. For a missing required property, the property name is appended to the id:
 
 ```javascript
 {
-  '#/required': {
-    id: '#/required',
+  '#/required/email': {
+    id: '#/required/email',
     keys: ['email'],
     message: "must have required property 'email'",
     idx: [3, 7, 15]
@@ -73,7 +77,16 @@ const result = await pipeline([
 ])
 
 console.log(result.validate)
-// Errors for row 1 (name minLength, age minimum)
+// {
+//   '#/properties/name/minLength': { id: '#/properties/name/minLength', keys: ['name'], message: 'must NOT have fewer than 1 characters', idx: [1] },
+//   '#/properties/age/minimum': { id: '#/properties/age/minimum', keys: ['age'], message: 'must be >= 0', idx: [1] }
+// }
+```
+
+### Cap the error result
+
+```javascript
+validateStream({ schema, maxErrorRows: 100, maxErrorKeys: 50 })
 ```
 
 ### Keep invalid rows

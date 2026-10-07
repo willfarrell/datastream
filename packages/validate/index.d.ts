@@ -25,11 +25,12 @@ export function validateStream(
 		onErrorEnqueue?: boolean;
 		allowCoerceTypes?: boolean;
 		resultKey?: string;
-		maxErrorRows?: number;
+		/** idx entries kept per error id. Default 1000; null = unlimited. */
+		maxErrorRows?: number | null;
+		/** Distinct error ids kept. Default 1000; null = unlimited. */
+		maxErrorKeys?: number | null;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform & {
 	result: () => StreamResult<Record<string, ValidateError>>;
 };
-
-export default validateStream;

@@ -2,16 +2,10 @@
 // SPDX-License-Identifier: MIT
 import type {
 	DatastreamPassThrough,
-	DatastreamReadable,
 	DatastreamTransform,
 	StreamOptions,
 	StreamResult,
 } from "@datastream/core";
-
-export function stringReadableStream(
-	input: string | string[],
-	streamOptions?: StreamOptions,
-): DatastreamReadable<string>;
 
 export function stringLengthStream(
 	options?: {
@@ -38,8 +32,6 @@ export function stringMinimumFirstChunkSizeStream(
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<string, string>;
-/** @deprecated Use stringMinimumFirstChunkSizeStream */
-export const stringMinimumFirstChunkSize: typeof stringMinimumFirstChunkSizeStream;
 
 export function stringMinimumChunkSizeStream(
 	options?: {
@@ -47,21 +39,44 @@ export function stringMinimumChunkSizeStream(
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<string, string>;
-/** @deprecated Use stringMinimumChunkSizeStream */
-export const stringMinimumChunkSize: typeof stringMinimumChunkSizeStream;
 
 export function stringSkipConsecutiveDuplicatesStream(
 	options?: Record<string, never>,
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<string, string>;
-/** @deprecated Use stringSkipConsecutiveDuplicatesStream */
-export const stringSkipConsecutiveDuplicates: typeof stringSkipConsecutiveDuplicatesStream;
+
+/**
+ * Called once per match, like a String.prototype.replace function:
+ * `(match, p1, ..., pN, offset, string, groups)`. `offset` is relative to the
+ * start of the stream; `string` is only the text currently buffered (plus up
+ * to `lookbehind` already-emitted chars), not the whole stream. `groups` is
+ * always passed (undefined when the pattern has no named groups).
+ */
+export type StringReplaceFunction = (
+	match: string,
+	// biome-ignore lint/suspicious/noExplicitAny: captures, offset, string, groups
+	...args: any[]
+) => string;
 
 export function stringReplaceStream(
 	options: {
 		pattern: string | RegExp;
-		replacement: string;
-		maxBufferSize?: number;
+		/**
+		 * Output matches `input.replace(pattern, replacement)` (`replaceAll` for a
+		 * string) as long as every match, including lookahead, fits in the
+		 * held-back window. A template using $` or $' needs the whole stream, so
+		 * the stream is buffered and replaced at flush.
+		 */
+		replacement: string | StringReplaceFunction;
+		/**
+		 * RegExp only: longest possible match (including lookahead). By default
+		 * the latest chunk is held back, so a match longer than a chunk can be missed.
+		 */
+		maxMatchLength?: number;
+		/** Already-emitted chars kept as context for lookbehind, ^ and \b (default 16) */
+		lookbehind?: number;
+		/** Default 16MB; null = unlimited. */
+		maxBufferSize?: number | null;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<string, string>;
@@ -69,19 +84,8 @@ export function stringReplaceStream(
 export function stringSplitStream(
 	options: {
 		separator: string;
-		maxBufferSize?: number;
+		/** Default 16MB; null = unlimited. */
+		maxBufferSize?: number | null;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<string, string>;
-
-declare const _default: {
-	readableStream: typeof stringReadableStream;
-	lengthStream: typeof stringLengthStream;
-	countStream: typeof stringCountStream;
-	minimumFirstChunkSize: typeof stringMinimumFirstChunkSizeStream;
-	minimumChunkSize: typeof stringMinimumChunkSizeStream;
-	skipConsecutiveDuplicates: typeof stringSkipConsecutiveDuplicatesStream;
-	replaceStream: typeof stringReplaceStream;
-	splitStream: typeof stringSplitStream;
-};
-export default _default;

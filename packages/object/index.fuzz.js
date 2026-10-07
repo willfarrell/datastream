@@ -15,7 +15,6 @@ import {
 	objectKeyValuesStream,
 	objectOmitStream,
 	objectPickStream,
-	objectReadableStream,
 	objectSkipConsecutiveDuplicatesStream,
 } from "@datastream/object";
 import fc from "fast-check";
@@ -30,28 +29,6 @@ const catchError = (input, e) => {
 	console.error(input, e);
 	throw e;
 };
-
-// *** objectReadableStream *** //
-test("fuzz objectReadableStream w/ input", async () => {
-	await fc.assert(
-		fc.asyncProperty(
-			fc.array(fc.anything().filter((v) => v !== null)),
-			async (input) => {
-				try {
-					const stream = objectReadableStream(input);
-					await streamToArray(stream);
-				} catch (e) {
-					catchError(input, e);
-				}
-			},
-		),
-		{
-			numRuns: 1_000,
-			verbose: 2,
-			examples: [],
-		},
-	);
-});
 
 // *** objectCountStream *** //
 test("fuzz objectCountStream w/ input", async () => {

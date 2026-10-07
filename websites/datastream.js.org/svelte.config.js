@@ -3,6 +3,7 @@ import adapter from "@sveltejs/adapter-cloudflare";
 import { mdsvex } from "mdsvex";
 import tardisec from "./.tardisec.sveltekit.json" with { type: "json" };
 import { rehypeAddHeadingIds } from "./src/lib/rehype-add-heading-ids.js";
+import { rehypeCopyPre } from "./src/lib/rehype-copy-pre.js";
 import { remarkExtractHeadings } from "./src/lib/remark-extract-headings.js";
 
 const domain = process.env.ORIGIN ?? "datastream.js.org";
@@ -30,7 +31,7 @@ const config = {
 				_: resolve("./src/components/docs/mdsvex-layout.svelte"),
 			},
 			remarkPlugins: [remarkExtractHeadings],
-			rehypePlugins: [rehypeAddHeadingIds],
+			rehypePlugins: [rehypeAddHeadingIds, rehypeCopyPre],
 		}),
 	],
 	extensions: [".svelte", ".md"],

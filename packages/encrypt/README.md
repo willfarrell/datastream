@@ -5,7 +5,7 @@
 <p>
 	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
 	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-dast.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-dast.yml/badge.svg" alt="GitHub Actions dast test status"></a>
-	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-perf.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-perf.yml/badge.svg" alt="GitHub Actions perf test status"></a>
+	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-bench.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-bench.yml/badge.svg" alt="GitHub Actions perf test status"></a>
 	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-sast.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-sast.yml/badge.svg" alt="GitHub Actions SAST test status"></a>
 	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-lint.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-lint.yml/badge.svg" alt="GitHub Actions lint test status"></a>
 	<br/>
@@ -22,7 +22,7 @@
 	<a href="https://biomejs.dev"><img alt="Checked with Biome" src="https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome"></a>
 	<a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>
 	<a href="https://github.com/willfarrell/datastream/blob/main/package.json#L32">
-	<img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-95%25-brightgreen"></a>
+	<img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-100%25-brightgreen"></a>
 </p>
 <p>You can read the documentation at: <a href="https://datastream.js.org">https://datastream.js.org</a></p>
 </div>
@@ -49,4 +49,4 @@ Everyone is very welcome to contribute to this repository. Feel free to [raise i
 
 ## License
 
-Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell), and [datastream contributors](https://github.com/willfarrell/datastream/graphs/contributors).
+Licensed under [MIT License](https://github.com/willfarrell/datastream/blob/main/LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell), and [datastream contributors](https://github.com/willfarrell/datastream/graphs/contributors).

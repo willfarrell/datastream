@@ -12,6 +12,7 @@ import {
 	streamToString,
 } from "@datastream/core";
 import fc from "fast-check";
+import { variant } from "../variant.js";
 
 const catchError = (input, e) => {
 	const expectedErrors = [];
@@ -38,6 +39,15 @@ const supportedCharsets = [
 	"Big5",
 	"GB18030",
 ];
+// The browser encoder only supports UTF-8 (TextEncoder)
+const encodeCharsets = variant === "browser" ? ["UTF-8"] : supportedCharsets;
+// The browser build runs on Node's ICU TextDecoder here, whose GB18030 decoder
+// throws on some invalid input even in non-fatal mode; real browsers substitute
+// U+FFFD. Skip that label only for this environment quirk.
+const decodeCharsets =
+	variant === "browser"
+		? supportedCharsets.filter((charset) => charset !== "GB18030")
+		: supportedCharsets;
 
 // *** charsetDetectStream *** //
 test("fuzz charsetDetectStream w/ random buffers", async () => {
@@ -73,7 +83,7 @@ test("fuzz charsetEncodeStream w/ string input and charset", async () => {
 	await fc.assert(
 		fc.asyncProperty(
 			fc.array(fc.string(), { minLength: 1 }),
-			fc.constantFrom(...supportedCharsets),
+			fc.constantFrom(...encodeCharsets),
 			async (input, charset) => {
 				try {
 					const streams = [
@@ -102,7 +112,7 @@ test("fuzz charsetDecodeStream w/ buffer input and charset", async () => {
 			fc.array(fc.uint8Array({ minLength: 1, maxLength: 256 }), {
 				minLength: 1,
 			}),
-			fc.constantFrom(...supportedCharsets),
+			fc.constantFrom(...decodeCharsets),
 			async (input, charset) => {
 				try {
 					const buffers = input.map((arr) => Buffer.from(arr));
@@ -162,7 +172,7 @@ test("fuzz charset roundtrip encode -> decode w/ UTF-8", async () => {
 	);
 });
 
-// *** charsetEncodeStream w/ unsupported charset fallback *** //
+// *** charsetEncodeStream w/ unsupported charset: rejected, never a fallback *** //
 test("fuzz charsetEncodeStream w/ random charset string", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -177,6 +187,14 @@ test("fuzz charsetEncodeStream w/ random charset string", async () => {
 					const stream = pipejoin(streams);
 					await streamToArray(stream);
 				} catch (e) {
+					if (
+						e.message ===
+							`charsetEncodeStream: Unsupported encoding "${charset}"` ||
+						e.message ===
+							`charsetEncodeStream: Web only supports UTF-8 encoding, got "${charset}"`
+					) {
+						return;
+					}
 					catchError({ input, charset }, e);
 				}
 			},
