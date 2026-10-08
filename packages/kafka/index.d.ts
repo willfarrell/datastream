@@ -30,7 +30,7 @@ export function kafkaConnect(options?: {
 }): Promise<KafkaConnection>;
 
 export interface KafkaMessage {
-	value: Uint8Array | string;
+	value: Uint8Array | string | null;
 	key?: Uint8Array | string;
 	partition?: number;
 	headers?: Record<string, unknown>;

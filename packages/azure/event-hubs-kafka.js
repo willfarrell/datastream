@@ -18,7 +18,14 @@ export const azureEventHubsKafkaMechanism = ({
 	return {
 		mechanism: "oauthbearer",
 		oauthBearerProvider: async () => {
-			const { token, expiresOnTimestamp } = await credential.getToken(scope);
+			// TokenCredential.getToken may resolve null when no token is available.
+			const accessToken = await credential.getToken(scope);
+			if (!accessToken) {
+				throw new Error(
+					"azureEventHubsKafkaMechanism: credential returned no token",
+				);
+			}
+			const { token, expiresOnTimestamp } = accessToken;
 			return { value: token, expiryTime: expiresOnTimestamp };
 		},
 	};

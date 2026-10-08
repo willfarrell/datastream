@@ -63,7 +63,9 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 		const bytes = typeof chunk === "string" ? encoder.encode(chunk) : chunk;
 		// slice (a copy, clamped to the chunk length) rather than subarray, so the
 		// chunk that crosses the cap is not pinned in full by its sample.
-		const slice = bytes.slice(0, remaining);
+		// Uint8Array's slice: Buffer#slice is a view, so the sample would change
+		// when a later stage reuses the chunk.
+		const slice = Uint8Array.prototype.slice.call(bytes, 0, remaining);
 		sample.push(slice);
 		sampleLength += slice.length;
 	};

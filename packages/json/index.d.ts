@@ -25,7 +25,7 @@ export function ndjsonParseStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamTransform<string, Record<string, unknown>> & {
+): DatastreamTransform<string | Uint8Array, Record<string, unknown>> & {
 	result: () => StreamResult<Record<string, JsonError>>;
 };
 
@@ -48,7 +48,7 @@ export function jsonParseStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamTransform<string, Record<string, unknown>> & {
+): DatastreamTransform<string | Uint8Array, Record<string, unknown>> & {
 	result: () => StreamResult<Record<string, JsonError>>;
 };
 

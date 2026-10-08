@@ -113,6 +113,9 @@ export function objectToEntriesStream(
 ): DatastreamTransform;
 
 export function objectSkipConsecutiveDuplicatesStream(
-	options?: Record<string, never>,
+	options?: {
+		/** Compare nested values deeply instead of by shallow key equality. */
+		isNestedObject?: boolean;
+	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform;

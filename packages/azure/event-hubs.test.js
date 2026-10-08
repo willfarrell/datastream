@@ -68,6 +68,44 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 		ok(client.state.closed);
 	});
 
+	// subscribe() without a partitionId runs one pump per partition; every pump
+	// waiting in processEvents must resume once the queue drains, not just the last.
+	test(`azureEventHubsReceiveEventsStream resumes every concurrent partition pump`, {
+		timeout: 1000,
+	}, async () => {
+		const pump = async (handlers, p) => {
+			await handlers.processEvents([{ body: `${p}0` }]);
+			await handlers.processEvents([{ body: `${p}1` }]);
+		};
+		const client = consumer((handlers) => {
+			pump(handlers, "a");
+			pump(handlers, "b");
+		});
+		const stream = await azureEventHubsReceiveEventsStream({
+			client,
+			pollingActive: true,
+		});
+		const bodies = [];
+		for await (const event of stream) {
+			bodies.push(event.body);
+			if (bodies.length === 4) break;
+		}
+		deepStrictEqual(bodies.sort(), ["a0", "a1", "b0", "b1"]);
+	});
+
+	test(`azureEventHubsReceiveEventsStream ignores retryable processError`, async () => {
+		const client = consumer(async (handlers) => {
+			// The SDK reports errors it is already retrying, then carries on.
+			await handlers.processError(
+				Object.assign(new Error("transient"), { retryable: true }),
+			);
+			await handlers.processEvents([{ body: "a" }]);
+			await handlers.processEvents([]);
+		});
+		const stream = await azureEventHubsReceiveEventsStream({ client });
+		deepStrictEqual(await streamToArray(stream), [{ body: "a" }]);
+	});
+
 	test(`azureEventHubsReceiveEventsStream throws processError`, async () => {
 		const client = consumer(async (handlers) => {
 			await handlers.processError(new Error("boom"));

@@ -101,3 +101,20 @@ describe("maxOutputSize", () => {
 		expect(zstdDecompressStream).type.toBeCallableWith({ maxOutputSize: null });
 	});
 });
+
+describe("params (Node.js only)", () => {
+	test("zstd and brotliDecompressStream accept zlib params", () => {
+		expect(zstdCompressStream).type.toBeCallableWith({ params: { 100: 3 } });
+		expect(zstdDecompressStream).type.toBeCallableWith({
+			params: { 100: 27 },
+		});
+		expect(brotliDecompressStream).type.toBeCallableWith({
+			params: { 0: true },
+		});
+	});
+	test("brotliCompressStream does not accept params", () => {
+		expect(brotliCompressStream).type.not.toBeCallableWith({
+			params: { 1: 5 },
+		});
+	});
+});

@@ -85,6 +85,7 @@
 	},
 	"overrides": {
 		"qs": "^6.15.2",
+		"sharp": "^0.35.5",
 		"@sveltejs/kit": {
 			"cookie": "^0.7.2"
 		},

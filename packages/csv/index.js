@@ -151,8 +151,9 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 
 	const detect = (text, isFlushing) => {
 		text = stripBOM(text);
-		const headerMatch = text.match(headerRegExp);
-		if (!headerMatch) return false;
+		// No newline only happens on flush (transform waits for one): the whole
+		// text is the header line and newlineChar stays undefined (default).
+		const headerMatch = text.match(headerRegExp) ?? [text, text];
 		// A bare CR at the very end of the buffer may be the first half of a CRLF
 		// split across chunks, so wait for more data unless the stream is ending.
 		if (
@@ -1023,7 +1024,8 @@ const autoCoerce = (val) => {
 const coerceToType = (val, type) => {
 	switch (type) {
 		case "number": {
-			if (val === "") return null;
+			// Number("  ") is 0: treat whitespace-only like empty.
+			if (typeof val === "string" && val.trim() === "") return null;
 			const n = Number(val);
 			return Number.isNaN(n) ? val : n;
 		}
@@ -1060,7 +1062,9 @@ export const csvCoerceValuesStream = (options = {}, streamOptions = {}) => {
 		? (chunk, enqueue) => {
 				const coerced = { ...chunk };
 				for (const key in coerced) {
-					const type = columns[key];
+					// hasOwn: a column named "constructor"/"toString" must not pick up an
+					// inherited Object.prototype member as its type.
+					const type = Object.hasOwn(columns, key) ? columns[key] : undefined;
 					coerced[key] = type
 						? coerceToType(coerced[key], type)
 						: autoCoerce(coerced[key]);
@@ -1126,7 +1130,8 @@ export const csvFormatStream = (options = {}, streamOptions = {}) => {
 		value.includes(delimiterChar) ||
 		value.includes(quoteChar) ||
 		value.includes("\r") ||
-		value.includes("\n");
+		value.includes("\n") ||
+		value.includes(newlineChar);
 
 	// CSV/formula injection: spreadsheets evaluate a cell starting with = + - @
 	// (and TAB/CR, which some strip first) even when the field is quoted, so

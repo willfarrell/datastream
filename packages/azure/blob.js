@@ -33,6 +33,11 @@ export const azureBlobDownloadStream = async (options, streamOptions = {}) => {
 			teardownBody();
 		} else {
 			signal.addEventListener("abort", teardownBody, { once: true });
+			// Drop the listener once the stream is done so a long-lived signal shared
+			// across many downloads does not accumulate listeners (each pinning a body).
+			stream.once("close", () =>
+				signal.removeEventListener("abort", teardownBody),
+			);
 		}
 	}
 	return stream;

@@ -186,6 +186,22 @@
   - awsMskIamMechanism (kafkajs OAUTHBEARER SASL config)
 - [`@datastream/aws/glue-schema-registry`](packages/aws)
   - awsGlueSchemaRegistryResolver (cached GetSchemaVersion lookup)
+- [`@datastream/azure/{blob,cosmos,event-hubs,queue,service-bus}`](packages/azure) (Node only)
+  - azureBlobDownloadStream [Readable]
+  - azureBlobUploadStream [PassThrough]
+  - azureCosmosQueryStream [Readable]
+  - azureCosmosUpsertItemStream [Writable]
+  - azureCosmosDeleteItemStream [Writable]
+  - azureEventHubsReceiveEventsStream [Readable]
+  - azureEventHubsSendEventsStream [Writable]
+  - azureQueueReceiveMessagesStream [Readable]
+  - azureQueueSendMessageStream [Writable]
+  - azureQueueDeleteMessageStream [Writable]
+  - azureServiceBusReceiveMessagesStream [Readable]
+  - azureServiceBusSendMessagesStream [Writable]
+  - azureServiceBusCompleteMessageStream [Writable]
+- [`@datastream/azure/event-hubs-kafka`](packages/azure)
+  - azureEventHubsKafkaMechanism (kafkajs OAUTHBEARER SASL config for Entra ID)
 
 ## Setup
 

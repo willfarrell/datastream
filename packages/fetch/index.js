@@ -174,8 +174,8 @@ async function* drainResponse(response) {
 			yield chunk;
 		}
 	} catch (error) {
-		await response?.cancel?.();
-		await response?.return?.();
+		await response.cancel?.();
+		await response.return?.();
 		throw error;
 	}
 }
@@ -252,9 +252,12 @@ async function* fetchConcurrent(fetchOptions, concurrency, streamOptions) {
 // Note: the parameter portion is intentionally NOT `;.+` — that form admits a
 // Stryker-equivalent mutant (`;.+` and `;.` accept the exact same inputs under
 // `.test()`), so we match a bare `;` and let any following parameters be free.
-const jsonContentTypeRegExp = /^application\/(.+\+)?json($|;)/;
+// Case-insensitive: media types are (RFC 9110 §8.3.1).
+const jsonContentTypeRegExp = /^application\/(.+\+)?json($|;)/i;
 const fetchUnknown = async (options, streamOptions) => {
 	const response = await fetchRateLimit(options, streamOptions);
+	// No body (204, HEAD): nothing to stream or parse, even with a JSON type.
+	if (!response.body) return [];
 	if (jsonContentTypeRegExp.test(response.headers.get("Content-Type"))) {
 		options.prefetchResponse = response; // hack
 		return fetchJson(options, streamOptions);
@@ -551,6 +554,20 @@ export const fetchRateLimit = async (options = {}, streamOptions = {}) => {
 			);
 			await response.body?.cancel();
 			options.url = target.toString();
+			// Fetch spec: 303 (except HEAD), and 301/302 after a POST, re-request
+			// with GET and no body; resending would submit the body twice. Set on
+			// options too so a 429 retry of the new url stays GET.
+			const upperMethod = options.method.toUpperCase();
+			if (
+				(response.status === 303 && upperMethod !== "HEAD") ||
+				((response.status === 301 || response.status === 302) &&
+					upperMethod === "POST")
+			) {
+				options.method = "GET";
+				options.body = undefined;
+				fetchInit.method = "GET";
+				fetchInit.body = undefined;
+			}
 			response = await fetch(options.url, fetchInit);
 		}
 	}

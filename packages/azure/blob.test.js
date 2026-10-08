@@ -1,4 +1,5 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert";
+import { getEventListeners } from "node:events";
 import { Readable } from "node:stream";
 import test, { describe } from "node:test";
 import * as azureModule from "@datastream/azure/blob";
@@ -75,6 +76,22 @@ describe(`@datastream/azure/blob (${variant})`, () => {
 		stream.on("error", () => {});
 		controller.abort();
 		ok(body.destroyed);
+	});
+
+	test(`azureBlobDownloadStream removes its abort listener once the stream closes`, async () => {
+		const client = {
+			download: async () => ({ readableStreamBody: Readable.from(["ab"]) }),
+		};
+		const controller = new AbortController();
+		for (let i = 0; i < 3; i++) {
+			const stream = await azureBlobDownloadStream(
+				{ client },
+				{ signal: controller.signal },
+			);
+			strictEqual(await streamToString(stream), "ab");
+		}
+		await new Promise((resolve) => setImmediate(resolve));
+		strictEqual(getEventListeners(controller.signal, "abort").length, 0);
 	});
 
 	test(`azureBlobDownloadStream destroys body when already aborted`, async () => {

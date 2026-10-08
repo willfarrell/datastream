@@ -58,7 +58,8 @@ export const encryptStream = async (
 	const originalTransform = stream._transform.bind(stream);
 	stream._transform = (chunk, encoding, callback) => {
 		try {
-			guard(chunk.length);
+			// Cipher passes string writes through un-decoded: count bytes, not code units.
+			guard(Buffer.byteLength(chunk, encoding));
 		} catch (error) {
 			callback(error);
 			return;

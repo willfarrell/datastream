@@ -137,7 +137,14 @@ const buildRecordBatch = (schema, builders, length) => {
 
 const makeBuilders = (schema) =>
 	schema.fields.map((field) =>
-		makeBuilder({ type: field.type, nullValues: [null, undefined] }),
+		// inferType treats "" as null, so an empty cell in a non-Utf8 column must
+		// be null too (not 0/false/epoch); only Utf8 can hold a real "".
+		makeBuilder({
+			type: field.type,
+			nullValues: DataType.isUtf8(field.type)
+				? [null, undefined]
+				: [null, undefined, ""],
+		}),
 	);
 
 // The Utf8 builder coerces with String(v): a Date becomes a local-timezone

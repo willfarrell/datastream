@@ -249,6 +249,15 @@ export const streamToString = (stream, { maxBufferSize } = {}) => {
 	})();
 };
 
+// Buffer.from(view) copies element values (Uint16 [0x6968] -> [0x68]) and
+// yields nothing for a DataView: copy the view's raw byte window instead.
+const toBuffer = (chunk) =>
+	ArrayBuffer.isView(chunk)
+		? Buffer.from(
+				new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+			)
+		: Buffer.from(chunk ?? []);
+
 export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
 	// undefined (the default) and null are both unlimited.
 	const limit = maxBufferSize ?? Number.POSITIVE_INFINITY;
@@ -259,7 +268,15 @@ export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
 			stream.on("data", (chunk) => {
 				// Unwrap the null sentinel; Buffer.from(symbol) throws
 				// ERR_INVALID_ARG_TYPE. fromSafe(null) -> null -> empty buffer.
-				const buf = Buffer.from(fromSafe(chunk) ?? []);
+				// A throw inside a 'data' listener escapes emit() as an uncaught
+				// exception, so route it into the stream to reject the promise.
+				let buf;
+				try {
+					buf = toBuffer(fromSafe(chunk));
+				} catch (e) {
+					stream.destroy(e);
+					return;
+				}
 				size += buf.length;
 				if (size > limit) {
 					stream.destroy(
@@ -281,7 +298,7 @@ export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
 		const value = [];
 		let size = 0;
 		for await (const chunk of stream) {
-			const buf = Buffer.from(fromSafe(chunk) ?? []);
+			const buf = toBuffer(fromSafe(chunk));
 			size += buf.length;
 			if (size > limit) {
 				throw new RangeError(

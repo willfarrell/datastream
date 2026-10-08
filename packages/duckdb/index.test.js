@@ -610,6 +610,77 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		deepStrictEqual(sent, [[1, "alice"]]);
 	});
 
+	test(`web duckdbAppenderStream closes the prepared statement when an upstream source errors AFTER init`, async () => {
+		const { duckdbAppenderStream: webAppenderStream } = await importWeb();
+		const run = async (streamOptions) => {
+			let closed = false;
+			const db = {
+				query: async () => ({ schema: { fields: usersArrowSchema.fields } }),
+				prepare: async () => ({
+					send: async () => {},
+					close: async () => {
+						closed = true;
+					},
+				}),
+			};
+			async function* source() {
+				yield { id: 1, name: "alice" }; // prepares the statement (init)
+				throw new Error("upstream boom");
+			}
+			let caught;
+			try {
+				await pipeline([
+					createReadableStream(source()),
+					await webAppenderStream({ db, table: "users" }, streamOptions),
+				]);
+			} catch (e) {
+				caught = e;
+			}
+			ok(caught?.message.includes("upstream boom"));
+			// final() never runs and write() never threw, so only abort can release it.
+			strictEqual(closed, true, "prepared statement must be closed");
+		};
+		// Without a caller abort hook (the default no-op runs).
+		await run();
+		// The caller's own abort hook still runs, with the upstream error.
+		const aborted = [];
+		await run({ abort: (reason) => aborted.push(reason) });
+		strictEqual(aborted.length, 1);
+		strictEqual(aborted[0].message, "upstream boom");
+	});
+
+	test(`web duckdbAppenderStream still runs the caller's abort when upstream errors before init`, async () => {
+		const { duckdbAppenderStream: webAppenderStream } = await importWeb();
+		const aborted = [];
+		const db = {
+			query: async () => ({ schema: { fields: usersArrowSchema.fields } }),
+			prepare: async () => {
+				throw new Error("prepare must not run");
+			},
+		};
+		async function* source() {
+			yield* [];
+			throw new Error("upstream boom");
+		}
+		let caught;
+		try {
+			await pipeline([
+				createReadableStream(source()),
+				await webAppenderStream(
+					{ db, table: "users" },
+					{ abort: (reason) => aborted.push(reason) },
+				),
+			]);
+		} catch (e) {
+			caught = e;
+		}
+		ok(caught?.message.includes("upstream boom"));
+		// No statement was prepared, so there is nothing to close and the
+		// caller's hook must not be skipped by a failed close.
+		strictEqual(aborted.length, 1);
+		strictEqual(aborted[0].message, "upstream boom");
+	});
+
 	// *** arrowTypeToDuckDBSQL coverage *** //
 	// Each Arrow type must map to its corresponding DuckDB SQL type name so that
 	// CREATE TABLE produces the right column definition. We exercise every branch

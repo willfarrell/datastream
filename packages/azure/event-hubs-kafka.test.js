@@ -1,4 +1,4 @@
-import { deepStrictEqual, strictEqual, throws } from "node:assert";
+import { deepStrictEqual, rejects, strictEqual, throws } from "node:assert";
 import test, { describe } from "node:test";
 import * as azureModule from "@datastream/azure/event-hubs-kafka";
 import { azureEventHubsKafkaMechanism } from "@datastream/azure/event-hubs-kafka";
@@ -20,6 +20,14 @@ describe(`@datastream/azure/event-hubs-kafka (${variant})`, () => {
 			expiryTime: 123,
 		});
 		strictEqual(scope, "https://ns.servicebus.windows.net/.default");
+	});
+
+	test(`azureEventHubsKafkaMechanism rejects when the credential returns no token`, async () => {
+		const credential = { getToken: async () => null };
+		const mech = azureEventHubsKafkaMechanism({ credential, namespace: "ns" });
+		await rejects(mech.oauthBearerProvider(), {
+			message: "azureEventHubsKafkaMechanism: credential returned no token",
+		});
 	});
 
 	test(`azureEventHubsKafkaMechanism requires credential and namespace`, () => {

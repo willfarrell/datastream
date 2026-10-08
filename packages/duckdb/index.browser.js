@@ -68,8 +68,18 @@ export const duckdbAppenderStream = async (
 	const final = async () => {
 		if (prepared) await prepared.close();
 	};
+	// An abort (upstream error / signal) skips both final() and write()'s catch,
+	// so release the statement there too. Closed before the caller's hook so a
+	// missing statement can't hide behind it (runAbort swallows throws).
+	const { abort = () => {} } = streamOptions;
 
-	return createWritableStream(write, final, streamOptions);
+	return createWritableStream(write, final, {
+		...streamOptions,
+		abort: async (reason) => {
+			if (prepared) await prepared.close();
+			await abort(reason);
+		},
+	});
 };
 
 export const duckdbArrowInsertStream = async (

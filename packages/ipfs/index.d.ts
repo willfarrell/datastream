@@ -9,7 +9,7 @@ import type {
 
 export interface IpfsNode {
 	get(cid: string): unknown;
-	add(data: unknown[]): Promise<{ cid: string }>;
+	add(data: AsyncIterable<unknown>): Promise<{ cid: string }> | { cid: string };
 }
 
 export function ipfsGetStream(
@@ -21,8 +21,8 @@ export function ipfsGetStream(
 ): Promise<DatastreamReadable>;
 
 export function ipfsAddStream(
-	options?: {
-		node?: IpfsNode;
+	options: {
+		node: IpfsNode;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,

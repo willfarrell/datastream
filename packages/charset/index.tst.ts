@@ -8,6 +8,7 @@ import {
 	charsetEncodeStream,
 } from "@datastream/charset";
 import type * as charsetDetect from "@datastream/charset/detect";
+import type { StreamResult } from "@datastream/core";
 import { describe, expect, test } from "tstyche";
 
 describe("charsetDecodeStream", () => {
@@ -26,6 +27,14 @@ describe("charsetDetectStream", () => {
 	test("returns stream with result", () => {
 		const stream = charsetDetectStream();
 		expect(stream.result).type.not.toBeAssignableTo<never>();
+	});
+
+	test("result charset may be undefined (empty input)", () => {
+		expect<
+			() => StreamResult<{ charset: undefined; confidence: number }>
+		>().type.toBeAssignableTo<
+			ReturnType<typeof charsetDetectStream>["result"]
+		>();
 	});
 
 	test("accepts resultKey", () => {

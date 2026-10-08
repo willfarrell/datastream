@@ -23,7 +23,8 @@ export const shallowEqual = (a, b) => {
 	const keysA = Object.keys(a);
 	if (keysA.length !== Object.keys(b).length) return false;
 	for (const key of keysA) {
-		if (a[key] !== b[key]) return false;
+		// hasOwn: equal counts alone let {x: undefined} match {y: undefined}
+		if (!Object.hasOwn(b, key) || a[key] !== b[key]) return false;
 	}
 	return true;
 };

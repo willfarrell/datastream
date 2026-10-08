@@ -9,6 +9,8 @@ export interface BrotliCompressOptions {
 
 export interface BrotliDecompressOptions {
 	maxOutputSize?: number | null;
+	// Node.js only (node:zlib BROTLI_DECODER_PARAM_*); the browser build ignores it.
+	params?: Record<number, number | boolean>;
 }
 
 export function brotliCompressStream(

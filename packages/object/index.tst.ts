@@ -180,4 +180,16 @@ describe("objectSkipConsecutiveDuplicatesStream", () => {
 			objectSkipConsecutiveDuplicatesStream(),
 		).type.not.toBeAssignableTo<never>();
 	});
+
+	test("accepts isNestedObject option", () => {
+		expect(
+			objectSkipConsecutiveDuplicatesStream({ isNestedObject: true }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects unknown options", () => {
+		expect(objectSkipConsecutiveDuplicatesStream).type.not.toBeCallableWith({
+			unknown: true,
+		});
+	});
 });

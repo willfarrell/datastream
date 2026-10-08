@@ -33,9 +33,14 @@ export const pipeline = async (streams, streamOptions = {}) => {
 export const pipejoin = (streams) => join(streams);
 
 const join = (streams, pipeOptions) => {
+	// An initial value so the Promise check also runs for index 0 (a source
+	// passed without await, e.g. an async stream factory).
 	return streams.reduce((pipeline, stream, idx) => {
 		if (typeof stream.then === "function") {
 			throw new Error(`Promise instead of stream passed in at index ${idx}`);
+		}
+		if (idx === 0) {
+			return stream;
 		}
 		// A WritableStream can only ever be the terminal; anywhere else
 		// pipeThrough would reject it anyway.
@@ -43,7 +48,7 @@ const join = (streams, pipeOptions) => {
 			return pipeline.pipeTo(stream, pipeOptions);
 		}
 		return pipeline.pipeThrough(stream);
-	});
+	}, undefined);
 };
 
 export const result = async (streams) => {
@@ -132,10 +137,12 @@ export const streamToBuffer = async (stream, { maxBufferSize } = {}) => {
 	const value = [];
 	let size = 0;
 	for await (const chunk of stream) {
-		// null/undefined -> empty (node parity with Buffer.from(fromSafe(chunk) ?? [])).
-		const buf =
-			chunk instanceof Uint8Array
-				? chunk
+		// Bytes keep their raw byte window (any TypedArray/DataView/ArrayBuffer);
+		// anything else is text. null/undefined -> empty (node parity).
+		const buf = ArrayBuffer.isView(chunk)
+			? new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+			: chunk instanceof ArrayBuffer
+				? new Uint8Array(chunk)
 				: new TextEncoder().encode(chunk ?? "");
 		size += buf.byteLength;
 		if (size > limit) {
@@ -247,7 +254,16 @@ export const createReadableStream = (input, streamOptions = {}) => {
 			async pull(controller) {
 				// Manual-push mode has no iterator; push() enqueues directly.
 				if (!iterator) return;
-				const { value, done } = await iterator.next();
+				let next;
+				try {
+					next = await iterator.next();
+				} catch (e) {
+					// A throwing source errors the stream without close()/cancel(), so
+					// drop the abort listener here too.
+					cleanup();
+					throw e;
+				}
+				const { value, done } = next;
 				if (done) close();
 				else controller.enqueue(value);
 			},
@@ -302,6 +318,8 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 			start(controller) {
 				if (signal) {
 					onAbort = () => controller.error(signal.reason);
+					// Already aborted: the event won't fire again (node parity).
+					if (signal.aborted) return onAbort();
 					signal.addEventListener("abort", onAbort);
 				}
 			},
@@ -354,6 +372,8 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 			start(controller) {
 				if (signal) {
 					onAbort = () => controller.error(signal.reason);
+					// Already aborted: the event won't fire again (node parity).
+					if (signal.aborted) return onAbort();
 					signal.addEventListener("abort", onAbort);
 				}
 			},

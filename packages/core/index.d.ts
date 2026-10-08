@@ -95,7 +95,7 @@ export function createPassThroughStream<T = unknown>(
 	passThrough?: ((chunk: T) => void | Promise<void>) | null,
 	flush?: (() => void | Promise<void>) | StreamOptions,
 	streamOptions?: StreamOptions,
-): DatastreamPassThrough<T> & ResultStream;
+): DatastreamPassThrough<T>;
 
 export function createTransformStream<I = unknown, O = unknown>(
 	transform?:

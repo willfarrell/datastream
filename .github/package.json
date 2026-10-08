@@ -8,6 +8,6 @@
 	},
 	"devDependencies": {
 		"license-check-and-add": "4.0.5",
-		"lockfile-lint": "5.0.0"
+		"lockfile-lint": "5.0.1"
 	}
 }

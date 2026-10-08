@@ -29,6 +29,12 @@ describe("stringCountStream", () => {
 		const stream = stringCountStream({ substr: "x" });
 		expect(stream.result()).type.not.toBeAssignableTo<never>();
 	});
+
+	test("requires substr", () => {
+		expect(stringCountStream).type.not.toBeCallableWith();
+		expect(stringCountStream).type.not.toBeCallableWith({});
+		expect(stringCountStream).type.not.toBeCallableWith({ resultKey: "n" });
+	});
 });
 
 describe("stringMinimumFirstChunkSizeStream", () => {

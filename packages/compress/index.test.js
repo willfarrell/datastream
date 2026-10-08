@@ -1,5 +1,6 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert";
 import { randomBytes } from "node:crypto";
+import { getEventListeners } from "node:events";
 import { realpathSync } from "node:fs";
 import { register } from "node:module";
 import test, { describe } from "node:test";
@@ -1801,6 +1802,45 @@ describe(`@datastream/compress (${variant})`, async () => {
 			);
 			deepStrictEqual(calls, { add: 2, remove: 2 });
 		});
+
+		// An errored stream never reaches flush(), so the error and cancel paths
+		// must detach too; otherwise a long-lived shared signal collects one
+		// listener per failed stream.
+		// The unended source errors while the input stage is still open, so only
+		// its cancel() can detach it.
+		const unended = (chunk) => {
+			const source = createReadableStream();
+			source.push(chunk);
+			return source;
+		};
+		for (const [name, source, maxOutputSize] of [
+			[
+				"exceeding maxOutputSize",
+				() => createReadableStream(Uint8Array.from(gzipSync(compressibleBody))),
+				10,
+			],
+			[
+				"corrupt input",
+				() => createReadableStream(Uint8Array.from(Buffer.from("not gzip"))),
+			],
+			[
+				"corrupt input before the end",
+				() => unended(Uint8Array.from(Buffer.from("not gzip"))),
+			],
+		]) {
+			test(`native streams detach their abort listeners on ${name}`, async () => {
+				const { signal } = new AbortController();
+				await rejects(
+					pipeline([
+						source(),
+						gzipDecompressStream({ maxOutputSize }, { signal }),
+					]),
+				);
+				// cancellation reaches the input stage asynchronously
+				await new Promise((resolve) => setImmediate(resolve));
+				strictEqual(getEventListeners(signal, "abort").length, 0);
+			});
+		}
 
 		test(`native streams reject with the signal reason when aborted mid-flight`, async () => {
 			const controller = new AbortController();

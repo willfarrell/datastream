@@ -7,10 +7,14 @@ import type { DatastreamTransform, StreamOptions } from "@datastream/core";
 export interface ZstdCompressOptions {
 	quality?: number;
 	maxOutputSize?: number | null;
+	// node:zlib zstd params (ZSTD_c_*); replaces `quality` when set.
+	params?: Record<number, number | boolean>;
 }
 
 export interface ZstdDecompressOptions {
 	maxOutputSize?: number | null;
+	// node:zlib zstd params (ZSTD_d_*).
+	params?: Record<number, number | boolean>;
 }
 
 export function zstdCompressStream(

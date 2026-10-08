@@ -36,6 +36,15 @@ const inputStage = (streamOptions) => {
 	const { signal } = streamOptions;
 	const { writableStrategy, readableStrategy } = makeOptions(streamOptions);
 	let onAbort;
+	// Called on every terminal path (flush, cancel), as in core's
+	// createTransformStream: an errored stream never reaches flush(), so a
+	// shared signal would otherwise keep one listener per failed stream.
+	const cleanup = () => {
+		if (onAbort) {
+			signal.removeEventListener("abort", onAbort);
+			onAbort = undefined;
+		}
+	};
 	const abortError = () => signal.reason;
 	return new TransformStream(
 		{
@@ -52,12 +61,9 @@ const inputStage = (streamOptions) => {
 			transform(chunk, controller) {
 				controller.enqueue(toBytes(chunk));
 			},
-			flush() {
-				if (onAbort) {
-					signal.removeEventListener("abort", onAbort);
-					onAbort = undefined;
-				}
-			},
+			flush: cleanup,
+			// Readable side cancelled (e.g. a later stage errored).
+			cancel: cleanup,
 		},
 		writableStrategy,
 		readableStrategy,
@@ -70,6 +76,13 @@ const outputStage = (maxOutputSize, label, streamOptions) => {
 	const { signal } = streamOptions;
 	let onAbort;
 	let outputSize = 0;
+	// See inputStage: also run when this stage errors itself.
+	const cleanup = () => {
+		if (onAbort) {
+			signal.removeEventListener("abort", onAbort);
+			onAbort = undefined;
+		}
+	};
 	const abortError = () => signal.reason;
 	return new TransformStream({
 		start(controller) {
@@ -85,6 +98,7 @@ const outputStage = (maxOutputSize, label, streamOptions) => {
 		transform(chunk, controller) {
 			outputSize += chunk.byteLength;
 			if (outputSize > maxOutputSize) {
+				cleanup();
 				controller.error(
 					new RangeError(
 						`${label} output exceeds maxOutputSize (${maxOutputSize} bytes)`,
@@ -94,12 +108,9 @@ const outputStage = (maxOutputSize, label, streamOptions) => {
 			}
 			controller.enqueue(chunk);
 		},
-		flush() {
-			if (onAbort) {
-				signal.removeEventListener("abort", onAbort);
-				onAbort = undefined;
-			}
-		},
+		flush: cleanup,
+		// Writable side aborted (e.g. corrupt input errored the decompressor).
+		cancel: cleanup,
 	});
 };
 

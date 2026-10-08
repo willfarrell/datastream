@@ -628,6 +628,51 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
+	nodeTest(
+		`fileReadStream with basePath closes the fd when the stream constructor throws`,
+		async () => {
+			const before = readdirSync("/dev/fd").length;
+			await rejects(
+				() =>
+					fileReadStream(
+						{ path: testFile, basePath: testDir },
+						{ start: "bad" },
+					),
+				{ code: "ERR_INVALID_ARG_TYPE" },
+			);
+			strictEqual(readdirSync("/dev/fd").length, before);
+		},
+	);
+
+	nodeTest(`fileWriteStream with flags "r+" updates in place`, async () => {
+		// "r+" must neither truncate nor create, with or without basePath.
+		for (const basePath of [undefined, testDir]) {
+			const outFile = join(testDir, `update-${basePath ? "base" : "path"}.csv`);
+			writeFileSync(outFile, "hello world");
+			await pipeline([
+				createReadableStream(["J"]),
+				await fileWriteStream({ path: outFile, basePath }, { flags: "r+" }),
+			]);
+			strictEqual(readFileSync(outFile, "utf8"), "Jello world");
+		}
+	});
+
+	nodeTest(
+		`fileWriteStream with basePath and flags "r+" does not create`,
+		async () => {
+			const outFile = join(testDir, "update-missing.csv");
+			await rejects(
+				() =>
+					fileWriteStream(
+						{ path: outFile, basePath: testDir },
+						{ flags: "r+" },
+					),
+				{ code: "ENOENT" },
+			);
+			strictEqual(readdirSync(testDir).includes("update-missing.csv"), false);
+		},
+	);
+
 	nodeTest(`fileReadStream honours encoding and start`, async () => {
 		for (const basePath of [undefined, testDir]) {
 			const stream = await fileReadStream(

@@ -8,6 +8,7 @@ import {
 	charsetEncodeStream,
 } from "@datastream/charset";
 import {
+	createPassThroughStream,
 	createReadableStream,
 	pipejoin,
 	pipeline,
@@ -379,6 +380,24 @@ describe(`@datastream/charset (${variant})`, async () => {
 		strictEqual(key, "charset");
 		strictEqual(value.charset, undefined);
 		strictEqual(value.confidence, 0);
+	});
+
+	// *** sample must be a copy: Buffer#slice is a view, so a later stage
+	// reusing the passed-through chunk rewrote the detection sample *** //
+	test(`charsetDetectStream sample is not changed by a later write to the chunk`, async (_t) => {
+		const chunk = Buffer.from("plain ascii text, again!");
+		// Shift_JIS bytes of the same length (see the Shift_JIS test below)
+		const sjis = [
+			130, 177, 130, 234, 130, 205, 131, 101, 131, 88, 131, 103, 130, 197, 130,
+			183, 129, 66, 147, 250, 150, 123, 140, 234,
+		];
+		const streams = [
+			createReadableStream([chunk]),
+			charsetDetectStream(),
+			createPassThroughStream((passed) => passed.set(sjis)),
+		];
+		await pipeline(streams);
+		strictEqual(streams[1].result().value.charset, "UTF-8");
 	});
 
 	// *** charsetDetectStream concurrent isolation regression *** //

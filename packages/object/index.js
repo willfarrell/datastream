@@ -129,7 +129,8 @@ export const objectKeyValuesStream = ({ key, values }, streamOptions = {}) => {
 			typeof values === "undefined"
 				? chunk
 				: values.reduce((value, key) => {
-						value[key] = chunk[key];
+						// defineValue: a "__proto__" value key must stay an own property
+						defineValue(value, key, chunk[key]);
 						return value;
 					}, {});
 		chunk = {
@@ -148,12 +149,17 @@ export const objectKeyJoinStream = (
 	const transform = (chunk, enqueue) => {
 		const value = clone(chunk);
 		for (const newKey of Object.keys(keys)) {
-			value[newKey] = keys[newKey]
-				.map((oldKey) => {
-					delete value[oldKey];
-					return chunk[oldKey];
-				})
-				.join(separator);
+			// defineValue: a "__proto__" new key must stay an own property
+			defineValue(
+				value,
+				newKey,
+				keys[newKey]
+					.map((oldKey) => {
+						delete value[oldKey];
+						return chunk[oldKey];
+					})
+					.join(separator),
+			);
 		}
 		enqueue(value);
 	};

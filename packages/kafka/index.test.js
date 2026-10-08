@@ -1663,4 +1663,24 @@ describe("@datastream/kafka", () => {
 		await stream.stop();
 		strictEqual(consumer.stopCalled, 1);
 	});
+
+	test("kafkaConsumeStream: runPromise rejection before stop() errors the stream", async () => {
+		// run() rejecting on its own (not connected, already running) must surface
+		// as a stream error rather than an unhandled rejection on a stream that
+		// never ends.
+		const consumer = {
+			connect: async () => {},
+			disconnect: async () => {},
+			subscribe: async () => {},
+			stop: async () => {},
+			run: async () => {
+				throw new Error("run rejected");
+			},
+		};
+
+		const stream = await kafkaConsumeStream({ consumer, topics: "t" });
+		const err = await new Promise((resolve) => stream.once("error", resolve));
+		strictEqual(err.message, "run rejected");
+		strictEqual(stream.destroyed, true);
+	});
 });

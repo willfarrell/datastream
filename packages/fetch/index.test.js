@@ -933,6 +933,93 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
+	// Fetch spec "HTTP-redirect fetch": 303 (except HEAD), and 301/302 after a
+	// POST, re-request with GET and no body; 307/308 keep the method and body.
+	test(`fetchRateLimit switches to GET without a body on 303, and on 301/302 after POST`, async (_t) => {
+		const originalFetch = global.fetch;
+		const calls = [];
+		global.fetch = async (url, init) => {
+			calls.push([url, init.method, init.body]);
+			if (url.startsWith("https://example.org/form-")) {
+				return new Response(null, {
+					status: Number(url.slice(-3)),
+					headers: new Headers({ Location: "/result" }),
+				});
+			}
+			return new Response(null, { status: 200 });
+		};
+		try {
+			const { fetchRateLimit } = await import("@datastream/fetch");
+			const cases = [
+				["POST", 303, "GET", undefined],
+				["GET", 303, "GET", undefined],
+				["HEAD", 303, "HEAD", undefined],
+				["post", 302, "GET", undefined],
+				["POST", 301, "GET", undefined],
+				["PUT", 302, "PUT", "a=1"],
+				["POST", 307, "POST", "a=1"],
+			];
+			for (const [method, status, nextMethod, nextBody] of cases) {
+				calls.length = 0;
+				const body = method === "GET" || method === "HEAD" ? undefined : "a=1";
+				const response = await fetchRateLimit({
+					url: `https://example.org/form-${status}`,
+					method,
+					body,
+					rateLimit: 0,
+				});
+				strictEqual(response.status, 200);
+				deepStrictEqual(calls, [
+					[`https://example.org/form-${status}`, method, body],
+					["https://example.org/result", nextMethod, nextBody],
+				]);
+			}
+		} finally {
+			global.fetch = originalFetch;
+		}
+	});
+
+	// A 429 retry after the redirect re-uses options, so it must stay GET too.
+	test(`fetchRateLimit keeps GET without a body when retrying a 303 target`, async (_t) => {
+		const originalFetch = global.fetch;
+		const calls = [];
+		let retried = false;
+		global.fetch = async (url, init) => {
+			calls.push([url, init.method, init.body]);
+			if (url === "https://example.org/form") {
+				return new Response(null, {
+					status: 303,
+					headers: new Headers({ Location: "/result" }),
+				});
+			}
+			if (!retried) {
+				retried = true;
+				return new Response(null, {
+					status: 429,
+					headers: new Headers({ "Retry-After": "0" }),
+				});
+			}
+			return new Response(null, { status: 200 });
+		};
+		try {
+			const { fetchRateLimit } = await import("@datastream/fetch");
+			const response = await fetchRateLimit({
+				url: "https://example.org/form",
+				method: "POST",
+				body: "a=1",
+				rateLimit: 0,
+			});
+			strictEqual(response.status, 200);
+			deepStrictEqual(calls, [
+				["https://example.org/form", "POST", "a=1"],
+				["https://example.org/result", "GET", undefined],
+				["https://example.org/result", "GET", undefined],
+			]);
+		} finally {
+			global.fetch = originalFetch;
+		}
+	});
+
 	test(`fetchResponseStream should honor explicit redirect option (opt-in follow)`, async (_t) => {
 		const originalFetch = global.fetch;
 		let sawFollow = false;
@@ -1566,43 +1653,32 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** Null response cleanup: catch fires with response === null/undefined ***
-	// A non-JSON response whose body is null makes fetchUnknown return null, so
-	// `for await (const chunk of null)` throws and the catch block runs with
-	// `response === null`. The outer optional chaining `response?.cancel?.()` and
-	// `response?.return?.()` MUST be preserved: a mutant removing the first `?.`
-	// (response.cancel?.() / response.return()) dereferences null and throws a
-	// "Cannot read properties of null" TypeError, replacing the genuine iteration
-	// error. We assert the surfaced error is the iteration error, not the null deref.
-	test(`fetchResponseStream null response body surfaces iteration error not null-deref`, async (_t) => {
+	// *** No response body (204, HEAD) ***
+	// response.body is null, whatever the Content-Type, so there is nothing to
+	// stream or parse: the request yields no chunks instead of throwing.
+	test(`fetchResponseStream yields nothing for a response without a body`, async (_t) => {
 		const originalFetch = global.fetch;
-		global.fetch = async () => {
-			const r = new Response("ignored", {
-				status: 200,
-				headers: new Headers({ "Content-Type": "text/csv" }),
+		global.fetch = async (url) =>
+			new Response(null, {
+				status: url.endsWith("204") ? 204 : 200,
+				headers: new Headers({
+					"Content-Type": url.endsWith("json")
+						? "application/json"
+						: "text/csv",
+				}),
 			});
-			// Force a null body so fetchUnknown returns null and iteration throws.
-			Object.defineProperty(r, "body", { value: null, configurable: true });
-			return r;
-		};
-		fetchSetDefaults({ headers: { Accept: "text/csv" } });
 		try {
-			const stream = fetchResponseStream({
-				url: "https://example.org/null-binary-body",
-			});
-			await streamToArray(stream);
-			throw new Error("Should have thrown");
-		} catch (e) {
-			// Original code: re-throws the iteration error (null is not iterable).
-			// Mutant (response.cancel?.()): throws "Cannot read properties of null
-			// (reading 'cancel')" BEFORE reaching `throw error`.
-			ok(
-				!/reading 'cancel'|reading 'return'/.test(e.message),
-				`cleanup dereferenced null instead of guarding it: ${e.message}`,
-			);
+			for (const url of [
+				"https://example.org/no-body-204",
+				"https://example.org/no-body-head-json",
+			]) {
+				const output = await streamToArray(
+					fetchResponseStream({ url, method: "HEAD", rateLimit: 0 }),
+				);
+				deepStrictEqual(output, []);
+			}
 		} finally {
 			global.fetch = originalFetch;
-			fetchSetDefaults({ headers: { Accept: "application/json" } });
 		}
 	});
 
@@ -1989,6 +2065,28 @@ describe(`@datastream/fetch (${variant})`, () => {
 			]);
 			const output = await streamToArray(stream);
 			deepStrictEqual(output, [{ val: 42 }]);
+		} finally {
+			global.fetch = originalFetch;
+		}
+	});
+
+	// Media types are case-insensitive (RFC 9110 §8.3.1).
+	test(`fetchResponseStream treats a mixed-case Application/JSON as JSON`, async (_t) => {
+		const originalFetch = global.fetch;
+		global.fetch = async () =>
+			new Response(JSON.stringify([1, 2]), {
+				status: 200,
+				headers: new Headers({ "Content-Type": "Application/JSON" }),
+			});
+		try {
+			const output = await streamToArray(
+				fetchResponseStream({
+					url: "https://example.org/json-case",
+					dataPath: "",
+					rateLimit: 0,
+				}),
+			);
+			deepStrictEqual(output, [1, 2]);
 		} finally {
 			global.fetch = originalFetch;
 		}

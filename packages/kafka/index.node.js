@@ -246,6 +246,12 @@ export const kafkaConsumeStream = async (
 			if (!wantsMore) await waitForRead();
 		},
 	});
+	// run() can reject on its own (not connected, already running); surface it
+	// as a stream error instead of an unhandled rejection on a stream that never
+	// ends. Once stopped, stop() owns and swallows the rejection.
+	runPromise.catch((err) => {
+		if (!stopped) stream.destroy(err);
+	});
 
 	const stop = async () => {
 		// No early-out on a repeat call is needed: every step below is idempotent —

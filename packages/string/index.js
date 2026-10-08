@@ -126,11 +126,23 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 	if (pattern === "") {
 		throw new Error("stringReplaceStream requires a non-empty pattern");
 	}
-	// Scan with a private global copy so the caller's lastIndex is untouched;
-	// a string pattern becomes an escaped RegExp so both share one scanner
+	// A string pattern gets an indexOf matcher with the RegExp exec interface,
+	// so both share one scanner. A RegExp is used as given (exec honours
+	// lastIndex for g and y); scan restores the caller's lastIndex
 	const regexp = isString
-		? new RegExp(RegExp.escape(pattern), "g")
-		: new RegExp(pattern, `${pattern.flags.replace("g", "")}g`);
+		? {
+				lastIndex: 0,
+				exec(text) {
+					const index = text.indexOf(pattern, this.lastIndex);
+					if (index === -1) {
+						this.lastIndex = 0;
+						return null;
+					}
+					this.lastIndex = index + pattern.length;
+					return Object.assign([pattern], { index, input: text });
+				},
+			}
+		: pattern;
 	const unicode = regexp.unicode || regexp.unicodeSets;
 	// Longest possible match; unknown for a RegExp unless given, in which case
 	// the latest chunk is held back instead
@@ -138,38 +150,47 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 	// $` and $' need the whole stream, so such a template is applied at flush
 	const wholeStream =
 		typeof replacement === "string" && /\$[`']/.test(replacement);
-	// String.prototype.replace's template expansion ($$, $&, $n, $nn, $<name>),
-	// done per match so the RegExp can be run over the whole buffer
-	const expand = (template, match) =>
-		template.replace(/\$(?:[$&]|(\d\d?)|<([^>]*)>)/g, (token, digits, name) => {
-			if (token === "$$") {
-				return "$";
-			}
-			if (token === "$&") {
-				return match[0];
-			}
-			if (name !== undefined) {
-				// Without named groups "$<" is literal and the rest still expands
-				return match.groups === undefined
-					? `$<${expand(`${name}>`, match)}`
-					: (match.groups[name] ?? "");
-			}
-			const index = Number(digits);
-			if (index > 0 && index < match.length) {
-				return match[index] ?? "";
-			}
-			// "$nn" that isn't a group falls back to "$n" and a literal digit
-			const first = Number(digits[0]);
-			if (first > 0 && first < match.length) {
-				return (match[first] ?? "") + digits.slice(1);
-			}
-			return token;
-		});
+	// String.prototype.replace's template expansion ($$, $&, $`, $', $n, $nn,
+	// $<name>), done per match so the RegExp can be run over the whole buffer
+	const expand = (template, match, text) =>
+		template.replace(
+			/\$(?:[$&`']|(\d\d?)|<([^>]*)>)/g,
+			(token, digits, name) => {
+				if (token === "$$") {
+					return "$";
+				}
+				if (token === "$&") {
+					return match[0];
+				}
+				if (token === "$`") {
+					return text.slice(0, match.index);
+				}
+				if (token === "$'") {
+					return text.slice(match.index + match[0].length);
+				}
+				if (name !== undefined) {
+					// Without named groups "$<" is literal and the rest still expands
+					return match.groups === undefined
+						? `$<${expand(`${name}>`, match, text)}`
+						: (match.groups[name] ?? "");
+				}
+				const index = Number(digits);
+				if (index > 0 && index < match.length) {
+					return match[index] ?? "";
+				}
+				// "$nn" that isn't a group falls back to "$n" and a literal digit
+				const first = Number(digits[0]);
+				if (first > 0 && first < match.length) {
+					return (match[first] ?? "") + digits.slice(1);
+				}
+				return token;
+			},
+		);
 	const substitute =
 		typeof replacement === "function"
 			? (match, position, text) =>
 					replacement(...match, position, text, match.groups)
-			: (match) => expand(replacement, match);
+			: (match, _position, text) => expand(replacement, match, text);
 	// Raw (not yet replaced) text; replacing twice would corrupt output
 	let buffer = "";
 	// Tail of already-emitted raw text, so lookbehind, ^ and \b see what
@@ -188,33 +209,38 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 		const base = context.length;
 		let output = "";
 		let cut = 0;
+		const callerLastIndex = regexp.lastIndex;
 		regexp.lastIndex = base;
-		while (true) {
-			const start = regexp.lastIndex - base;
-			const match = stopped ? null : regexp.exec(text);
-			const index = match === null ? Infinity : match.index - base;
-			if (index >= safe || index + match[0].length >= holdEnd) {
-				const emitTo = Math.max(start, Math.min(index, safe));
-				// A sticky miss before `safe` can't succeed later, so matching ends
-				if (match === null && regexp.sticky && start < safe) {
-					stopped = true;
+		try {
+			while (true) {
+				const start = regexp.lastIndex - base;
+				const match = stopped ? null : regexp.exec(text);
+				const index = match === null ? Infinity : match.index - base;
+				if (index >= safe || index + match[0].length >= holdEnd) {
+					const emitTo = Math.max(start, Math.min(index, safe));
+					// A sticky miss before `safe` can't succeed later, so matching ends
+					if (match === null && regexp.sticky && start < safe) {
+						stopped = true;
+					}
+					output += buffer.slice(cut, emitTo);
+					context = text.slice(
+						Math.max(0, base + emitTo - lookbehind),
+						base + emitTo,
+					);
+					buffer = buffer.slice(emitTo);
+					offset += emitTo;
+					return output;
 				}
-				output += buffer.slice(cut, emitTo);
-				context = text.slice(
-					Math.max(0, base + emitTo - lookbehind),
-					base + emitTo,
-				);
-				buffer = buffer.slice(emitTo);
-				offset += emitTo;
-				return output;
+				output +=
+					buffer.slice(cut, index) + substitute(match, offset + index, text);
+				cut = index + match[0].length;
+				if (cut === index) {
+					regexp.lastIndex +=
+						unicode && text.codePointAt(match.index) > 0xffff ? 2 : 1;
+				}
 			}
-			output +=
-				buffer.slice(cut, index) + substitute(match, offset + index, text);
-			cut = index + match[0].length;
-			if (cut === index) {
-				regexp.lastIndex +=
-					unicode && text.codePointAt(match.index) > 0xffff ? 2 : 1;
-			}
+		} finally {
+			regexp.lastIndex = callerLastIndex;
 		}
 	};
 	const transform = (chunk, enqueue) => {
@@ -238,9 +264,8 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 		}
 	};
 	const flush = (enqueue) => {
-		const output = wholeStream
-			? buffer.replace(regexp, replacement)
-			: scan(Infinity, Infinity);
+		// With $` or $' nothing was scanned yet, so text is the whole stream
+		const output = scan(Infinity, Infinity);
 		if (output !== "") {
 			enqueue(output);
 		}

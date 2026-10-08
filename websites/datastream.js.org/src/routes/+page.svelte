@@ -190,6 +190,10 @@ await pipeline(streams)`;
                 <H3><A href="/docs/packages/aws">aws</A></H3>
                 <P>DynamoDB, S3, SQS, SNS, and Lambda streams (Node.js only).</P>
             </Card>
+            <Card class="package" id="azure">
+                <H3><A href="/docs/packages/azure">azure</A></H3>
+                <P>Blob, Cosmos DB, Event Hubs, Queue, and Service Bus streams (Node.js only).</P>
+            </Card>
             <Card class="package" id="csv">
                 <H3><A href="/docs/packages/csv">csv</A></H3>
                 <P>Parse and format CSV data.</P>

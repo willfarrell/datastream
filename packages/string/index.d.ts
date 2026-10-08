@@ -17,8 +17,9 @@ export function stringLengthStream(
 };
 
 export function stringCountStream(
-	options?: {
-		substr?: string;
+	options: {
+		/** Must be a non-empty string; the stream throws otherwise. */
+		substr: string;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,

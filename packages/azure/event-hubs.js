@@ -18,7 +18,12 @@ export const azureEventHubsReceiveEventsStream = async (
 		let error;
 		let ended = false;
 		let wake;
-		let drained = () => {};
+		// subscribe() without a partitionId runs one pump per partition, so several
+		// processEvents calls can be waiting at once: resolve them all on drain.
+		const waiters = [];
+		const drained = () => {
+			for (const resolve of waiters.splice(0)) resolve();
+		};
 		const handlers = {
 			processEvents: async (events) => {
 				queue.push(...events);
@@ -28,11 +33,16 @@ export const azureEventHubsReceiveEventsStream = async (
 				wake?.();
 				if (queue.length) {
 					await new Promise((resolve) => {
-						drained = resolve;
+						waiters.push(resolve);
 					});
 				}
 			},
 			processError: async (e) => {
+				// The SDK also reports errors it is retrying itself (MessagingError
+				// retryable: true); only the rest end the stream.
+				if (e?.retryable) {
+					return;
+				}
 				error ??= e;
 				wake?.();
 			},

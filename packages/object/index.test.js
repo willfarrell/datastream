@@ -846,6 +846,55 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(output[0].isAdmin, undefined);
 	});
 
+	// *** objectKeyValuesStream reserved key *** //
+	test(`objectKeyValuesStream should keep a "__proto__" value key as an own property`, async (_t) => {
+		const input = [JSON.parse('{"id":"k","__proto__":{"isAdmin":true}}')];
+		const streams = [
+			createReadableStream(input),
+			objectKeyValuesStream({ key: "id", values: ["__proto__"] }),
+		];
+
+		const stream = pipejoin(streams);
+		const output = await streamToArray(stream);
+
+		deepStrictEqual(output, [
+			{ k: JSON.parse('{"__proto__":{"isAdmin":true}}') },
+		]);
+		strictEqual(output[0].k.isAdmin, undefined);
+	});
+
+	// *** objectKeyJoinStream reserved key *** //
+	test(`objectKeyJoinStream should keep a "__proto__" joined key as an own property`, async (_t) => {
+		const input = [{ a: "1", b: "2", c: 3 }];
+		const streams = [
+			createReadableStream(input),
+			objectKeyJoinStream({
+				keys: JSON.parse('{"__proto__":["a","b"]}'),
+				separator: "-",
+			}),
+		];
+
+		const stream = pipejoin(streams);
+		const output = await streamToArray(stream);
+
+		deepStrictEqual(output, [JSON.parse('{"c":3,"__proto__":"1-2"}')]);
+	});
+
+	// *** objectSkipConsecutiveDuplicatesStream differing undefined keys *** //
+	test(`objectSkipConsecutiveDuplicatesStream should keep rows whose keys differ but read undefined`, async (_t) => {
+		const input = [{ x: undefined }, { y: undefined }];
+		const streams = [
+			createReadableStream(input),
+			objectSkipConsecutiveDuplicatesStream(),
+		];
+
+		const stream = pipejoin(streams);
+		const output = await streamToArray(stream);
+
+		deepStrictEqual(output, [{ x: undefined }, { y: undefined }]);
+		strictEqual(shallowEqual({ x: undefined }, { y: undefined }), false);
+	});
+
 	// *** objectBatchStream maxBatchSize: undefined and null are unlimited *** //
 	test(`objectBatchStream maxBatchSize null keeps a whole group in one batch`, async (_t) => {
 		const input = Array.from({ length: 5 }, (_, i) => ({ a: "same", b: i }));

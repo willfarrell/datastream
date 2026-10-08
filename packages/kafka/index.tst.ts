@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
-import type { KafkaConnection } from "@datastream/kafka";
+import type { KafkaConnection, KafkaMessage } from "@datastream/kafka";
 import {
 	kafkaConnect,
 	kafkaConsumeStream,
@@ -38,6 +38,10 @@ describe("kafkaConnect", () => {
 });
 
 describe("kafkaProduceStream", () => {
+	test("KafkaMessage value accepts a null tombstone", () => {
+		expect<KafkaMessage>().type.toBeAssignableFrom({ value: null });
+	});
+
 	test("requires producer and topic", () => {
 		expect(
 			kafkaProduceStream({ producer, topic: "t" }),

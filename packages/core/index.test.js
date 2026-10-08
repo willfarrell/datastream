@@ -166,6 +166,42 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(text(output), "hello");
 	});
 
+	// Raw byte window of any view/ArrayBuffer: Buffer.from(view) used to drop a
+	// DataView and truncate Uint16 elements; the browser build used to
+	// stringify them ("[object DataView]").
+	test(`streamToBuffer keeps the raw bytes of any binary chunk`, async (_t) => {
+		const hi = Uint8Array.from([0, 104, 105, 0]).buffer;
+		const input = [
+			new DataView(hi, 1, 2),
+			new Uint16Array([0x6968]),
+			Uint8Array.from([104, 105]).buffer,
+		];
+		const output = await streamToBuffer(createReadableStream(input));
+
+		deepStrictEqual(text(output), "hihihi");
+		deepStrictEqual(
+			text(
+				await streamToBuffer(
+					(async function* () {
+						yield* input;
+					})(),
+				),
+			),
+			"hihihi",
+		);
+	});
+
+	// A throwing 'data' listener used to escape as an uncaught exception and
+	// resolve with partial data.
+	nodeTest(
+		`streamToBuffer rejects on a chunk Buffer.from cannot convert`,
+		async (_t) => {
+			await rejects(streamToBuffer(createReadableStream([1, 2])), {
+				code: "ERR_INVALID_ARG_TYPE",
+			});
+		},
+	);
+
 	// Direct source import so the node run still pins browser-build parity
 	// (streamToBuffer was once missing from the browser build entirely).
 	test(`web build exports a working streamToBuffer`, async (_t) => {
@@ -716,6 +752,63 @@ describe(`@datastream/core (${variant})`, async () => {
 			createTransformStream(transform),
 		];
 		await rejects(pipeline(streams), { message: "Error" });
+	});
+
+	// The index-0 check is easy to miss with reduce() (no initial value skips
+	// the callback for the first element), e.g. an un-awaited async source.
+	test(`pipeline should throw error when promise passed in at index 0`, async (_t) => {
+		const streams = [
+			Promise.resolve(createReadableStream(["a"])),
+			createTransformStream(spy()),
+		];
+		await rejects(pipeline(streams), {
+			message: "Promise instead of stream passed in at index 0",
+		});
+		throws(() => pipejoin(streams), {
+			message: "Promise instead of stream passed in at index 0",
+		});
+	});
+
+	// An already-aborted signal never fires "abort" again, so it must be checked
+	// up front (the node build errors immediately too).
+	test(`createTransformStream and createPassThroughStream error on an already-aborted signal`, async (_t) => {
+		const signal = AbortSignal.abort();
+		await rejects(
+			streamToArray(
+				pipejoin([
+					createReadableStream(["a"]),
+					createTransformStream(undefined, { signal }),
+				]),
+			),
+			{ name: "AbortError" },
+		);
+		await rejects(
+			streamToArray(
+				pipejoin([
+					createReadableStream(["a"]),
+					createPassThroughStream(() => {}, { signal }),
+				]),
+			),
+			{ name: "AbortError" },
+		);
+	});
+
+	// A source that throws errors the stream without close()/cancel(); its abort
+	// listener must still be removed from a shared signal.
+	test(`createReadableStream removes its abort listener when the source throws`, async (_t) => {
+		const controller = new AbortController();
+		const source = (async function* () {
+			yield 1;
+			throw new Error("boom");
+		})();
+		await rejects(
+			streamToArray(
+				createReadableStream(source, { signal: controller.signal }),
+			),
+			{ message: "boom" },
+		);
+		await new Promise((resolve) => setImmediate(resolve));
+		strictEqual(getEventListeners(controller.signal, "abort").length, 0);
 	});
 
 	// *** pipejoin *** //

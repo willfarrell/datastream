@@ -12,6 +12,7 @@ const nav = {
 		file: "/docs/packages/file",
 		fetch: "/docs/packages/fetch",
 		aws: "/docs/packages/aws",
+		azure: "/docs/packages/azure",
 		indexeddb: "/docs/packages/indexeddb",
 		ipfs: "/docs/packages/ipfs",
 		kafka: "/docs/packages/kafka",

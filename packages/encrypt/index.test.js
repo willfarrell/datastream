@@ -393,6 +393,29 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		}
 	});
 
+	// maxInputSize counts bytes, not UTF-16 code units: "🙂🙂" is 4 code units but
+	// 8 UTF-8 bytes, so it must exceed a 4-byte limit.
+	test(`encryptStream should count string chunks in bytes for maxInputSize`, async (_t) => {
+		const enc = await encryptStream({ key, maxInputSize: 4 });
+		await rejects(pipeline([createReadableStream("🙂🙂"), enc]), (e) =>
+			e.message.includes("maxInputSize"),
+		);
+	});
+
+	// The byte count honours the write encoding: 8 hex chars are 4 bytes.
+	nodeTest(
+		`encryptStream should count string chunks in their write encoding`,
+		async (_t) => {
+			const enc = await encryptStream({ key, maxInputSize: 4 });
+			enc.end("00000000", "hex");
+			enc.resume();
+			await new Promise((resolve, reject) => {
+				enc.on("end", resolve);
+				enc.on("error", reject);
+			});
+		},
+	);
+
 	test(`encryptStream CHACHA20-POLY1305 should enforce maxInputSize`, async (_t) => {
 		const input = "a".repeat(200);
 		const enc = await encryptStream({

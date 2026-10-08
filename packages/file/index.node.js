@@ -40,7 +40,13 @@ export const fileReadStream = async (
 	if ((basePath ?? null) !== null) {
 		// Open with O_NOFOLLOW to prevent TOCTOU symlink race
 		const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-		return createReadStream(null, { ...fsOptions(streamOptions), fd });
+		try {
+			return createReadStream(null, { ...fsOptions(streamOptions), fd });
+		} catch (e) {
+			// Don't leak the descriptor when the stream never took ownership of it.
+			closeSync(fd);
+			throw e;
+		}
 	}
 	return createReadStream(path, fsOptions(streamOptions));
 };
@@ -56,10 +62,12 @@ export const fileWriteStream = async (
 		// they are applied to the O_NOFOLLOW open here instead.
 		const { flags, mode, ...options } = fsOptions(streamOptions);
 		const append = flags?.includes("a");
+		// "r+"/"rs+" update an existing file in place: no create, no truncate.
+		const update = flags?.startsWith("r");
 		const fd = openSync(
 			path,
 			constants.O_WRONLY |
-				constants.O_CREAT |
+				(update ? 0 : constants.O_CREAT) |
 				constants.O_NOFOLLOW |
 				(append ? constants.O_APPEND : 0) |
 				(flags?.includes("x") ? constants.O_EXCL : 0),
@@ -69,7 +77,7 @@ export const fileWriteStream = async (
 			const stream = createWriteStream(null, { ...options, fd });
 			// Truncate only once the stream exists (rather than O_TRUNC on open) so
 			// an invalid-options throw above leaves the existing file intact.
-			if (!append) ftruncateSync(fd);
+			if (!append && !update) ftruncateSync(fd);
 			return stream;
 		} catch (e) {
 			// Don't leak the descriptor when the stream never took ownership of it.

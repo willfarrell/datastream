@@ -228,6 +228,26 @@ describe(`@datastream/arrow (${variant})`, () => {
 		]);
 	});
 
+	test(`detect + batchFromObject writes "" as null in non-Utf8 columns`, async () => {
+		// inferType skips "" as null, so an empty cell in an Int32/Bool/Timestamp
+		// column must not become 0/false/epoch. Utf8 keeps "" as a real value.
+		const detect = arrowDetectSchemaStream({ sampleSize: 3 });
+		const stream = pipejoin([
+			createReadableStream([
+				{ a: 1, b: true, d: new Date(0), s: "x" },
+				{ a: "", b: "", d: "", s: "" },
+				{ a: 3, b: null, d: null, s: "z" },
+			]),
+			detect,
+			arrowBatchFromObjectStream({
+				schema: () => detect.result().value.schema,
+			}),
+			arrowToObjectStream(),
+		]);
+		const rows = await streamToArray(stream);
+		deepStrictEqual(rows[1], { a: null, b: null, d: null, s: "" });
+	});
+
 	// *** heterogeneous keys: schema detection must union across all sampled rows *** //
 	test(`arrowDetectSchemaStream unions object keys across all sampled rows`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });

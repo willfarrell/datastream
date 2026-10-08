@@ -9,6 +9,9 @@ import {
 } from "@datastream/json";
 import { describe, expect, test } from "tstyche";
 
+// Writable-side chunk type of the web TransformStream member.
+type Input<T> = T extends TransformStream<infer I, unknown> ? I : never;
+
 describe("JsonError", () => {
 	test("has required fields", () => {
 		expect<JsonError>().type.toBeAssignableTo<{
@@ -24,6 +27,12 @@ describe("ndjsonParseStream", () => {
 	test("returns stream with result", () => {
 		const stream = ndjsonParseStream();
 		expect(stream.result).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts string and byte chunks", () => {
+		expect<Input<ReturnType<typeof ndjsonParseStream>>>().type.toBe<
+			string | Uint8Array
+		>();
 	});
 
 	test("accepts maxBufferSize", () => {
@@ -66,6 +75,12 @@ describe("jsonParseStream", () => {
 	test("returns stream with result", () => {
 		const stream = jsonParseStream();
 		expect(stream.result).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts string and byte chunks", () => {
+		expect<Input<ReturnType<typeof jsonParseStream>>>().type.toBe<
+			string | Uint8Array
+		>();
 	});
 
 	test("accepts maxBufferSize and maxValueSize", () => {

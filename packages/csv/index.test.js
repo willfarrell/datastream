@@ -890,6 +890,16 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(value.quoteChar, '"');
 	});
 
+	test(`csvDetectDelimitersStream should detect from a single line without newline`, async (_t) => {
+		const detect = csvDetectDelimitersStream();
+		await pipeline([createReadableStream("a;b"), detect]);
+
+		const { value } = detect.result();
+		strictEqual(value.delimiterChar, ";");
+		strictEqual(value.newlineChar, undefined);
+		strictEqual(value.quoteChar, '"');
+	});
+
 	test(`csvDetectDelimitersStream should detect tab delimiter`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
 		const streams = [createReadableStream("a\tb\tc\n1\t2\t3\n"), detect];
@@ -1175,7 +1185,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		const output = await streamToArray(
 			pipejoin([createReadableStream([new Uint8Array([97, 44, 195])]), detect]),
 		);
-		strictEqual(detect.result().value.delimiterChar, undefined);
+		strictEqual(detect.result().value.delimiterChar, ",");
 		deepStrictEqual(output, ["a,\uFFFD"]);
 	});
 
@@ -1914,6 +1924,26 @@ describe(`@datastream/csv (${variant})`, () => {
 		const output = await streamToArray(stream);
 
 		deepStrictEqual(output, [{ age: 30, active: true, name: "Alice" }]);
+	});
+
+	test(`csvCoerceValuesStream should not take column types from Object.prototype`, async (_t) => {
+		const streams = [
+			createReadableStream([{ a: "1", constructor: "2", toString: "true" }]),
+			csvCoerceValuesStream({ columns: { a: "number" } }),
+		];
+		const output = await streamToArray(pipejoin(streams));
+
+		deepStrictEqual(output, [{ a: 1, constructor: 2, toString: true }]);
+	});
+
+	test(`csvCoerceValuesStream explicit number maps whitespace-only to null`, async (_t) => {
+		const streams = [
+			createReadableStream([{ a: "  ", b: 5 }]),
+			csvCoerceValuesStream({ columns: { a: "number", b: "number" } }),
+		];
+		const output = await streamToArray(pipejoin(streams));
+
+		deepStrictEqual(output, [{ a: null, b: 5 }]);
 	});
 
 	test(`csvCoerceValuesStream should handle scientific notation`, async (_t) => {
@@ -2880,6 +2910,16 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(lines.length, 70);
 		strictEqual(lines[0], "0,x");
 		strictEqual(lines[69], "69,x");
+	});
+
+	// --- csvFormatStream: a value containing a custom newlineChar is quoted ---
+	test(`csvFormatStream should quote values containing a custom newlineChar`, async (_t) => {
+		const streams = [
+			createReadableStream([["a|b", "c"]]),
+			csvFormatStream({ newlineChar: "|" }),
+		];
+		const output = await streamToString(pipejoin(streams));
+		strictEqual(output, '"a|b",c|');
 	});
 
 	// --- csvFormatStream: custom newlineChar separator ---

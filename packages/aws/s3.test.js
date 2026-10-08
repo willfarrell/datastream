@@ -1,4 +1,5 @@
 import { deepStrictEqual, rejects, strictEqual } from "node:assert";
+import { getEventListeners } from "node:events";
 import test, { describe } from "node:test";
 import {
 	CreateMultipartUploadCommand,
@@ -587,6 +588,34 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		deepStrictEqual(teardownEntry?.options, { once: true });
 
 		stream.destroy();
+	});
+
+	// A completed read must remove its "abort" listener, otherwise a long-lived signal
+	// shared across reads accumulates one listener (pinning one Body) per call. Pins
+	// the stream "close" cleanup, its event name, and the removed listener identity.
+	test(`awsS3GetObjectStream removes its abort listener once the stream closes`, async (_t) => {
+		const stub = {
+			send: async () => ({
+				Body: {
+					async *[Symbol.asyncIterator]() {
+						yield "chunk";
+					},
+					destroy() {},
+				},
+			}),
+		};
+		awsS3SetClient(stub);
+
+		const controller = new AbortController();
+		for (let i = 0; i < 3; i++) {
+			const stream = await awsS3GetObjectStream(
+				{ Bucket: "b", Key: "k" },
+				{ signal: controller.signal },
+			);
+			deepStrictEqual(await streamToString(stream), "chunk");
+		}
+		await new Promise((resolve) => setImmediate(resolve));
+		deepStrictEqual(getEventListeners(controller.signal, "abort").length, 0);
 	});
 
 	// An already-aborted signal tears down the Body eagerly during creation. Pins
