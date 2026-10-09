@@ -1,13 +1,13 @@
 <script>
-import Card from "@design-system/components/Card.svelte";
-import H1 from "@design-system/components/Heading1.svelte";
-import H2 from "@design-system/components/Heading2.svelte";
-import LayoutCenter from "@design-system/components/LayoutCenter.svelte";
-import A from "@design-system/elements/a.svelte";
-import P from "@design-system/elements/p.svelte";
-import Section from "@design-system/elements/section.svelte";
-import Span from "@design-system/elements/span.svelte";
-import Ul from "@design-system/elements/ul.svelte";
+import Card from "@willfarrell-ds/svelte/components/Card.svelte";
+import H1 from "@willfarrell-ds/svelte/components/Heading1.svelte";
+import H2 from "@willfarrell-ds/svelte/components/Heading2.svelte";
+import LayoutCenter from "@willfarrell-ds/svelte/components/LayoutCenter.svelte";
+import A from "@willfarrell-ds/svelte/elements/a.svelte";
+import P from "@willfarrell-ds/svelte/elements/p.svelte";
+import Section from "@willfarrell-ds/svelte/elements/section.svelte";
+import Span from "@willfarrell-ds/svelte/elements/span.svelte";
+import Ul from "@willfarrell-ds/svelte/elements/ul.svelte";
 
 let { data } = $props();
 const results = $derived(data.results);
