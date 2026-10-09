@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/charset",
-	"version": "0.7.1",
+	"version": "0.8.0",
 	"description": "Character encoding detection, decoding, and conversion streams",
 	"type": "module",
 	"engines": {
@@ -83,7 +83,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.7.1",
+		"@datastream/core": "0.8.0",
 		"chardet": "2.2.0",
 		"iconv-lite": "0.7.3"
 	}

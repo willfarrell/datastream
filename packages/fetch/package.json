@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/fetch",
-	"version": "0.7.1",
+	"version": "0.8.0",
 	"description": "HTTP fetch-based readable and writable streams with pagination and rate limiting",
 	"type": "module",
 	"engines": {
@@ -53,6 +53,6 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.7.1"
+		"@datastream/core": "0.8.0"
 	}
 }

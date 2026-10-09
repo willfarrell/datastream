@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/base64",
-	"version": "0.7.1",
+	"version": "0.8.0",
 	"description": "Base64 encoding and decoding transform streams",
 	"type": "module",
 	"engines": {
@@ -53,6 +53,6 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.7.1"
+		"@datastream/core": "0.8.0"
 	}
 }
