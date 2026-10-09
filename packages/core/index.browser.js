@@ -8,6 +8,15 @@ import {
 	sanitizeObject,
 } from "./helpers.js";
 
+// Abort errors a pipe destination one macrotask late. Node's pipeTo writes a
+// chunk it already read into a destination errored in the meantime, and that
+// write's PromiseReject surfaces as an unhandledRejection even though pipeTo
+// marks it handled. Deferring lets in-flight chunks land first; the pipe then
+// sees the error and shuts down before reading another.
+// ponytail: workaround for a Node webstreams bug (seen on 26.5), drop once fixed upstream.
+const errorOnAbort = (controller, reason) =>
+	setTimeout(() => controller.error(reason));
+
 export const pipeline = async (streams, streamOptions = {}) => {
 	// Work on a copy so appending the terminal writable doesn't mutate the
 	// caller's array.
@@ -317,7 +326,7 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 		{
 			start(controller) {
 				if (signal) {
-					onAbort = () => controller.error(signal.reason);
+					onAbort = () => errorOnAbort(controller, signal.reason);
 					// Already aborted: the event won't fire again (node parity).
 					if (signal.aborted) return onAbort();
 					signal.addEventListener("abort", onAbort);
@@ -325,6 +334,7 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 			},
 			async transform(chunk, controller) {
 				try {
+					signal?.throwIfAborted();
 					await passThrough(chunk);
 				} catch (e) {
 					cleanup();
@@ -334,6 +344,7 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 			},
 			async flush(controller) {
 				cleanup();
+				signal?.throwIfAborted();
 				if (flush) {
 					await flush();
 				}
@@ -371,7 +382,7 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 		{
 			start(controller) {
 				if (signal) {
-					onAbort = () => controller.error(signal.reason);
+					onAbort = () => errorOnAbort(controller, signal.reason);
 					// Already aborted: the event won't fire again (node parity).
 					if (signal.aborted) return onAbort();
 					signal.addEventListener("abort", onAbort);
@@ -382,6 +393,7 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 					controller.enqueue(chunk);
 				};
 				try {
+					signal?.throwIfAborted();
 					await transform(chunk, enqueue);
 				} catch (e) {
 					cleanup();
@@ -390,6 +402,7 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 			},
 			async flush(controller) {
 				cleanup();
+				signal?.throwIfAborted();
 				if (flush) {
 					const enqueue = (chunk) => {
 						controller.enqueue(chunk);
@@ -433,7 +446,7 @@ export const createWritableStream = (write, close, streamOptions) => {
 					// caller's abort hook runs here too (node parity: the signal
 					// destroys the node Writable, which runs it).
 					onAbort = () => {
-						controller.error(signal.reason);
+						errorOnAbort(controller, signal.reason);
 						runAbort(abort, signal.reason);
 					};
 					// Already aborted: the event won't fire again, so run the same
@@ -444,6 +457,7 @@ export const createWritableStream = (write, close, streamOptions) => {
 			},
 			async write(chunk) {
 				try {
+					signal?.throwIfAborted();
 					await write(chunk);
 				} catch (e) {
 					cleanup();
@@ -452,6 +466,7 @@ export const createWritableStream = (write, close, streamOptions) => {
 			},
 			async close() {
 				cleanup();
+				signal?.throwIfAborted();
 				if (close) {
 					await close();
 				}
@@ -461,7 +476,8 @@ export const createWritableStream = (write, close, streamOptions) => {
 			// never run. Not called when our own write/close threw.
 			async abort(reason) {
 				cleanup();
-				await runAbort(abort, reason);
+				// A fired signal already ran it from onAbort.
+				if (!signal?.aborted) await runAbort(abort, reason);
 			},
 		},
 		writableStrategy,

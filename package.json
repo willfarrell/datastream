@@ -76,10 +76,11 @@
 		"@biomejs/biome": "^2.0.0",
 		"@commitlint/cli": "^21.0.0",
 		"@commitlint/config-conventional": "^21.0.0",
-		"@stryker-mutator/core": "^9.0.0",
+		"@stryker-mutator/core": "^10.0.0",
 		"@types/node": "^26.0.0",
 		"esbuild": "^0.28.2",
 		"fast-check": "^4.0.0",
+		"globby": "file:.github/shims/globby",
 		"husky": "^9.0.0",
 		"tstyche": "^7.0.0"
 	},
@@ -93,7 +94,8 @@
 			"brace-expansion": ">=5.0.8"
 		},
 		"license-check-and-add": {
-			"minimatch": "^10.2.5"
+			"minimatch": "^10.2.5",
+			"globby": "$globby"
 		}
 	},
 	"workspaces": [

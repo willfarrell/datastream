@@ -43,10 +43,22 @@ const supportedCharsets = [
 const encodeCharsets = variant === "browser" ? ["UTF-8"] : supportedCharsets;
 // The browser build runs on Node's ICU TextDecoder here, whose GB18030 decoder
 // throws on some invalid input even in non-fatal mode; real browsers substitute
-// U+FFFD. Skip that label only for this environment quirk.
+// U+FFFD. Skip that label only for this environment quirk. Node 26's
+// TextDecoder also lacks the legacy CJK labels (Shift_JIS, EUC-JP, ...) that
+// browsers ship, so only fuzz labels the host can construct.
+const webDecodable = (charset) => {
+	try {
+		new TextDecoder(charset);
+		return true;
+	} catch {
+		return false;
+	}
+};
 const decodeCharsets =
 	variant === "browser"
-		? supportedCharsets.filter((charset) => charset !== "GB18030")
+		? supportedCharsets.filter(
+				(charset) => charset !== "GB18030" && webDecodable(charset),
+			)
 		: supportedCharsets;
 
 // *** charsetDetectStream *** //

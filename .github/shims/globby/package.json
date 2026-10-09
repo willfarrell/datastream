@@ -1,0 +1,10 @@
+{
+	"name": "globby",
+	"version": "10.0.2",
+	"private": true,
+	"description": "globby.sync shim on tinyglobby for license-check-and-add; drops micromatch/braces (GHSA-vfj7-8cjw-p6xm).",
+	"main": "index.cjs",
+	"dependencies": {
+		"tinyglobby": "^0.2.17"
+	}
+}

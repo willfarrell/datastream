@@ -28,6 +28,12 @@ const textEncoder = new TextEncoder();
 export const toBytes = (chunk) =>
 	typeof chunk === "string" ? textEncoder.encode(chunk) : chunk;
 
+// Same Node pipeTo workaround as core's errorOnAbort: erroring a pipe
+// destination synchronously leaks an unhandledRejection for an in-flight chunk.
+// ponytail: drop once Node's webstreams pipeTo is fixed upstream.
+const errorOnAbort = (controller, reason) =>
+	setTimeout(() => controller.error(reason));
+
 // Input stage: convert string chunks to bytes (BufferSource) and honor an
 // AbortSignal. The native CompressionStream/DecompressionStream accept neither a
 // signal nor string chunks, so this stage provides both (parity with the Node
@@ -50,18 +56,19 @@ const inputStage = (streamOptions) => {
 		{
 			start(controller) {
 				if (signal) {
-					if (signal.aborted) {
-						controller.error(abortError());
-						return;
-					}
-					onAbort = () => controller.error(abortError());
+					onAbort = () => errorOnAbort(controller, abortError());
+					if (signal.aborted) return onAbort();
 					signal.addEventListener("abort", onAbort);
 				}
 			},
 			transform(chunk, controller) {
+				signal?.throwIfAborted();
 				controller.enqueue(toBytes(chunk));
 			},
-			flush: cleanup,
+			flush() {
+				cleanup();
+				signal?.throwIfAborted();
+			},
 			// Readable side cancelled (e.g. a later stage errored).
 			cancel: cleanup,
 		},
@@ -87,11 +94,8 @@ const outputStage = (maxOutputSize, label, streamOptions) => {
 	return new TransformStream({
 		start(controller) {
 			if (signal) {
-				if (signal.aborted) {
-					controller.error(abortError());
-					return;
-				}
-				onAbort = () => controller.error(abortError());
+				onAbort = () => errorOnAbort(controller, abortError());
+				if (signal.aborted) return onAbort();
 				signal.addEventListener("abort", onAbort);
 			}
 		},
