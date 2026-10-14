@@ -68,10 +68,10 @@
 		"@datastream/core": "0.7.1"
 	},
 	"devDependencies": {
-		"protobufjs": "^8.0.0"
+		"protobufjs": "^8.8.0"
 	},
 	"peerDependencies": {
-		"protobufjs": "^8.0.0"
+		"protobufjs": "^8.8.0"
 	},
 	"peerDependenciesMeta": {
 		"protobufjs": {
