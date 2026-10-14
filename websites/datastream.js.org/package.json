@@ -23,7 +23,7 @@
 		"release:deploy": "wrangler pages deploy"
 	},
 	"dependencies": {
-		"@plausible-analytics/tracker": "0.4.5",
+		"@plausible-analytics/tracker": "0.4.6",
 		"@willfarrell-ds/svelte": "0.0.0-alpha.8",
 		"@willfarrell-ds/vanilla": "0.0.0-alpha.8",
 		"hast-util-to-string": "3.0.1",
