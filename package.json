@@ -73,7 +73,7 @@
 		"@biomejs/biome": "^2.5.14",
 		"@commitlint/cli": "^21.0.0",
 		"@commitlint/config-conventional": "^21.0.0",
-		"@stryker-mutator/core": "^9.0.0",
+		"@stryker-mutator/core": "^10.0.0",
 		"@types/node": "^26.6.2",
 		"esbuild": "^0.28.2",
 		"fast-check": "^4.0.0",
