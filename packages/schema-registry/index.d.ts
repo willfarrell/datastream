@@ -109,7 +109,6 @@ export function confluentSchemaRegistryResolver(options: {
 	headers?: Record<string, string>;
 	/** Cache TTL in ms; -1 (default) = never expires. */
 	cacheExpiry?: number;
-	// Max cached schemas (default 1000); 0 disables caching, null = unlimited.
 	maxCacheSize?: number | null;
 	/** Per-lookup timeout in ms, covering the response body. Default 30000. */
 	timeout?: number;

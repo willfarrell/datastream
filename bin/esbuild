@@ -4,13 +4,9 @@ set -e
 find packages -type f \( -name '*.node.mjs' -o -name '*.browser.mjs' -o -name '*.node.mjs.map' -o -name '*.browser.mjs.map' \) -delete
 
 
-# Trailing slash: only directories (packages/variant.js is a test helper, not a package)
 for package in packages/*/; do
   package=${package%/}
   modules=$(jq -r '.exports | keys[] as $k | "\($k)"' ${package}/package.json)
-  # Only build the platforms the package exports: node-only packages (aws, kafka) have no
-  # "browser" condition, browser-only ones (indexeddb) no "node" condition. This also keeps
-  # stale opposite-platform sources from producing unshipped outputs.
   browser=$(jq '[.exports | .. | objects | has("browser")] | any' ${package}/package.json)
   node=$(jq '[.exports | .. | objects | has("node")] | any' ${package}/package.json)
   for module in $modules; do

@@ -29,8 +29,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		{ id: 3, name: "gamma" },
 	];
 
-	// A message whose encoded form is >127 bytes, forcing a multi-byte varint
-	// length prefix (exercises the encodeVarint loop and split-prefix framing).
 	const bigMessage = { id: 42, name: "x".repeat(200) };
 
 	const toPlain = (m) => ({ id: m.id, name: m.name });
@@ -51,14 +49,12 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		return out;
 	};
 
-	// *** protobufEncodeStream *** //
 	test(`protobufEncodeStream encodes objects to bytes (static Type)`, async () => {
 		const encoded = await encodeAll(messages, { Type });
 		strictEqual(encoded.length, 3);
 		for (const bytes of encoded) {
 			strictEqual(bytes instanceof Uint8Array, true);
 		}
-		// Round-trips back to the originals.
 		deepStrictEqual(
 			encoded.map((b) => toPlain(Type.decode(b))),
 			messages,
@@ -93,7 +89,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		strictEqual(isWritable(stream), true);
 	});
 
-	// *** protobufDecodeStream *** //
 	test(`protobufDecodeStream decodes bytes to objects`, async () => {
 		const encoded = await encodeAll(messages, { Type });
 		const decoded = await streamToArray(
@@ -102,8 +97,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		deepStrictEqual(decoded.map(toPlain), messages);
 	});
 
-	// A function Type takes the async transform (resolved per chunk); a static
-	// Type decodes synchronously.
 	test(`protobufDecodeStream accepts a sync function Type`, async () => {
 		const encoded = await encodeAll(messages, { Type });
 		const decoded = await streamToArray(
@@ -138,14 +131,10 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		deepStrictEqual(decoded.map(toPlain), messages);
 	});
 
-	// A stand-in Type whose decode just reports the payload size, so the 64MiB
-	// boundary tests don't pay for decoding megabytes of protobuf.
 	const SizeType = { decode: (bytes) => bytes.length };
 
 	test(`protobufDecodeStream maxMessageSize is per message, not cumulative`, async () => {
 		const encoded = await encodeAll(messages, { Type });
-		// Each message fits the limit, even though together they exceed it: a
-		// long-lived consumer must not be killed by total volume.
 		const largest = Math.max(...encoded.map((b) => b.length));
 		const total = encoded.reduce((sum, b) => sum + b.length, 0);
 		ok(total > largest);
@@ -211,7 +200,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		strictEqual(isWritable(stream), true);
 	});
 
-	// *** length-prefix framing *** //
 	test(`frame then unframe round-trips messages (one chunk each)`, async () => {
 		const encoded = await encodeAll(messages, { Type });
 		const frames = await streamToArray(
@@ -234,9 +222,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 	});
 
 	test(`frame uses a single-byte varint prefix for a 127-byte message`, async () => {
-		// 127 (0x7f) is the largest value that fits in a single varint byte; the
-		// encodeVarint loop must stop at v > 0x7f (a >= boundary would spill into a
-		// second 0x80-continuation byte).
 		const body = new Uint8Array(127).fill(7);
 		const frames = await streamToArray(
 			pipejoin([
@@ -245,7 +230,7 @@ describe(`@datastream/protobuf (${variant})`, () => {
 			]),
 		);
 		strictEqual(frames.length, 1);
-		strictEqual(frames[0].length, 128); // prefix(1) + body(127)
+		strictEqual(frames[0].length, 128);
 		const unframed = await streamToArray(
 			pipejoin([
 				createReadableStream(frames),
@@ -256,8 +241,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 	});
 
 	test(`unframe allows a message exactly at maxMessageSize`, async () => {
-		// A message whose length equals the ceiling must pass (boundary is
-		// strictly-greater).
 		const body = new Uint8Array(50).fill(3);
 		const frames = await streamToArray(
 			pipejoin([
@@ -282,8 +265,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 				protobufLengthPrefixFrameStream(),
 			]),
 		);
-		// One contiguous buffer, then feed it one byte at a time so that both the
-		// multi-byte length prefix and the message body straddle chunk boundaries.
 		const stream = concat(frames);
 		const byteChunks = Array.from(stream, (b) => Uint8Array.of(b));
 		const unframed = await streamToArray(
@@ -299,11 +280,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 	});
 
 	test(`unframe reassembles a body split mid-chunk with trailing frames`, async () => {
-		// Two chunks where the split falls inside bigMessage's body, so a single
-		// message is assembled from a partial first chunk plus a second chunk that
-		// also carries the following frames. This drives the multi-chunk copy path:
-		// the body spans two buffered chunks and the second chunk's tail (the next
-		// frames) must be retained, not discarded.
 		const encoded = await encodeAll([bigMessage, ...messages], { Type });
 		const frames = await streamToArray(
 			pipejoin([
@@ -312,8 +288,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 			]),
 		);
 		const stream = concat(frames);
-		// 100 lands inside bigMessage's body (2-byte prefix + ~200-byte body), and the
-		// remainder carries the rest of that body plus all three trailing frames.
 		const splitAt = 100;
 		const chunks = [stream.subarray(0, splitAt), stream.subarray(splitAt)];
 		const unframed = await streamToArray(
@@ -329,9 +303,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 	});
 
 	test(`unframe reassembles many small messages fed one byte at a time`, async () => {
-		// Many small messages, fed one byte at a time, so every prefix and body
-		// straddles chunk boundaries and the buffered-chunk list is repeatedly drained
-		// down to a partial message and refilled.
 		const small = Array.from({ length: 20 }, (_, i) => ({
 			id: i,
 			name: `m${i}`,
@@ -380,8 +351,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 	});
 
 	test(`unframe throws on a length prefix longer than 10 bytes`, async () => {
-		// Without a cap, a run of 0x80 overflows the length to NaN and every
-		// following message is silently dropped.
 		const overlong = new Uint8Array(200).fill(0x80);
 		overlong[199] = 0x01;
 		try {
@@ -420,7 +389,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 	});
 
 	test(`unframe throws when the stream ends mid-message`, async () => {
-		// Prefix declares 5 bytes but only 2 follow.
 		const truncated = Uint8Array.of(5, 1, 2);
 		try {
 			await pipeline([
@@ -445,9 +413,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		);
 		strictEqual(frames.length, 3);
 	});
-	// *** unframe maxMessageSize defaults to 64MiB; null disables it *** //
-	// A bare length prefix (no body) is enough: the limit is checked against the
-	// declared length before any body bytes are buffered.
 	const varint = (n) => {
 		const bytes = [];
 		while (n > 0x7f) {
@@ -492,8 +457,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		);
 	});
 
-	// A prefix straddling a chunk boundary right after a message ended mid-chunk:
-	// skip() must consume only what is left of the head chunk before moving on.
 	test(`protobufLengthPrefixUnframeStream skips a straddling prefix after a mid-chunk message`, async () => {
 		const body = new Uint8Array(200).fill(0x42);
 		const chunks = [
@@ -512,8 +475,6 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		);
 	});
 
-	// Multi-byte varint prefixes (128 -> [0x80, 0x01], 16384 -> [0x80, 0x80, 0x01]):
-	// no other test frames a body over 127 bytes.
 	test(`protobufLengthPrefixFrameStream writes multi-byte varint prefixes`, async () => {
 		const bodies = [new Uint8Array(128).fill(1), new Uint8Array(16384).fill(2)];
 		const framed = await streamToArray(

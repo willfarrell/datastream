@@ -37,8 +37,6 @@ export const awsClientDefaults = {
 // capacity time to recover, while preserving the ~59sec cap (3^10).
 const BACKOFF_FLOOR_MS = 50;
 const BACKOFF_CAP_MS = 3 ** 10;
-// streamOptions is always supplied by the exported stream functions (defaulting
-// to {}), so it is never nullish here.
 export const awsBackoff = (retryCount, streamOptions) =>
 	timeout(
 		Math.min(BACKOFF_CAP_MS, Math.max(BACKOFF_FLOOR_MS, 3 ** retryCount)),
@@ -58,7 +56,6 @@ export const awsReadableStream = (command, streamOptions) => {
 	const stream = createReadableStream(command(signal), streamOptions);
 	const destroy = stream.destroy;
 	stream.destroy = function (...args) {
-		// Not after a natural end: the forwarded signal stays un-aborted.
 		if (!this.readableEnded) controller.abort();
 		return destroy.apply(this, args);
 	};
@@ -95,9 +92,6 @@ const BATCH_MAX_ENTRIES = 10;
 // binary values alike.
 const entryByteLength = (entry) => {
 	let bytes = Buffer.byteLength(entry.MessageBody ?? entry.Message ?? "");
-	// for-in: no per-entry [name, attribute] pair arrays (Object.entries) and no
-	// throwaway `{}` when there are no attributes (for-in over undefined is a
-	// no-op).
 	const attributes = entry.MessageAttributes;
 	for (const name in attributes) {
 		const attribute = attributes[name];
@@ -109,9 +103,6 @@ const entryByteLength = (entry) => {
 	return bytes;
 };
 
-// Shared SNS/SQS batch writer: flushes on count or byte limits and retries the
-// per-entry `Failed` subset (correlated by `Id`) with exponential backoff.
-// `sendEntries(entries)` issues one batch request and resolves its response.
 export const awsBatchEntriesStream = (
 	sendEntries,
 	{
@@ -133,9 +124,6 @@ export const awsBatchEntriesStream = (
 		batch = [];
 		batchBytes = 0;
 		let retryCount = 0;
-		// SenderFault marks a permanent (caller-side) failure: retrying cannot
-		// succeed, so set those aside and only back off on the retryable rest.
-		// Throwing on the first SenderFault would drop the retryable entries.
 		const permanent = [];
 		while (true) {
 			const response = await sendEntries(entries);
@@ -145,7 +133,6 @@ export const awsBatchEntriesStream = (
 			}
 			if (
 				!retryable.length ||
-				// null = retry without limit
 				retryCount >= (retryMaxCount ?? Number.POSITIVE_INFINITY)
 			) {
 				const failed = permanent.concat(retryable);
@@ -162,12 +149,8 @@ export const awsBatchEntriesStream = (
 	};
 	const write = async (chunk) => {
 		const chunkBytes = entryByteLength(chunk);
-		// Surface an oversize single entry up front (mirroring Kinesis) instead of
-		// letting the service reject the whole batch with BatchRequestTooLong.
 		if (chunkBytes > maxBatchBytes) {
 			throw new RangeError(oversizeMessage, {
-				// Reached only for an oversize entry (a non-nullish object), so
-				// reading chunk.Id directly is safe.
 				cause: { Id: chunk.Id, bytes: chunkBytes, limit: maxBatchBytes },
 			});
 		}

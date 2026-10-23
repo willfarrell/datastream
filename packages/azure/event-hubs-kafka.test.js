@@ -41,8 +41,6 @@ describe(`@datastream/azure/event-hubs-kafka (${variant})`, () => {
 		throws(() => azureEventHubsKafkaMechanism({ credential: {} }), /namespace/);
 	});
 
-	// Azure namespace naming rules: 6-50 letters, digits or hyphens, starting
-	// with a letter and ending with a letter or digit.
 	const namespaceError = {
 		name: "TypeError",
 		message:

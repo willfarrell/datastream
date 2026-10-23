@@ -9,7 +9,6 @@ import {
 } from "@datastream/json";
 import { describe, expect, test } from "tstyche";
 
-// Writable-side chunk type of the web TransformStream member.
 type Input<T> = T extends TransformStream<infer I, unknown> ? I : never;
 
 describe("JsonError", () => {

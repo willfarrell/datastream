@@ -7,8 +7,6 @@ import {
 } from "@datastream/core";
 import { transpileSchema, validateStream } from "@datastream/validate";
 
-// -- Data generators --
-
 const ITEMS = 100_000;
 const OPS = 1;
 const options = { warmup: 1, samples: 30 };
@@ -39,8 +37,6 @@ const mixedObjects = validObjects.map((obj, i) =>
 		? { id: `not_a_number_${i}`, name: obj.name, email: obj.email, age: -1 }
 		: obj,
 );
-
-// -- Tests --
 
 suite("transpileSchema", () => {
 	bench("compile schema", options, async (b) => {

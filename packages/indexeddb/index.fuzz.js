@@ -1,11 +1,8 @@
 import test from "node:test";
 import fc from "fast-check";
-// Browser-only package: node has no export condition, so fuzz the browser
-// source directly (idb touches indexedDB only when a db is opened).
 import { indexedDBReadStream, indexedDBWriteStream } from "./index.browser.js";
 
 const catchError = (input, e) => {
-	// A random `db` is not an IDBDatabase: using it fails with a TypeError.
 	if (e instanceof TypeError) {
 		return;
 	}

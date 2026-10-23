@@ -8,7 +8,6 @@ import type {
 
 export function azureQueueReceiveMessagesStream(
 	options: {
-		// QueueClient
 		client: unknown;
 		numberOfMessages?: number;
 		visibilityTimeout?: number;
@@ -21,7 +20,6 @@ export function azureQueueReceiveMessagesStream(
 
 export function azureQueueSendMessageStream(
 	options: {
-		// QueueClient
 		client: unknown;
 		[key: string]: unknown;
 	},
@@ -30,7 +28,6 @@ export function azureQueueSendMessageStream(
 
 export function azureQueueDeleteMessageStream(
 	options: {
-		// QueueClient
 		client: unknown;
 	},
 	streamOptions?: StreamOptions,

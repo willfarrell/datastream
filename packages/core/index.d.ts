@@ -1,7 +1,5 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-// Types for the node build: the platform-neutral types.d.ts plus node stream
-// variants, Buffer and backpressureGauge (needs @types/node).
 import type { Readable, Transform, Writable } from "node:stream";
 import type {
 	ReadableInput,
@@ -76,7 +74,6 @@ export function streamToBuffer(
 	options?: StreamCollectorOptions,
 ): Promise<Buffer>;
 
-// Type guards: the node build checks `instanceof` node Readable/Writable.
 export function isReadable(stream: unknown): stream is Readable;
 export function isWritable(stream: unknown): stream is Writable;
 
@@ -111,7 +108,6 @@ export function createWritableStream<T = unknown>(
 	streamOptions?: WritableStreamOptions,
 ): DatastreamWritable<T>;
 
-// Backpressure (Node.js only: the browser build does not export it)
 export function backpressureGauge(streams: Record<string, unknown>): Record<
 	string,
 	{

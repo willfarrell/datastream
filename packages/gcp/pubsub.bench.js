@@ -17,7 +17,6 @@ const messages = Array.from({ length: COUNT }, (_, i) => ({
 	attributes: { i: `${i}` },
 }));
 
-// Fake SDK objects: no I/O, so the numbers are the stream overhead only.
 const topic = {
 	publishMessage: async () => "id",
 	flush: async () => {},
@@ -47,7 +46,6 @@ suite("gcpPubSub", () => {
 		b.start();
 		for (let op = 0; op < OPS; op++) {
 			const subscription = new Subscription();
-			// highWaterMark sized to the burst (flowControl.maxMessages in real use).
 			const stream = gcpPubSubSubscribeStream(
 				{ subscription },
 				{ highWaterMark: COUNT },

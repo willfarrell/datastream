@@ -76,7 +76,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 	test(`awsS3PutObjectStream should put chunks`, async (_t) => {
 		const client = mockClient(S3Client);
 
-		// Hack to fix mock
 		const defaultClient = new S3Client();
 		client.config ??= {};
 		client.config.requestChecksumCalculation ??=
@@ -107,7 +106,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 	test(`awsS3PutObjectStream should put chunks with onProgress option`, async (_t) => {
 		const client = mockClient(S3Client);
 
-		// Hack to fix mock
 		const defaultClient = new S3Client();
 		client.config ??= {};
 		client.config.requestChecksumCalculation ??=
@@ -140,7 +138,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 	test(`awsS3PutObjectStream should put chunks with tags`, async (_t) => {
 		const client = mockClient(S3Client);
 
-		// Hack to fix mock
 		const defaultClient = new S3Client();
 		client.config ??= {};
 		client.config.requestChecksumCalculation ??=
@@ -173,7 +170,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 	test(`awsS3PutObjectStream should use custom client option`, async (_t) => {
 		const client = mockClient(S3Client);
 
-		// Hack to fix mock
 		const defaultClient = new S3Client();
 		client.config ??= {};
 		client.config.requestChecksumCalculation ??=
@@ -256,8 +252,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		});
 	});
 
-	// Both streams share one default part size, so a default checksum equals the
-	// composite checksum of a default awsS3PutObjectStream upload.
 	test(`awsS3ChecksumStream default partSize is the shared 17_179_870 bytes`, async (_t) => {
 		const input = Buffer.alloc(17_179_870 + 1, "x");
 
@@ -302,8 +296,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		);
 	});
 
-	// null means "default" for both streams (the checksum stream uses ??=), so a
-	// null partSize must not reach lib-storage, which would fall back to 5 MiB.
 	test(`awsS3PutObjectStream treats a null partSize as the shared default`, async (_t) => {
 		const client = mockClient(S3Client);
 		const defaultClient = new S3Client();
@@ -352,9 +344,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 	});
 
 	test(`awsS3ChecksumStream should emit a trailing partial part below partSize`, async (_t) => {
-		// 130 bytes at partSize 50 -> two whole parts (100) plus a 30-byte remainder
-		// the flush digests: exactly three checksums. A non-exact multiple pins the
-		// floor() part-count so it cannot round/ceil into a phantom extra part.
 		const input = "x".repeat(130);
 		const options = {
 			ChecksumAlgorithm: "SHA256",
@@ -368,9 +357,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 	});
 
 	test(`awsS3ChecksumStream should assemble parts that span multiple chunks`, async (_t) => {
-		// Four 30-byte chunks (120 bytes) at partSize 50: each whole part is filled
-		// from more than one buffered chunk, exercising the partial-chunk carry-over
-		// (a part needs 50 = 30 + 20, leaving a 10-byte tail of the second chunk).
 		const input = Array.from({ length: 4 }, () => new Uint8Array(30).fill(7));
 		const options = {
 			ChecksumAlgorithm: "SHA256",
@@ -428,9 +414,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 	});
 
 	test(`awsS3ChecksumStream should handle ArrayBuffer input`, async (_t) => {
-		// An ArrayBuffer is neither a string nor a typed array, exercising the
-		// non-string coercion. Wrapped in an array so object-mode
-		// delivery keeps it an ArrayBuffer rather than chunking it into Uint8Arrays.
 		const input = [new TextEncoder().encode("x".repeat(100)).buffer];
 		const options = {
 			ChecksumAlgorithm: "SHA256",
@@ -534,8 +517,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		deepStrictEqual(calls, 1);
 	});
 
-	// The "not found" error carries only Bucket/Key as its cause: other request
-	// params (e.g. SSECustomerKey) are secrets that must not leak into logs.
 	test(`awsS3GetObjectStream not-found error cause is only Bucket and Key`, async (_t) => {
 		const client = mockClient(S3Client);
 		awsS3SetClient(client);
@@ -557,14 +538,8 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		);
 	});
 
-	// On the node build the returned stream is a Readable; its 'error' event must
-	// tear down the SDK Body (a node Readable -> destroy()) so the socket is
-	// released. This pins the unconditional `stream.on("error", teardownBody)`
-	// wiring and the `Body.destroy()` call inside teardownBody.
 	test(`awsS3GetObjectStream tears down the Body when the stream errors`, async (_t) => {
 		let destroyed = 0;
-		// An async-iterable Body that also exposes a destroy() spy (the node SDK Body
-		// is a Readable).
 		const body = {
 			async *[Symbol.asyncIterator]() {
 				yield "chunk";
@@ -577,20 +552,15 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		awsS3SetClient(stub);
 
 		const stream = await awsS3GetObjectStream({ Bucket: "b", Key: "k" });
-		// Emit an error on the returned node Readable -> the wired teardown runs.
 		await new Promise((resolve) => {
 			stream.on("error", () => resolve());
 			stream.destroy(new Error("boom"));
 		});
-		// Allow the 'error' listener (teardownBody) to run.
 		await new Promise((resolve) => setImmediate(resolve));
 
 		deepStrictEqual(destroyed, 1);
 	});
 
-	// An abort signal that fires AFTER the stream is created must tear down the Body
-	// via the addEventListener("abort", ...) wiring. Pins `if (signal)`, the else
-	// branch, the "abort" event-name literal, and proves teardown is not run eagerly.
 	test(`awsS3GetObjectStream tears down the Body when a later abort fires`, async (_t) => {
 		let destroyed = 0;
 		const body = {
@@ -609,8 +579,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			{ Bucket: "b", Key: "k" },
 			{ signal: controller.signal },
 		);
-		// Not aborted yet: teardown must NOT have run (kills `if (signal.aborted)` ->
-		// true, which would tear down eagerly).
 		deepStrictEqual(destroyed, 0);
 
 		controller.abort();
@@ -620,17 +588,9 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		// it is idempotent). The key assertion is that it ran at all post-abort.
 		deepStrictEqual(destroyed >= 1, true);
 
-		// Cleanup so the test does not leak the open stream.
 		stream.destroy();
 	});
 
-	// Pin the EXACT addEventListener wiring for the late-abort path. A non-aborted
-	// signal whose addEventListener is recorded proves the source registers
-	// teardownBody under the "abort" event name with `{ once: true }`. The source's
-	// listener is identified by being the one whose invocation tears down the Body
-	// (the node Readable's own internal "abort" listener does not touch Body). This
-	// kills: dropping the else block (no registration), the "" event-name mutant,
-	// the `{}` options mutant, and the `{ once: false }` mutant.
 	test(`awsS3GetObjectStream registers the abort listener with the exact name and options`, async (_t) => {
 		let destroyed = 0;
 		const body = {
@@ -645,8 +605,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		awsS3SetClient(stub);
 
 		const recorded = [];
-		// A duck-typed (non-aborted) signal: createReadableStream and the source both
-		// register on it; we record every addEventListener call.
 		const signal = {
 			aborted: false,
 			addEventListener: (name, fn, options) => {
@@ -659,11 +617,8 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			{ Bucket: "b", Key: "k" },
 			{ signal },
 		);
-		// teardown must NOT have run eagerly (signal is not aborted).
 		deepStrictEqual(destroyed, 0);
 
-		// Identify the source's teardown registration: it is the recorded entry whose
-		// listener, when invoked, tears down the Body.
 		let teardownEntry;
 		for (const entry of recorded) {
 			const before = destroyed;
@@ -679,9 +634,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		stream.destroy();
 	});
 
-	// A completed read must remove its "abort" listener, otherwise a long-lived signal
-	// shared across reads accumulates one listener (pinning one Body) per call. Pins
-	// the stream "close" cleanup, its event name, and the removed listener identity.
 	test(`awsS3GetObjectStream removes its abort listener once the stream closes`, async (_t) => {
 		const stub = {
 			send: async () => ({
@@ -707,8 +659,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		deepStrictEqual(getEventListeners(controller.signal, "abort").length, 0);
 	});
 
-	// An already-aborted signal tears down the Body eagerly during creation. Pins
-	// `if (signal.aborted)` (a `false` mutant would skip the eager teardown).
 	test(`awsS3GetObjectStream tears down the Body immediately for a pre-aborted signal`, async (_t) => {
 		let destroyed = 0;
 		const body = {
@@ -728,13 +678,10 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			{ Bucket: "b", Key: "k" },
 			{ signal: controller.signal },
 		);
-		// Eager teardown happened synchronously during the call.
 		deepStrictEqual(destroyed, 1);
 		stream.destroy();
 	});
 
-	// onProgress must be wired to the upload's 'httpUploadProgress' event. Pins the
-	// `if (onProgress)` branch and the "httpUploadProgress" event-name literal.
 	test(`awsS3PutObjectStream forwards httpUploadProgress to onProgress`, async (_t) => {
 		const client = mockClient(S3Client);
 		const defaultClient = new S3Client();
@@ -777,10 +724,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		);
 	});
 
-	// pipeline() only calls stream.result() on success, so when an upstream stage
-	// fails the upload.done() promise must already carry a rejection handler;
-	// otherwise the aborted upload surfaces as an unhandled rejection (exit 1) even
-	// though the caller caught the pipeline error. result() must still reject.
 	test(`awsS3PutObjectStream upstream error does not cause an unhandled rejection`, async (_t) => {
 		const client = mockClient(S3Client);
 		const defaultClient = new S3Client();
@@ -823,9 +766,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		}
 	});
 
-	// An Upload failure with no upstream error (e.g. AccessDenied on
-	// CreateMultipartUpload) must surface the real SDK error through pipeline,
-	// not a generic AbortError/premature-close.
 	test(`awsS3PutObjectStream surfaces the SDK error from the upload`, async (_t) => {
 		const client = mockClient(S3Client);
 		const defaultClient = new S3Client();
@@ -859,8 +799,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		});
 	});
 
-	// The Upload rejection is forwarded to the returned stream itself (not just
-	// result()), so writers see the SDK error even without pipeline/result().
 	test(`awsS3PutObjectStream destroys the stream with the upload error`, async (_t) => {
 		const client = mockClient(S3Client);
 		const defaultClient = new S3Client();
@@ -887,8 +825,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		strictEqual(stream.errored, accessDenied);
 	});
 
-	// An unsupported ChecksumAlgorithm throws with an informative message (pins the
-	// `if (!algorithm)` branch and the non-empty error template).
 	test(`awsS3ChecksumStream throws for an unsupported ChecksumAlgorithm`, async (_t) => {
 		let threw;
 		try {
@@ -899,9 +835,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		deepStrictEqual(threw?.message, "Unsupported ChecksumAlgorithm: NOPE");
 	});
 
-	// Empty input -> the flush digests the empty remainder, so the checksum is the
-	// algorithm's empty-input digest (what S3 reports for a 0-byte object), not "".
-	// Pins the `checksums.length === 0` arm of the flush guard.
 	test(`awsS3ChecksumStream returns the empty-input SHA256 digest for empty input`, async (_t) => {
 		const stream = [createReadableStream([]), awsS3ChecksumStream({})];
 		const result = await pipeline(stream);
@@ -923,9 +856,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		deepStrictEqual(result.s3.checksum, "2jmj7l5rSw0yVb/vlWAYkK/YBwk=");
 	});
 
-	// Single-part input -> exactly one part checksum and the result checksum is that
-	// single part's base64 (NOT the multi-part composite). Pins `checksums.length > 1`
-	// (false branch) and `checksums.length === 1`.
 	test(`awsS3ChecksumStream single-part checksum equals the only part`, async (_t) => {
 		const input = "x".repeat(16_384);
 		const stream = [
@@ -934,13 +864,9 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		];
 		const result = await pipeline(stream);
 		deepStrictEqual(result.s3.checksums.length, 1);
-		// For a single part, checksum === the lone part checksum (no `-N` suffix).
 		deepStrictEqual(result.s3.checksum, result.s3.checksums[0]);
 	});
 
-	// Multi-part input -> composite checksum carries the `-<count>` suffix (kills the
-	// empty-string-literal mutant on the composite template) and differs from any
-	// single part. Also re-calling result() returns an equal value.
 	test(`awsS3ChecksumStream multi-part composite checksum is suffixed and cached`, async (_t) => {
 		const input = "x".repeat(100);
 		const checksumStream = awsS3ChecksumStream({
@@ -951,7 +877,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 
 		const result1 = await checksumStream.result();
 		deepStrictEqual(result1.value.checksums.length, 2);
-		// Pin the exact composite and per-part digests.
 		deepStrictEqual(result1.value.checksums, [
 			"d88SBg1HGD6oxANF5ziefgXLB1PKs3Sl50+TKYFbTLU=",
 			"d88SBg1HGD6oxANF5ziefgXLB1PKs3Sl50+TKYFbTLU=",
@@ -960,7 +885,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			result1.value.checksum,
 			"//kFcRsCAXRHbjZsPUmCkRBx+J1hJiSiqKAF/q7oMi0=-2",
 		);
-		// Composite form: "<base64>-<count>".
 		deepStrictEqual(result1.value.checksum.endsWith("-2"), true);
 
 		const result2 = await checksumStream.result();
@@ -968,8 +892,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		deepStrictEqual(result2.value.checksum, result1.value.checksum);
 	});
 
-	// Input exactly equal to partSize stays a single part (the trailing partial is
-	// digested by the flush, not split off).
 	test(`awsS3ChecksumStream keeps input exactly equal to partSize as one part`, async (_t) => {
 		const input = "x".repeat(50);
 		const stream = [
@@ -980,12 +902,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		deepStrictEqual(result.s3.checksums.length, 1);
 	});
 
-	// Streaming part boundaries across MULTIPLE chunks pin the per-chunk peel loop:
-	// each 60-byte chunk completes exactly one 50-byte part and carries a sub-part
-	// remainder forward, so the stream yields parts [50, 50, 20]. This pins
-	// `Math.floor(pendingLen / partSize)` (dropping the floor over-peels the
-	// carried remainder into extra short parts -> 4 parts), the `part < wholeParts`
-	// loop bound (a `<=` over-iterates) and the carried `rest` remainder.
 	test(`awsS3ChecksumStream peels whole parts across chunks and carries the remainder`, async (_t) => {
 		const stream = [
 			createReadableStream(["x".repeat(60), "x".repeat(60)]),
@@ -993,8 +909,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		];
 		const result = await pipeline(stream);
 		deepStrictEqual(result.s3.checksums.length, 3);
-		// Two complete 50-byte parts (identical bytes -> identical digest) and a
-		// trailing 20-byte part.
 		deepStrictEqual(result.s3.checksums, [
 			"d88SBg1HGD6oxANF5ziefgXLB1PKs3Sl50+TKYFbTLU=",
 			"d88SBg1HGD6oxANF5ziefgXLB1PKs3Sl50+TKYFbTLU=",
@@ -1006,7 +920,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		);
 	});
 
-	// *** awsS3ListObjectsStream *** //
 	test(`awsS3ListObjectsStream yields Contents across ContinuationToken pages`, async (_t) => {
 		const pages = [
 			{
@@ -1016,8 +929,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			},
 			{ Contents: [{ Key: "c" }], IsTruncated: false },
 		];
-		// Snapshot each request at send time: the paging loop reuses one options
-		// object, so a recorded reference would only show its final state.
 		const inputs = [];
 		awsS3SetClient({
 			send: async (command) => {
@@ -1039,7 +950,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			{ Bucket: "bucket", Prefix: "p/" },
 			{ Bucket: "bucket", Prefix: "p/", ContinuationToken: "t1" },
 		]);
-		// The token is tracked on a copy, never written back to the caller.
 		deepStrictEqual(options, optionsCopy);
 	});
 
@@ -1097,8 +1007,6 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		strictEqual(sent.aborted, true);
 	});
 
-	// Destroying the stream mid-request aborts the in-flight send: a generator's
-	// return() would otherwise wait for the next page.
 	test(`awsS3ListObjectsStream destroy aborts the in-flight request`, async (_t) => {
 		let sent;
 		awsS3SetClient({
@@ -1120,13 +1028,10 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		strictEqual(sent.aborted, true);
 	});
 
-	// Named exports are canonical; a default export must not come back.
 	test(`s3 has no default export`, (_t) => {
 		strictEqual(Object.hasOwn(awsModule, "default"), false);
 	});
 
-	// The teardownBody try/catch must swallow an error from Body.destroy() without
-	// re-throwing. Pins the empty `catch {}`.
 	test(`awsS3GetObjectStream teardownBody swallows errors from destroy`, async (_t) => {
 		const body = {
 			async *[Symbol.asyncIterator]() {
@@ -1140,13 +1045,10 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		awsS3SetClient(stub);
 
 		const stream = await awsS3GetObjectStream({ Bucket: "b", Key: "k" });
-		// Emit an error: teardownBody runs and both try/catch blocks execute. Neither
-		// throw may propagate (a rethrow mutant would cause an unhandled rejection here).
 		await new Promise((resolve) => {
 			stream.on("error", () => resolve());
 			stream.destroy(new Error("boom"));
 		});
 		await new Promise((resolve) => setImmediate(resolve));
-		// If we reach here, the errors were swallowed correctly.
 	});
 });

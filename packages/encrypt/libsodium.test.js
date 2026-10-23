@@ -5,11 +5,6 @@ import { isWritable } from "@datastream/core";
 import { variant } from "../variant.js";
 
 describe(`@datastream/encrypt/libsodium (${variant})`, async () => {
-	// libsodium-wrappers is an optional peer dependency of the browser build. Swap
-	// it, for this process only (loader hooks are per test file), for a fake whose
-	// `ready` thenable fails on demand and which has no default export - pinning
-	// both the "install it" error and the namespace fallback without uninstalling
-	// anything or touching the real-libsodium tests in index.test.js.
 	register(
 		`data:text/javascript,${encodeURIComponent(`
 			export async function resolve(specifier, context, nextResolve) {

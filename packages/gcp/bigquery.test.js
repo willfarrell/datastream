@@ -32,8 +32,6 @@ const writeAll = async (stream, chunks) => {
 	}
 };
 
-// *** Query ***
-
 // Mirrors @google-cloud/paginator ResourceStream (what createQueryStream
 // returns): an object-mode Transform whose _read requests a page, pushes its
 // rows and, while push() keeps returning true and end() has not been called,
@@ -73,8 +71,6 @@ class FakeResourceStream extends Transform {
 	}
 }
 
-// pages[i] = rows of page i; a page answered with `null` stays in flight until
-// the test calls respond(). The last page has no next page token.
 const fakeBigQuery = (pages) => {
 	const bigquery = {
 		calls: [],
@@ -145,8 +141,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		);
 	});
 
-	// Destroying the SDK stream alone stops paging only when the in-flight page
-	// has rows (push() returns false); end() also stops it after an empty page.
 	test(`gcpBigQueryQueryStream destroy stops paging`, async () => {
 		const bigquery = fakeBigQuery([
 			[{ id: 1 }],
@@ -185,8 +179,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		strictEqual(bigquery.stream.ends, 1);
 	});
 
-	// After a natural end the abort listener is gone: a later abort of a
-	// long-lived signal does not touch the finished SDK stream.
 	test(`gcpBigQueryQueryStream releases the abort listener at the end`, async () => {
 		const bigquery = fakeBigQuery([[{ id: 1 }]]);
 		const controller = new AbortController();
@@ -210,8 +202,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		await rejects(streamToArray(stream), { name: "AbortError" });
 		strictEqual(bigquery.calls.length, 0);
 	});
-
-	// *** Load ***
 
 	// Mirrors Table#createWriteStream: bytes go to a multipart upload; only once
 	// the body has ended does the upload response create the job ('job'); the
@@ -339,12 +329,9 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		const error = new Error("Provided Schema does not match Table");
 		table.job.emit("error", error);
 		await rejects(result, error);
-		// Already DONE: nothing to cancel.
 		strictEqual(table.job.cancels, 0);
 	});
 
-	// An upload failure destroys the SDK stream while nothing is being
-	// written: the datastream writable must still error, not hang.
 	test(`gcpBigQueryLoadStream errors when the upload fails mid-stream`, async () => {
 		const table = fakeTable();
 		const stream = gcpBigQueryLoadStream({ table });
@@ -385,8 +372,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		deepStrictEqual(errors, [error]);
 	});
 
-	// Before end() the multipart upload body never completes, so BigQuery never
-	// creates the job.
 	test(`gcpBigQueryLoadStream abort before end creates no job`, async () => {
 		const table = fakeTable();
 		const controller = new AbortController();
@@ -438,7 +423,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		strictEqual(table.job.listenerCount("complete"), 1);
 		const gate = Promise.withResolvers();
 		table.job.cancelGate = gate.promise;
-		// A failed cancel still tears the upload down.
 		table.job.cancelError = new Error("404 Not found");
 		let rejected = false;
 		result.catch(() => {
@@ -446,18 +430,14 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		});
 		controller.abort();
 		await settle();
-		// Teardown waits for the cancel request.
 		strictEqual(table.job.cancels, 1);
 		strictEqual(rejected, false);
 		gate.resolve();
 		await rejects(result, { name: "AbortError" });
 		strictEqual(table.sdk.destroyed, true);
-		// Stops the SDK polling (Operation polls while 'complete' listeners exist).
 		strictEqual(table.job.listenerCount("complete"), 0);
 	});
 
-	// Aborted after end() but before the upload response: the job is created
-	// anyway, so it is cancelled as soon as it arrives.
 	test(`gcpBigQueryLoadStream cancels a job created after the abort`, async () => {
 		const table = fakeTable({ autoRespond: false });
 		table.job.cancelError = new Error("404 Not found");
@@ -476,8 +456,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		strictEqual(table.job.cancels, 1);
 		strictEqual(table.job.listenerCount("complete"), 0);
 	});
-
-	// *** Insert ***
 
 	class PartialFailureError extends Error {
 		constructor(errors) {
@@ -553,8 +531,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		strictEqual(table.calls.length, 0);
 	});
 
-	// Each row counts its JSON bytes plus 64 bytes of insertAll envelope
-	// ({"insertId":"<uuid>","json":...}). '{"a":"x"}' = 9 + 64 = 73 bytes.
 	test(`gcpBigQueryInsertStream batches by maxBatchBytes`, async () => {
 		const table = fakeInsertTable();
 		await pipeline([
@@ -567,7 +543,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		);
 	});
 
-	// Default request budget: 9 MiB, under the 10 MB insertAll request limit.
 	test(`gcpBigQueryInsertStream default maxBatchBytes is 9 MiB`, async () => {
 		const table = fakeInsertTable();
 		const row = { a: "x".repeat(99_928) };
@@ -575,7 +550,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 			createReadableStream(Array.from({ length: 95 }, () => row)),
 			gcpBigQueryInsertStream({ table }),
 		]);
-		// {"a":"x…"} = 99_936 JSON bytes + 64 = 100_000; floor(9 MiB / 100_000) = 94
 		deepStrictEqual(
 			table.calls.map(([rows]) => rows.length),
 			[94, 1],
@@ -587,7 +561,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		const stream = gcpBigQueryInsertStream({ table, maxBatchBytes: 73 });
 		await write(stream, { a: "x" });
 		const error = errorOf(stream);
-		// UTF-8 bytes, not characters: 'é' is 2 bytes, so 74 > 73.
 		stream.write({ a: "é" });
 		const e = await error;
 		strictEqual(e.name, "RangeError");
@@ -597,8 +570,6 @@ describe(`@datastream/gcp/bigquery (${variant})`, () => {
 		strictEqual(table.calls.length, 0);
 	});
 
-	// PartialFailureError: err.errors[].row are the failed rows; the others in
-	// that request were inserted. failedMessages = every row not inserted.
 	test(`gcpBigQueryInsertStream surfaces partial failures`, async () => {
 		const failure = new PartialFailureError([
 			{ row: { id: 1 }, errors: [{ reason: "invalid", message: "bad" }] },

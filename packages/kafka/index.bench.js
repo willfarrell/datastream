@@ -11,10 +11,6 @@ import {
 const OPS = 5;
 const options = { warmup: 1, samples: 30 };
 
-// ---------------------------------------------------------------------------
-// Fake Kafka factory (trimmed — no spy counters needed for perf)
-// ---------------------------------------------------------------------------
-
 const makeFakeKafka = ({ run } = {}) => {
 	const producerMock = {
 		connect: async () => {},
@@ -46,10 +42,6 @@ const makeFakeKafka = ({ run } = {}) => {
 
 	return { Kafka, producerMock, consumerMock };
 };
-
-// ---------------------------------------------------------------------------
-// perf: kafkaProduceStream
-// ---------------------------------------------------------------------------
 
 suite("kafkaProduceStream", () => {
 	const MSG_COUNT = 10_000;
@@ -147,10 +139,6 @@ suite("kafkaProduceStream", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// perf: kafkaConsumeStream
-// ---------------------------------------------------------------------------
-
 suite("kafkaConsumeStream", () => {
 	const MSG_COUNT = 10_000;
 
@@ -179,7 +167,6 @@ suite("kafkaConsumeStream", () => {
 				{ highWaterMark: MSG_COUNT },
 			);
 
-			// Drive messages then stop
 			const delivery = (async () => {
 				for (let i = 0; i < MSG_COUNT; i++) {
 					await eachMessageFn({

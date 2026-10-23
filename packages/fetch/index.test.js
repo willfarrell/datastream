@@ -159,7 +159,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		"https://example.org/429": () =>
 			new Response("", { status: 429, statusText: "Too Many Requests" }),
 	};
-	// global override
 	global.fetch = (url, _request) => {
 		const mockResponse = mockResponses[url]();
 		if (mockResponse) {
@@ -168,8 +167,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		throw new Error("mock missing");
 	};
 	const suiteFetch = global.fetch;
-	// Every test starts from the suite mock and the built-in defaults, so no
-	// test depends on (or is broken by) state a previous test left behind.
 	afterEach(() => {
 		global.fetch = suiteFetch;
 		fetchSetDefaults({
@@ -190,10 +187,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		});
 	});
 
-	// *** built-in defaults (literal, before any pollution) *** //
-	// MUST be the first test: afterEach re-applies these values through
-	// fetchSetDefaults, so only here are the literal defaults (method, Accept,
-	// Accept-Encoding) observed. Kills the StringLiteral mutants emptying them.
 	test(`built-in default method and headers are GET, application/json and br, gzip, deflate`, async (_t) => {
 		const originalFetch = global.fetch;
 		let capturedHeaders;
@@ -207,7 +200,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			});
 		};
 		try {
-			// Do NOT touch Accept anywhere: rely entirely on the literal default.
 			const stream = fetchResponseStream([
 				{ url: "https://example.org/builtin-accept", dataPath: "" },
 			]);
@@ -220,7 +212,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** fetchResponseStream *** //
 	test(`fetchResponseStream should fetch csv`, async (_t) => {
 		fetchSetDefaults({ headers: { Accept: "text/csv" } });
 		const config = [{ url: "https://example.org/csv" }];
@@ -257,7 +248,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 					qs: { b: "x y" },
 				}),
 			);
-			// without qs the url is left untouched
 			await streamToArray(
 				fetchResponseStream({ url: "https://example.org/q?a=1" }),
 			);
@@ -294,12 +284,9 @@ describe(`@datastream/fetch (${variant})`, () => {
 		});
 
 	test(`fetchResponseStream concurrency fetches array items and preserves order`, async (_t) => {
-		// rateLimit 0: pacing is covered by its own test (and a pacing
-		// regression then fails fast instead of waiting 1000 / 0.01 ms).
 		fetchSetDefaults({ rateLimit: 0 });
 		fetchSetDefaults({ dataPath: "", headers: { Accept: "application/json" } });
 		const originalFetch = global.fetch;
-		// item 1 resolves SLOWER than 2/3 — output must still be [1,2,3], and forces a refill
 		global.fetch = async (url) => {
 			const v = Number(new URL(url).searchParams.get("v"));
 			if (v === 1) await new Promise((r) => setTimeout(r, 25));
@@ -324,8 +311,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchResponseStream concurrency paces request starts by rateLimit`, async (t) => {
-		// Freeze the clock and record each scheduled wait instead of measuring
-		// wall-clock fetch() times, which a busy event loop can bunch together.
 		const now = Date.now();
 		t.mock.method(Date, "now", () => now);
 		const realSetTimeout = globalThis.setTimeout;
@@ -357,8 +342,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 				"https://example.org/p2",
 				"https://example.org/p3",
 			]);
-			// Every start is spaced from the previous one by the previous item's
-			// rateLimit, including the refill: starts at +0ms, +30ms, +80ms.
 			deepStrictEqual(waits, [0, 30, 80]);
 		} finally {
 			global.fetch = originalFetch;
@@ -367,18 +350,16 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchResponseStream concurrency surfaces an item error and settles the window`, async (_t) => {
-		// rateLimit 0: pacing is covered by its own test (and a pacing
-		// regression then fails fast instead of waiting 1000 / 0.01 ms).
 		fetchSetDefaults({ rateLimit: 0 });
 		fetchSetDefaults({ dataPath: "" });
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
 			if (url.includes("bad"))
 				return new Response("nope", {
-					status: 404, // not retried (a GET 5xx would be)
+					status: 404,
 					headers: new Headers({ "Content-Type": "application/json" }),
 				});
-			await new Promise((r) => setTimeout(r, 30)); // still in flight when the error hits
+			await new Promise((r) => setTimeout(r, 30));
 			return jsonResponse({ ok: 1 });
 		};
 		try {
@@ -409,10 +390,10 @@ describe(`@datastream/fetch (${variant})`, () => {
 		global.fetch = async (url) => {
 			if (url.includes("bad"))
 				return new Response("nope", {
-					status: 404, // not retried (a GET 5xx would be)
+					status: 404,
 					headers: new Headers({ "Content-Type": "application/json" }),
 				});
-			await new Promise((r) => setTimeout(r, 30)); // head still in flight when the error hits
+			await new Promise((r) => setTimeout(r, 30));
 			return jsonResponse({ ok: 1 });
 		};
 		try {
@@ -548,7 +529,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchResponseStream should retry on 429 status`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff, no real wait
+		t.mock.method(Math, "random", () => 0);
 		fetchSetDefaults({ dataPath: "", headers: { Accept: "application/json" } });
 		let callCount = 0;
 		const originalFetch = global.fetch;
@@ -611,10 +592,8 @@ describe(`@datastream/fetch (${variant})`, () => {
 			await streamToArray(stream);
 			throw new Error("Should have thrown");
 		} catch (error) {
-			// message is redacted
 			ok(!error.message.includes("token=abc123"), "message leaked query token");
 			ok(!error.message.includes("user:pass"), "message leaked credentials");
-			// cause.url MUST be redacted too
 			ok(
 				!String(error.cause.url).includes("token=abc123"),
 				`cause.url leaked query token: ${error.cause.url}`,
@@ -638,7 +617,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchRateLimit 429 max-retries error cause must not leak the unredacted URL`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff, no real wait
+		t.mock.method(Math, "random", () => 0);
 		const originalFetch = global.fetch;
 		const secretUrl = "https://example.org/always-429?token=secret-429";
 		global.fetch = () =>
@@ -675,14 +654,11 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** SSRF: redirect handling *** //
 	test(`fetchResponseStream should block cross-origin redirects (SSRF)`, async (_t) => {
 		const originalFetch = global.fetch;
 		let metadataFetched = false;
 		global.fetch = async (url, init) => {
 			if (url === "https://example.org/redirect-ssrf") {
-				// Simulate a server 302-redirecting to a cloud metadata endpoint.
-				// With redirect:"manual" the platform returns the 3xx unfollowed.
 				deepStrictEqual(init.redirect, "manual");
 				return new Response("", {
 					status: 302,
@@ -796,8 +772,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// Browsers answer redirect:"manual" with an opaque redirect (status 0, no
-	// Location), so the redirect is followed and its final url checked instead.
 	const opaqueRedirect = () => ({
 		type: "opaqueredirect",
 		status: 0,
@@ -842,7 +816,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 				}),
 			);
 			deepStrictEqual(output, [1, 2]);
-			// the next page resolves against where the redirect ended up
 			deepStrictEqual(calls, [
 				["https://example.org/a/start", "manual"],
 				["https://example.org/a/start", "follow"],
@@ -858,8 +831,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		let cancelled = false;
 		global.fetch = async (_url, init) => {
 			if (init.redirect === "manual") return opaqueRedirect();
-			// A finite body, so a regression that lets the redirect through ends
-			// the stream (and fails the assertions) instead of hanging on a read.
 			const body = new ReadableStream({
 				start(controller) {
 					controller.enqueue(new Uint8Array([1]));
@@ -900,8 +871,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// Re-issuing a POST with redirect:"follow" would send the body twice and
-	// cross-origin hops would already have happened, so only GET/HEAD retry.
 	test(`fetchRateLimit rejects an opaque (browser) redirect for a non-GET/HEAD request`, async (_t) => {
 		const originalFetch = global.fetch;
 		const calls = [];
@@ -968,8 +937,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// Fetch spec "HTTP-redirect fetch": 303 (except HEAD), and 301/302 after a
-	// POST, re-request with GET and no body; 307/308 keep the method and body.
 	test(`fetchRateLimit switches to GET without a body on 303, and on 301/302 after POST`, async (_t) => {
 		const originalFetch = global.fetch;
 		const calls = [];
@@ -1014,7 +981,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// A 429 retry after the redirect re-uses options, so it must stay GET too.
 	test(`fetchRateLimit keeps GET without a body when retrying a 303 target`, async (_t) => {
 		const originalFetch = global.fetch;
 		const calls = [];
@@ -1061,8 +1027,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		global.fetch = async (url, init) => {
 			if (url === "https://example.org/redirect-optin") {
 				sawFollow = init.redirect === "follow";
-				// With redirect:"follow" the platform resolves the redirect itself,
-				// so the mock just returns the final response.
 				return new Response(JSON.stringify({ ok: true }), {
 					status: 200,
 					headers: new Headers({ "Content-Type": "application/json" }),
@@ -1087,7 +1051,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** fetchWritableStream *** //
 	test(`fetchWritableStream should create writable stream for upload`, async (_t) => {
 		const originalFetch = global.fetch;
 
@@ -1142,9 +1105,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		});
 
 		global.fetch = async (_url, options) => {
-			// Drain the duplex request body to completion in the background.
-			// If end-of-body is never signaled, this never resolves and the
-			// test times out.
 			(async () => {
 				const received = [];
 				for await (const chunk of options.body) {
@@ -1164,8 +1124,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		});
 
 		await pipeline([createReadableStream(["alpha", "beta"]), stream]);
-		// end() waited for the response (checked first: if end-of-body were
-		// never signalled, awaiting bodyDone below would hang instead of fail)
 		strictEqual(stream.result().value.status, 200);
 
 		const received = await bodyDone;
@@ -1178,7 +1136,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		timeout: 2000,
 	}, async (_t) => {
 		const originalFetch = global.fetch;
-		// Like a server that reads the full request body before responding.
 		global.fetch = async (_url, options) => {
 			const received = [];
 			for await (const chunk of options.body) {
@@ -1228,8 +1185,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// An early rejection (e.g. an immediate 401) must surface on the next write
-	// instead of the unread request body filling up to its queue limit.
 	test(`fetchWritableStream surfaces an early fetch error on the next write`, async (_t) => {
 		const originalFetch = global.fetch;
 		let requestBody;
@@ -1257,8 +1212,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 				error?.message,
 				"fetch 401 PUT https://example.org/upload-401",
 			);
-			// nothing was queued on the abandoned request body: a read would
-			// otherwise resolve immediately with the queued chunk
 			const read = requestBody.getReader().read();
 			strictEqual(
 				await Promise.race([
@@ -1272,7 +1225,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// After a clean end the body belongs to fetch until it has read it all.
 	test(`fetchWritableStream leaves the request body readable after a normal end`, async (_t) => {
 		const originalFetch = global.fetch;
 		let requestBody;
@@ -1286,8 +1238,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 				method: "PUT",
 				rateLimit: 0,
 			});
-			// More chunks than the body's queue holds: once the response is in,
-			// writes no longer wait for fetch to read them.
 			await pipeline([createReadableStream(["a", "b", "c"]), stream]);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			strictEqual(stream.result().value.status, 200);
@@ -1299,9 +1249,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// A fetch mock that, like a real upload, reads the request body and only
-	// settles when its signal aborts. `bodyRead` resolves to "ended" on a clean
-	// end of body, or to the error that stopped the read.
 	const pendingUpload = () => {
 		const upload = {};
 		upload.fetch = (_url, init) => {
@@ -1321,8 +1268,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		};
 		return upload;
 	};
-	// The body read's outcome, or "pending" if it is still open a macrotask
-	// later (a body left open would otherwise hang the test).
 	const outcome = (promise) =>
 		Promise.race([
 			promise,
@@ -1405,10 +1350,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		strictEqual(init.signal.aborted, false);
 	});
 
-	// *** fetchWritableStream flow control *** //
-	// A slow server must slow the writer down, not overflow a queue: the upload
-	// is far larger than the old 1024-chunk push limit, and the writer never
-	// gets more than a few chunks ahead of what the server has read.
 	test(`fetchWritableStream applies backpressure to a slow server`, {
 		timeout: 10000,
 	}, async (_t) => {
@@ -1443,7 +1384,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 	test(`fetchWritableStream wakes a write waiting on the body when the request fails`, {
 		timeout: 2000,
 	}, async (_t) => {
-		// Never reads the body, then fails: the waiting write must throw.
 		global.fetch = () =>
 			new Promise((resolve) => {
 				setTimeout(() => resolve(new Response("", { status: 401 })), 10);
@@ -1482,7 +1422,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		});
 		await pipeline([createReadableStream(["a", "b", "c"]), stream]);
 		strictEqual(stream.result().value.status, 200);
-		// still cancelled (closed), not errored by a late enqueue/close
 		deepStrictEqual(await requestBody.getReader().read(), {
 			done: true,
 			value: undefined,
@@ -1493,7 +1432,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		timeout: 2000,
 	}, async (_t) => {
 		const upload = {};
-		// Never reads the body; settles only when its signal aborts.
 		global.fetch = (_url, init) => {
 			upload.init = init;
 			return new Promise((_resolve, reject) => {
@@ -1523,9 +1461,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		strictEqual(upload.init.signal.aborted, true);
 	});
 
-	// *** fetchWritableStream: when a single write settles *** //
-	// Writes go straight to the writable (no pipeline read-ahead), so a test
-	// sees exactly which write is still waiting for room in the request body.
 	const writerOf = (stream) => {
 		if (variant === "browser") {
 			const writer = stream.getWriter();
@@ -1546,7 +1481,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			},
 		};
 	};
-	// "resolved", the rejection reason, or "pending" a macrotask later.
 	const settled = (promise) =>
 		Promise.race([
 			promise.then(
@@ -1555,7 +1489,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			),
 			new Promise((resolve) => setTimeout(() => resolve("pending"), 10)),
 		]);
-	// A request that never reads its body and settles only when the test says.
 	const heldUpload = async (streamOptions) => {
 		const upload = {};
 		upload.response = new Promise((resolve, reject) => {
@@ -1571,7 +1504,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			streamOptions,
 		);
 		Object.assign(upload, writerOf(upload.stream));
-		// fetch is called once the (zero) rate limit wait has passed
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		return upload;
 	};
@@ -1590,7 +1522,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		const reader = upload.init.body.getReader();
 		deepStrictEqual(await reader.read(), { done: false, value: "a" });
 		strictEqual(await settled(write), "resolved");
-		// a write woken by a read did not fail, so tearing down still aborts
 		const reason = new Error("stop");
 		await upload.abort(reason);
 		strictEqual(upload.init.signal.reason, reason);
@@ -1630,7 +1561,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		notStrictEqual(await settled(write), "pending");
 	});
 
-	// *** streamed request bodies are never replayed *** //
 	test(`fetchWritableStream does not retry a 429 with a streamed body`, async (_t) => {
 		let calls = 0;
 		global.fetch = async () => {
@@ -1699,7 +1629,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 
 	// Safari's ReadableStream has getReader() but is not async iterable.
 	test(`fetchRateLimit does not replay a ReadableStream body without async iteration`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // a replay would retry at once
+		t.mock.method(Math, "random", () => 0);
 		let calls = 0;
 		global.fetch = async () => {
 			calls++;
@@ -1779,9 +1709,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		deepStrictEqual(bodies, ["payload", "payload", "payload"]);
 	});
 
-	// *** concurrency: siblings are cancelled, not awaited to completion *** //
-	// A body that never ends unless its request signal aborts (as a real fetch
-	// body errors on abort); without the shared abort the test would time out.
 	const endlessResponse = (init, aborted) =>
 		new Response(
 			new ReadableStream({
@@ -1803,7 +1730,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 		global.fetch = async (url, init) => {
 			if (url === "https://example.org/fail") {
 				await new Promise((resolve) => setTimeout(resolve, 10));
-				return new Response("no", { status: 404 }); // not retried
+				return new Response("no", { status: 404 });
 			}
 			return endlessResponse(init, aborted);
 		};
@@ -1833,10 +1760,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 		});
 		global.fetch = async (url, init) => {
 			if (url === "https://example.org/quick") {
-				// Respond once the sibling is in flight.
 				await started;
-				// More chunks than the stream reads ahead, so the generator is
-				// suspended at a yield (not awaiting a sibling) when cancelled.
 				const chunks = Array.from({ length: 64 }, () => new Uint8Array(1));
 				return new Response(
 					new ReadableStream({
@@ -1890,7 +1814,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchRateLimit should delay between configs within one stream`, async (t) => {
-		// Frozen clock + recorded waits instead of measuring wall-clock gaps.
 		const now = Date.now();
 		t.mock.method(Date, "now", () => now);
 		const realSetTimeout = globalThis.setTimeout;
@@ -1907,8 +1830,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 				headers: new Headers({ "Content-Type": "application/json" }),
 			});
 		};
-		// A single config array of >=2 entries so the in-generator
-		// rateLimitTimestamp carries over between the two requests.
 		const config = [
 			{ url: "https://example.org/test1", rateLimit: 0.1, dataPath: "" },
 			{ url: "https://example.org/test2", rateLimit: 0.1, dataPath: "" },
@@ -1918,7 +1839,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			"https://example.org/test1",
 			"https://example.org/test2",
 		]);
-		// rateLimit 0.1 => the second request waits 100ms, the first not at all.
 		deepStrictEqual(waits, [100]);
 	});
 
@@ -1931,7 +1851,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 				headers: new Headers({ "Content-Type": "application/json" }),
 			});
 		try {
-			// Direct call with no rateLimit in options: timestamp must NOT be NaN.
 			const options = { url: "https://example.org/direct-rl" };
 			await fetchRateLimit(options);
 			ok(
@@ -1975,7 +1894,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		const config = {
 			url: "https://example.org/partial-offset",
 			offsetParam: "$offset",
-			// offsetAmount intentionally omitted → paginateUsingQuery returns undefined
 		};
 		const stream = fetchResponseStream(config);
 		const output = await streamToArray(stream);
@@ -2020,9 +1938,8 @@ describe(`@datastream/fetch (${variant})`, () => {
 		deepStrictEqual(output, [{ id: 1 }]);
 	});
 
-	// *** fetchRateLimit 429 max retry regression *** //
 	test(`fetchRateLimit should throw after max retries on persistent 429`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff, no real wait
+		t.mock.method(Math, "random", () => 0);
 		const originalFetch = global.fetch;
 		let callCount = 0;
 		global.fetch = () => {
@@ -2059,7 +1976,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** JSON pagination cleanup on downstream error *** //
 	test(`fetchResponseStream should stop JSON pagination when consumer errors`, async (_t) => {
 		const originalFetch = global.fetch;
 		let page2Fetched = false;
@@ -2098,8 +2014,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			throw new Error("Should have thrown");
 		} catch (e) {
 			ok(e.message.includes("downstream boom"));
-			// On error, the JSON generator must be returned so pagination stops;
-			// page 2 must never be fetched.
 			strictEqual(page2Fetched, false);
 		} finally {
 			global.fetch = originalFetch;
@@ -2107,20 +2021,10 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** Binary branch cleanup on downstream error ***
-	// When the response is NON-JSON, fetchUnknown wraps the raw ReadableStream
-	// (response.body) in drainResponse, whose catch block awaits body.cancel() so a
-	// downstream consumer error releases the socket and still propagates as the
-	// original error (a mutant emptying that catch would swallow it).
 	test(`fetchResponseStream binary branch cleanup on read error preserves original error`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
 			if (url === "https://example.org/binary-cancel") {
-				// text/csv → non-JSON → binary branch: fetchGenerator iterates
-				// response.body directly. We install a body that HAS .cancel()
-				// (resolving cleanly) but NO .return(), and whose async iterator
-				// throws — so the catch runs, response?.cancel?.() succeeds, and we
-				// reach response?.return?.() with response lacking .return.
 				const r = new Response("ignored", {
 					status: 200,
 					headers: new Headers({ "Content-Type": "text/csv" }),
@@ -2151,9 +2055,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			await streamToArray(stream);
 			throw new Error("Should have thrown");
 		} catch (e) {
-			// Original code: response?.return?.() no-ops (stream lacks .return), so the
-			// ORIGINAL read error surfaces. Mutant `response?.return()` calls a
-			// non-function and throws "response.return is not a function", masking it.
 			ok(
 				e.message.includes("binary read boom"),
 				`expected original read error, got: ${e.message}`,
@@ -2168,9 +2069,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** No response body (204, HEAD) ***
-	// response.body is null, whatever the Content-Type, so there is nothing to
-	// stream or parse: the request yields no chunks instead of throwing.
 	test(`fetchResponseStream yields nothing for a response without a body`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) =>
@@ -2197,7 +2095,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** SSRF protection: same-origin pagination *** //
 	test(`fetchResponseStream should reject Link header with cross-origin URL`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
@@ -2325,8 +2222,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchResponseStream should allow same-origin pagination`, async (_t) => {
-		// Existing Link header tests (json-obj/2 → json-obj/3) already verify this,
-		// but adding an explicit test for clarity.
 		fetchSetDefaults({ dataPath: "", headers: { Accept: "application/json" } });
 		const config = [{ url: "https://example.org/json-obj/2" }];
 		const stream = fetchResponseStream(config);
@@ -2338,12 +2233,10 @@ describe(`@datastream/fetch (${variant})`, () => {
 		]);
 	});
 
-	// Named exports are canonical; a default export must not come back.
 	test(`fetch has no default export`, (_t) => {
 		strictEqual(Object.hasOwn(fetchModule, "default"), false);
 	});
 
-	// *** validatePaginationUrl: invalid URL catch block and error message *** //
 	test(`fetchResponseStream should throw with message for invalid pagination URL in Link header`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
@@ -2352,7 +2245,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 					status: 200,
 					headers: new Headers({
 						"Content-Type": "application/json",
-						// unparseable even relative to the current url
 						Link: '<https://[bad?token=secret>; rel="next"',
 					}),
 				});
@@ -2367,14 +2259,12 @@ describe(`@datastream/fetch (${variant})`, () => {
 			await streamToArray(stream);
 			throw new Error("Should have thrown");
 		} catch (e) {
-			// the raw value may carry secrets, so it is redacted
 			strictEqual(e.message, "Invalid pagination URL");
 		} finally {
 			global.fetch = originalFetch;
 		}
 	});
 
-	// *** redactUrl: username/password redaction uses [REDACTED] not empty string *** //
 	test(`fetchResponseStream error cause.url contains [REDACTED] not empty credentials`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () =>
@@ -2406,7 +2296,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** defaults headers: Accept and Accept-Encoding must not be empty *** //
 	test(`default headers include non-empty Accept and Accept-Encoding`, async (_t) => {
 		const originalFetch = global.fetch;
 		let capturedHeaders;
@@ -2430,7 +2319,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** mergeOptions: headers must be merged object, not {} *** //
 	test(`fetchSetDefaults merges headers correctly and preserves defaults`, async (_t) => {
 		const originalFetch = global.fetch;
 		let capturedHeaders;
@@ -2458,7 +2346,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** duplex: "half" not empty string *** //
 	test(`fetchWritableStream sends duplex:"half" not empty string`, async (_t) => {
 		const originalFetch = global.fetch;
 		let capturedInit;
@@ -2479,7 +2366,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		global.fetch = originalFetch;
 	});
 
-	// *** URL + → %20 replacement *** //
 	test(`fetchResponseStream replaces + with %20 in query string`, async (_t) => {
 		const originalFetch = global.fetch;
 		let capturedUrl;
@@ -2508,7 +2394,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		);
 	});
 
-	// *** JSON content-type regex: must anchor at start *** //
 	test(`fetchResponseStream treats text/application-json (non-JSON) as binary`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () => {
@@ -2533,11 +2418,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** JSON content-type regex: json must be followed by end-of-string or `;` ***
-	// `application/jsonl` (JSON Lines) shares the `application/json` prefix but is a
-	// distinct, line-delimited (binary) format. The trailing `($|;)` group ensures
-	// it is NOT mis-detected as a single JSON document. Kills a mutant that drops
-	// the group (matching any `application/json...` suffix).
 	test(`fetchResponseStream treats application/jsonl (no separator) as binary`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () => {
@@ -2562,7 +2442,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** JSON content-type regex: end anchor allows ; but not random suffix *** //
 	test(`fetchResponseStream treats application/json;charset=utf-8 as JSON`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () => {
@@ -2585,7 +2464,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// Media types are case-insensitive (RFC 9110 §8.3.1).
 	test(`fetchResponseStream treats a mixed-case Application/JSON as JSON`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () =>
@@ -2607,7 +2485,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** Link header match: optional chaining on null match result *** //
 	test(`fetchResponseStream handles Link header with no rel=next match`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
@@ -2660,7 +2537,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 					url: "https://example.org/rel/list",
 					dataPath: "data",
 					nextPath: "next",
-					// bounded, so a regression that keeps paginating fails fast
 					maxPages: 3,
 				}),
 			);
@@ -2678,15 +2554,10 @@ describe(`@datastream/fetch (${variant})`, () => {
 	test(`fetchResponseStream picks the rel=next target from a multi-link Link header`, async (_t) => {
 		const originalFetch = global.fetch;
 		const cases = [
-			// GitHub style: prev listed before next
 			'<https://example.org/lk?page=1>; rel="prev", <https://example.org/lk?page=3>; rel="next"',
-			// unquoted rel directly followed by another link
 			'<https://example.org/lk?page=3>; rel=next, <https://example.org/lk?page=9>; rel="last"',
-			// unquoted rel directly followed by another parameter
 			"<https://example.org/lk?page=3>; rel=next;title=n",
-			// rel with several space-separated relation types
 			'<https://example.org/lk?page=9>; rel="last", <https://example.org/lk?page=3>; rel="next last"',
-			// a link without any rel parameter
 			'<https://example.org/lk?page=8>; title="x", <https://example.org/lk?page=3>; rel="next"',
 		];
 		fetchSetDefaults({ dataPath: "data" });
@@ -2722,7 +2593,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// JSON pages are buffered whole before parsing, so their size is capped.
 	const jsonBody = (chunks, { headers = {}, onCancel = () => {} } = {}) => {
 		const encoder = new TextEncoder();
 		const queue = chunks.map((chunk) =>
@@ -2751,7 +2621,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 				url: "https://example.org/big?token=secret",
 				dataPath: "",
 				rateLimit: 0,
-				// readJson() leaves maxBodySize unset; readJson(x) sets it (even undefined)
 				...(maxBodySize.length && { maxBodySize: maxBodySize[0] }),
 			}),
 		);
@@ -2793,7 +2662,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 		strictEqual(error?.message, tooLargeMessage(16_777_216));
 		deepStrictEqual(await readJson(null), [1]);
-		// An explicit undefined means "use the default", not unlimited.
 		error = undefined;
 		try {
 			await readJson(undefined);
@@ -2811,7 +2679,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 					cancelled++;
 				},
 			});
-		// exactly maxBodySize bytes is allowed
 		deepStrictEqual(await readJson(5), [1, 2]);
 		strictEqual(cancelled, 0);
 		let error;
@@ -2832,7 +2699,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		deepStrictEqual(await readJson(), ["\u00e9"]);
 	});
 
-	// A server that links a page to itself would otherwise be fetched forever.
 	test(`fetchResponseStream rejects a pagination URL that repeats the current page`, async (_t) => {
 		const cases = [
 			[
@@ -2893,7 +2759,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 					maxPages,
 				}),
 			);
-		// exactly maxPages pages is fine
 		deepStrictEqual(await read(3), [1, 2, 3]);
 		urls.length = 0;
 		const output = [];
@@ -2922,9 +2787,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		strictEqual(error?.name, "RangeError");
 	});
 
-	// RFC 8288: rel is a `;`-separated parameter (name and tokens are
-	// case-insensitive, whitespace allowed around `=`); a "rel=next" inside
-	// another parameter's value, or a later duplicate rel, must not count.
 	test(`fetchResponseStream parses the rel parameter of a Link header strictly`, async (_t) => {
 		const originalFetch = global.fetch;
 		const p2 = "https://example.org/lk?page=2";
@@ -2943,9 +2805,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 			[`<<${p2}>; rel="next"`, [p2]],
 			[`<${p2}; rel="next"`, []],
 			[`<${p2}>`, []],
-			// text before the first `<` is not a link
 			[`garbage>; rel="next"`, []],
-			// linear time: a header of only `<` used to take O(n^2)
 			["<".repeat(100_000), []],
 		];
 		fetchSetDefaults({ dataPath: "data" });
@@ -2978,12 +2838,11 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchResponseStream resets the 429 retry count after each successful page`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff
+		t.mock.method(Math, "random", () => 0);
 		const originalFetch = global.fetch;
 		const calls = [];
 		global.fetch = async (url) => {
 			calls.push(url);
-			// the first request for every page is rate limited once
 			if (calls.filter((u) => u === url).length === 1) {
 				return new Response("", { status: 429 });
 			}
@@ -3014,7 +2873,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** rateLimit: now < vs now <= timestamp *** //
 	test(`fetchRateLimit does not wait when rateLimitTimestamp is in the past`, async (_t) => {
 		const { fetchRateLimit } = await import("@datastream/fetch");
 		const originalFetch = global.fetch;
@@ -3050,7 +2908,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** initialOrigin: ?? vs && *** //
 	test(`fetchRateLimit without __origin derives origin from URL for redirect SSRF check`, async (_t) => {
 		const originalFetch = global.fetch;
 		let ssrfAttempted = false;
@@ -3089,7 +2946,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** manageRedirects: explicit redirect option is passed through *** //
 	test(`fetchRateLimit with explicit redirect option passes it through to fetch`, async (_t) => {
 		const originalFetch = global.fetch;
 		let seenRedirectOption;
@@ -3114,7 +2970,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** redirect while: && vs || condition *** //
 	test(`fetchRateLimit does not loop on 302 response without Location header`, async (_t) => {
 		const originalFetch = global.fetch;
 		let callCount = 0;
@@ -3144,7 +2999,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** maxRedirects: > vs >= and ++ vs -- *** //
 	test(`fetchRateLimit blocks after exactly maxRedirects (20) same-origin redirects`, async (_t) => {
 		const originalFetch = global.fetch;
 		let redirectCount = 0;
@@ -3183,7 +3037,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** maxRedirects error cause must have populated cause object *** //
 	test(`fetchRateLimit max-redirect error has correct cause fields`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
@@ -3214,7 +3067,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** invalid redirect Location: catch block and error cause *** //
 	test(`fetchRateLimit throws for invalid redirect Location with correct cause`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
@@ -3246,7 +3098,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** cross-origin redirect error cause fields (location, origin) *** //
 	test(`fetchRateLimit cross-origin redirect error cause has location and origin fields`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
@@ -3277,9 +3128,8 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** 429 retryCount >= vs > retryMaxCount *** //
 	test(`fetchRateLimit throws at exactly retryMaxCount retries not retryMaxCount+1`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff, no real wait
+		t.mock.method(Math, "random", () => 0);
 		const originalFetch = global.fetch;
 		let callCount = 0;
 		global.fetch = () => {
@@ -3313,9 +3163,8 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** 429 retry cause fields *** //
 	test(`fetchRateLimit max retry error cause has correct fields`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff, no real wait
+		t.mock.method(Math, "random", () => 0);
 		const originalFetch = global.fetch;
 		global.fetch = () =>
 			Promise.resolve(
@@ -3341,7 +3190,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** non-ok (non-retried) error cause fields *** //
 	test(`fetchRateLimit non-ok error cause has status, url, method fields`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = () =>
@@ -3364,9 +3212,8 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** backoffMs: Math.random() * baseMs succeeds (retry works without crash) *** //
 	test(`fetchResponseStream without Retry-After retries successfully after backoff`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff, no real wait
+		t.mock.method(Math, "random", () => 0);
 		const originalFetch = global.fetch;
 		let callCount = 0;
 		global.fetch = (url) => {
@@ -3402,7 +3249,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** pickPath: default "" (not "Stryker was here!") and optional chaining *** //
 	test(`fetchResponseStream with empty string dataPath returns whole body as single item`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () => {
@@ -3443,7 +3289,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** validatePaginationUrl: null/undefined nextUrl must return without throwing *** //
 	test(`fetchResponseStream stops pagination cleanly when nextPath returns null`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () =>
@@ -3484,12 +3329,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** rateLimit gate: `if (now < ts)` must NOT always-enter and `<` not `<=` ***
-	// Timing alone cannot distinguish the mutants (the wait amount is <= 0 when the
-	// gate would be wrongly entered, so setTimeout fires immediately). Instead we
-	// pass an ALREADY-ABORTED signal: `timeout()` rejects synchronously on an
-	// aborted signal, so any *unwanted* entry into the wait branch surfaces as an
-	// "Aborted" rejection. Original code (gate false) skips the wait entirely.
 	test(`fetchRateLimit does not enter wait branch when timestamp is in the past (if(true) mutant)`, async (_t) => {
 		const { fetchRateLimit } = await import("@datastream/fetch");
 		const originalFetch = global.fetch;
@@ -3501,8 +3340,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		fetchSetDefaults({ rateLimit: 0 });
 		const aborted = AbortSignal.abort();
 		try {
-			// rateLimitTimestamp strictly in the past → `now < ts` is false → no wait.
-			// Mutant `if (true)` would call timeout({signal: aborted}) and REJECT.
 			const response = await fetchRateLimit(
 				{
 					url: "https://example.org/rl-gate-past",
@@ -3535,8 +3372,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		fetchSetDefaults({ rateLimit: 0 });
 		const aborted = AbortSignal.abort();
 		try {
-			// now === rateLimitTimestamp exactly. Original `<` → false → no wait.
-			// Mutant `<=` → true → timeout({signal: aborted}) → REJECT.
 			const response = await fetchRateLimit(
 				{
 					url: "https://example.org/rl-gate-equal",
@@ -3556,7 +3391,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** redactUrl: username must become [REDACTED] (or %5BREDACTED%5D) not empty string *** //
 	test(`redactUrl replaces username with [REDACTED] not empty string`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () =>
@@ -3564,19 +3398,15 @@ describe(`@datastream/fetch (${variant})`, () => {
 		fetchSetDefaults({});
 		const { fetchRateLimit } = await import("@datastream/fetch");
 		try {
-			// NO query string so only username is tested (query-string [REDACTED] would mask the mutation)
 			await fetchRateLimit({ url: "https://adminuser@example.org/secret-u" });
 			throw new Error("Should have thrown");
 		} catch (e) {
-			// URL encodes [REDACTED] to %5BREDACTED%5D for username; empty string mutant produces https://@...
 			const causeUrl = e.cause.url;
-			// Real code: https://%5BREDACTED%5D@example.org/... — mutant: https://@example.org/...
 			strictEqual(
 				causeUrl.includes("adminuser"),
 				false,
 				`cause.url should not expose username, got: ${causeUrl}`,
 			);
-			// Must have some REDACTED marker; empty-string mutant has no REDACTED at all
 			const hasAnyRedacted =
 				causeUrl.includes("REDACTED") ||
 				causeUrl.includes("%5B") ||
@@ -3592,7 +3422,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** redactUrl: password must become [REDACTED] (or %5BREDACTED%5D) not empty string *** //
 	test(`redactUrl replaces password with [REDACTED] not empty string`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () =>
@@ -3600,8 +3429,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		fetchSetDefaults({});
 		const { fetchRateLimit } = await import("@datastream/fetch");
 		try {
-			// URL with ONLY password (no username) so only the password mutation is tested
-			// Real code: url.password="[REDACTED]" → %5BREDACTED%5D in URL; mutant: "" → no REDACTED
 			await fetchRateLimit({ url: "https://:mysecretpw@example.org/path-p" });
 			throw new Error("Should have thrown");
 		} catch (e) {
@@ -3611,7 +3438,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 				false,
 				`cause.url should not expose password, got: ${causeUrl}`,
 			);
-			// Real: %5BREDACTED%5D for password; empty-string mutant: https://user:@... (no REDACTED)
 			const hasAnyRedacted =
 				causeUrl.includes("REDACTED") ||
 				causeUrl.includes("%5B") ||
@@ -3627,7 +3453,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** rateLimit: now < timestamp – timestamp equal to now must NOT trigger a wait *** //
 	test(`fetchRateLimit does not delay when rateLimitTimestamp equals current time`, async (_t) => {
 		const { fetchRateLimit } = await import("@datastream/fetch");
 		const originalFetch = global.fetch;
@@ -3656,18 +3481,12 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** manageRedirects: explicit redirect:error bypasses redirect loop *** //
-	// When callerRedirect="error", manageRedirects=false and the redirect-management block is skipped.
-	// If mutant changes "if (manageRedirects)" → "if (true)", the block is ALWAYS entered.
-	// Difference: with a 302 response, real code returns 302 (not ok, throws error).
-	// Mutant: enters redirect loop, follows to target, may return 200 (no error).
 	test(`fetchRateLimit with redirect:error returns 302 not following (manageRedirects false)`, async (_t) => {
 		const originalFetch = global.fetch;
 		let callCount = 0;
 		global.fetch = async (_url) => {
 			callCount++;
 			if (callCount === 1) {
-				// Return 302 to same-origin target
 				return new Response("", {
 					status: 302,
 					headers: new Headers({
@@ -3675,7 +3494,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 					}),
 				});
 			}
-			// If a second call is made (mutant follows redirect), return 200
 			return new Response(JSON.stringify({ ok: true }), {
 				status: 200,
 				headers: new Headers({ "Content-Type": "application/json" }),
@@ -3688,11 +3506,8 @@ describe(`@datastream/fetch (${variant})`, () => {
 				url: "https://example.org/redirect-error-opt3",
 				redirect: "error",
 			});
-			// Mutant (if true): follows redirect, returns 200 → no throw → reaches here (bad!)
 			throw new Error("MANAGETEST_WRONGPATH");
 		} catch (e) {
-			// Real code: throws because 302 is not ok (redirect not followed, status=302 in cause)
-			// Mutant: throws "MANAGETEST_WRONGPATH" because it followed the redirect and got 200 (no error)
 			ok(
 				!e.message.includes("MANAGETEST_WRONGPATH"),
 				`Mutant incorrectly followed redirect; error: ${e.message}`,
@@ -3708,7 +3523,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** redirectCount > maxRedirects: exactly 20 redirects must succeed *** //
 	test(`fetchRateLimit allows exactly 20 same-origin redirects (> not >=)`, async (_t) => {
 		const originalFetch = global.fetch;
 		let callCount = 0;
@@ -3752,9 +3566,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** invalid redirect Location error: message and cause must not be empty *** //
-	// http://[invalid actually throws "Invalid URL" in new URL(loc, base) — unlike relative URLs that
-	// parse with null origin and hit the cross-origin check first.
 	test(`fetchRateLimit invalid Location error message contains "invalid redirect Location"`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
@@ -3828,7 +3639,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** response.body?.cancel() – must not throw when body is null *** //
 	test(`fetchRateLimit handles null response body on 4xx error path`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async () => {
@@ -3850,9 +3660,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchRateLimit handles null response body on 429 retry path (before retry not max)`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff, no real wait
-		// retryMaxCount: 3, first call returns 429 with null body → retryCount=1 < 3 → RETRY path (line 291)
-		// NOT the max-retries path (line 279). The cancel at line 291 must handle null body gracefully.
+		t.mock.method(Math, "random", () => 0);
 		const originalFetch = global.fetch;
 		let callCount = 0;
 		global.fetch = async () => {
@@ -3865,7 +3673,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 				Object.defineProperty(r, "body", { value: null, configurable: true });
 				return r;
 			}
-			// 2nd call: success
 			return new Response(JSON.stringify({ ok: true }), {
 				status: 200,
 				headers: new Headers({ "Content-Type": "application/json" }),
@@ -3947,7 +3754,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchRateLimit handles null response body on invalid redirect Location`, async (_t) => {
-		// http://[invalid actually throws "Invalid URL" triggering the catch block at line 241
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
 			if (url === "https://example.org/null-body-bad-loc") {
@@ -3976,11 +3782,10 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// RFC 9110: Retry-After is delay-seconds (0 included) or an HTTP-date.
 	test(`fetchResponseStream waits exactly as long as Retry-After says`, async (t) => {
 		const now = Date.parse("Wed, 21 Oct 2026 07:28:00 GMT");
 		t.mock.method(Date, "now", () => now);
-		t.mock.method(Math, "random", () => 0.5); // backoff without Retry-After: 0.5 * 1000
+		t.mock.method(Math, "random", () => 0.5);
 		const realSetTimeout = globalThis.setTimeout;
 		const delays = [];
 		t.mock.method(globalThis, "setTimeout", (fn, ms) => {
@@ -3992,11 +3797,8 @@ describe(`@datastream/fetch (${variant})`, () => {
 			["12", 12_000],
 			["Wed, 21 Oct 2026 07:28:05 GMT", 5000],
 			["Wed, 21 Oct 2026 07:27:55 GMT", 0],
-			// clamped to retryAfterMax (default 60s): larger values would also
-			// overflow setTimeout's 2^31-1 ms and fire after 1ms
 			["3000000", 60_000],
 			["Wed, 21 Oct 2026 08:28:00 GMT", 60_000],
-			// not delay-seconds nor a date: fall back to jittered backoff
 			["soon", 500],
 			["a1", 500],
 			["1a", 500],
@@ -4063,8 +3865,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		deepStrictEqual(delays, [5000]);
 	});
 
-	// retryAfterMax null lifts the cap, but a wait over 2^31-1 ms would overflow
-	// setTimeout into a ~1ms wait, so it is still bounded there.
 	test(`fetchResponseStream honours any Retry-After when retryAfterMax is null`, async (t) => {
 		const realSetTimeout = globalThis.setTimeout;
 		const delays = [];
@@ -4101,9 +3901,8 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchResponseStream retries 429 without limit when retryMaxCount is null`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff, no real wait
+		t.mock.method(Math, "random", () => 0);
 		let calls = 0;
-		// 11 x 429: one more than the default retryMaxCount of 10.
 		global.fetch = async () =>
 			++calls <= 11
 				? new Response("", { status: 429 })
@@ -4145,8 +3944,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		deepStrictEqual(output, [1, 2, 3]);
 	});
 
-	// Full jitter over 1000 * 2 ** (retry - 1): with random 0.5 the waits are
-	// exactly half of 1000, 2000, 4000 — no wall clock involved.
 	test(`fetchResponseStream 429 backoff doubles per retry`, async (t) => {
 		t.mock.method(Math, "random", () => 0.5);
 		const realSetTimeout = globalThis.setTimeout;
@@ -4174,7 +3971,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		deepStrictEqual(delays, [500, 1000, 2000]);
 	});
 
-	// The exponential base is capped at 30s (retry 7 would be 64s uncapped).
 	test(`fetchResponseStream 429 backoff is capped at 30000ms`, async (t) => {
 		t.mock.method(Math, "random", () => 1);
 		const realSetTimeout = globalThis.setTimeout;
@@ -4201,10 +3997,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 		deepStrictEqual(delays, [1000, 2000, 4000, 8000, 16_000, 30_000, 30_000]);
 	});
 
-	// *** pickPath: default parameter "" vs "Stryker was here!" *** //
 	test(`fetchResponseStream with no dataPath yields whole body (pickPath default "" not "Stryker was here!")`, async (_t) => {
-		// When dataPath is undefined (not set), pickPath(body, undefined) uses default path="".
-		// Real: path="" → returns body; Mutant: path="Stryker was here!" → body["Stryker was here!"] = undefined
 		const originalFetch = global.fetch;
 		global.fetch = async () =>
 			new Response(JSON.stringify({ myKey: 42 }), {
@@ -4213,12 +4006,10 @@ describe(`@datastream/fetch (${variant})`, () => {
 			});
 		fetchSetDefaults({ dataPath: undefined });
 		try {
-			// No dataPath in options → uses default undefined → pickPath uses default ""
 			const stream = fetchResponseStream([
 				{ url: "https://example.org/pickpath-default" },
 			]);
 			const output = await streamToArray(stream);
-			// Real: output is [{myKey:42}] (whole body); Mutant: output is [undefined] (body["Stryker was here!"])
 			deepStrictEqual(output, [{ myKey: 42 }]);
 		} finally {
 			global.fetch = originalFetch;
@@ -4226,12 +4017,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** redactUrl catch block: must return "[INVALID URL]" not empty string or undefined *** //
 	test(`fetchRateLimit error message shows [INVALID URL] when URL is completely unparseable`, async (_t) => {
-		// Passing an invalid URL string to fetchRateLimit causes redactUrl to throw in new URL(...)
-		// and return "[INVALID URL]" from the catch block.
-		// Mutant "return """: cause.url = "" (empty string)
-		// Mutant "} catch {}": catch block is empty, function returns undefined → cause.url = undefined
 		const originalFetch = global.fetch;
 		global.fetch = async () =>
 			new Response("", { status: 404, statusText: "Not Found" });
@@ -4241,8 +4027,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			await fetchRateLimit({ url: "not-a-valid-url-no-scheme" });
 			throw new Error("Should have thrown");
 		} catch (e) {
-			// Rejected by the http(s) check before fetching; the redacted URL
-			// in its message is the unparseable placeholder.
 			strictEqual(
 				e.message,
 				"fetch GET [INVALID URL] is not an http: or https: URL",
@@ -4253,10 +4037,8 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** response.body?.cancel() on 429 max-retries path (line 279) *** //
 	test(`fetchRateLimit handles null response body on 429 max-retries path`, async (t) => {
-		t.mock.method(Math, "random", () => 0); // zero backoff, no real wait
-		// retryMaxCount: 1, first call returns 429 with null body → retryCount=1 >= retryMaxCount=1 → MAX RETRIES path (line 279)
+		t.mock.method(Math, "random", () => 0);
 		const originalFetch = global.fetch;
 		global.fetch = async () => {
 			const r = new Response("", {
@@ -4291,12 +4073,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// concurrency > 1 must actually overlap requests: with the first response held
-	// back, exactly `concurrency` requests are in flight and the next one only
-	// starts once a slot frees up.
 	test(`fetchResponseStream concurrency keeps exactly \`concurrency\` requests in flight`, async (_t) => {
-		// rateLimit 0: pacing is covered by its own test (and a pacing
-		// regression then fails fast instead of waiting 1000 / 0.01 ms).
 		fetchSetDefaults({ rateLimit: 0 });
 		fetchSetDefaults({ dataPath: "" });
 		const originalFetch = global.fetch;
@@ -4311,12 +4088,10 @@ describe(`@datastream/fetch (${variant})`, () => {
 			return jsonResponse({});
 		};
 		try {
-			// rateLimit 0: only the window, not pacing, may hold a request back.
 			const config = [1, 2, 3].map((v) => ({
 				url: `https://example.org/w?v=${v}`,
 				rateLimit: 0,
 			}));
-			// concurrency is read from the first item and applies to the whole array
 			config[0].concurrency = 2;
 			const run = streamToArray(fetchResponseStream(config));
 			await new Promise((resolve) => setTimeout(resolve, 20));
@@ -4331,8 +4106,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	test(`fetchResponseStream concurrency copes with fewer items than the window`, async (_t) => {
-		// rateLimit 0: pacing is covered by its own test (and a pacing
-		// regression then fails fast instead of waiting 1000 / 0.01 ms).
 		fetchSetDefaults({ rateLimit: 0 });
 		fetchSetDefaults({ dataPath: "" });
 		const originalFetch = global.fetch;
@@ -4355,13 +4128,11 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** retry: 5xx and network errors for idempotent methods *** //
 	const okJson = () =>
 		new Response(JSON.stringify({ ok: true }), {
 			status: 200,
 			headers: new Headers({ "Content-Type": "application/json" }),
 		});
-	// Records every setTimeout delay (the retry backoff) and runs it at once.
 	const recordDelays = (t) => {
 		const realSetTimeout = globalThis.setTimeout;
 		const delays = [];
@@ -4467,7 +4238,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			rateLimit: 0,
 		});
 		strictEqual(response.status, 200);
-		// Retry-After: 7s, then full jitter (0.5) of 2s and 4s
 		deepStrictEqual(delays, [7000, 1000, 2000]);
 	});
 
@@ -4517,7 +4287,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			[{ method: "POST" }, {}, new TypeError("fetch failed")],
 			[{}, {}, new Error("boom")],
 			[{}, {}, new DOMException("aborted", "AbortError")],
-			// An abort reason may itself be a TypeError: still never retried.
 			[{}, { signal: controller.signal }, reason],
 		];
 		for (const [options, streamOptions, thrown] of cases) {
@@ -4561,7 +4330,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** per-request timeout *** //
 	test(`fetchRateLimit timeout aborts the request with a TimeoutError and is not retried`, async (_t) => {
 		let calls = 0;
 		global.fetch = (_url, init) => {
@@ -4601,11 +4369,9 @@ describe(`@datastream/fetch (${variant})`, () => {
 			{ signal },
 		);
 		await fetchModule.fetchRateLimit({ url, rateLimit: 0, timeout: 60_000 });
-		// no timeout (undefined or null): the caller signal untouched
 		strictEqual(signals[0], signal);
 		strictEqual(signals[1], signal);
 		strictEqual(signals[2], undefined);
-		// with a timeout: a new signal following the caller's
 		ok(signals[3] instanceof AbortSignal);
 		notStrictEqual(signals[3], signal);
 		strictEqual(signals[3].aborted, false);
@@ -4635,7 +4401,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		);
 	});
 
-	// *** URL scheme allowlist *** //
 	test(`fetchRateLimit rejects non-http(s) URLs before fetching`, async (_t) => {
 		let calls = 0;
 		global.fetch = async () => {
@@ -4664,7 +4429,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 			);
 		}
 		strictEqual(calls, 0);
-		// both allowed schemes, in any case
 		for (const url of [
 			"http://example.org/a",
 			"https://example.org/b",
@@ -4678,9 +4442,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		strictEqual(calls, 3);
 	});
 
-	// In a browser a relative URL resolves against the page (as fetch() does),
-	// so it is checked as the absolute URL it becomes; with no location (Node)
-	// it stays rejected (covered above).
 	test(`fetchRateLimit resolves relative URLs against globalThis.location`, async (_t) => {
 		const urls = [];
 		global.fetch = async (url) => {
@@ -4737,8 +4498,6 @@ describe(`@datastream/fetch (${variant})`, () => {
 		strictEqual(calls, 0);
 	});
 
-	// Pagination targets go through the same origin pin, so a next link can
-	// never switch scheme (an origin includes it).
 	test(`fetchResponseStream refuses a non-http(s) pagination next URL`, async (_t) => {
 		let calls = 0;
 		global.fetch = async () => {

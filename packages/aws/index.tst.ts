@@ -248,7 +248,6 @@ describe("DynamoDB", () => {
 			Keys: [{}],
 			Unknown: true,
 		});
-		// retryCount was internal retry state, not an option.
 		expect(awsDynamoDBGetItemStream).type.not.toBeCallableWith({
 			TableName: "t",
 			Keys: [{}],

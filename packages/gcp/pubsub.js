@@ -33,8 +33,6 @@ export const gcpPubSubPublishStream = (
 		// Promise.try: publishMessage throws synchronously on invalid data.
 		const promise = Promise.try(() => topic.publishMessage(message));
 		inFlight.set(promise, chunk);
-		// A failure errors the stream at once (not when it becomes the oldest),
-		// and stays in inFlight so it is reported in err.failedMessages.
 		promise.then(
 			() => inFlight.delete(promise),
 			(err) => stream.destroy(err),
@@ -44,7 +42,6 @@ export const gcpPubSubPublishStream = (
 		publish(chunk);
 		if (inFlight.size >= maxInFlight) return inFlight.keys().next().value;
 	};
-	// flush() sends the queued batches now instead of after maxMilliseconds.
 	const final = () => Promise.all([topic.flush(), ...inFlight.keys()]);
 	// In-flight publishes cannot be cancelled: on destroy/abort they are reported
 	// as failed but may still be delivered, so a retry can duplicate them.
@@ -73,7 +70,6 @@ export const gcpPubSubSubscribeStream = (
 	if (stream.destroyed) return stream;
 
 	let stopped = false;
-	// A message the stream will not deliver is nacked for prompt redelivery.
 	const onMessage = (message) => {
 		if (stopped) return message.nack();
 		try {
@@ -90,7 +86,6 @@ export const gcpPubSubSubscribeStream = (
 		if (!stream.destroyed) stream.push(null);
 	};
 	const onError = (err) => stream.destroy(err);
-	// Closed by someone else: end instead of hanging.
 	const onClose = () => {
 		end();
 		close().catch(() => {});
@@ -112,12 +107,9 @@ export const gcpPubSubSubscribeStream = (
 		return closing;
 	};
 
-	// destroy / abort / error = hard stop: close now; unacked messages are nacked
-	// by close() (or redelivered after the ack deadline if the process dies).
 	const destroy = stream._destroy.bind(stream);
 	stream._destroy = (err, callback) => {
 		stopped = true;
-		// A stopped readable auto-destroys once it ends; stop() closes later.
 		if (stream.readableEnded) return destroy(err, callback);
 		close()
 			.catch((closeErr) => {
@@ -129,8 +121,6 @@ export const gcpPubSubSubscribeStream = (
 			.then(() => setImmediate(() => destroy(err, callback)));
 	};
 
-	// Graceful: stop delivering, end the readable, let every open ack/nack stream
-	// on this subscription finish, then close.
 	stream.stop = async () => {
 		end();
 		await Promise.all(
@@ -144,8 +134,6 @@ export const gcpPubSubSubscribeStream = (
 	return stream;
 };
 
-// withResponse awaits ackWithResponse()/nackWithResponse(): on an exactly-once
-// subscription it rejects (AckError) when the ack did not succeed.
 const ackStream =
 	(name, method) =>
 	({ subscription, withResponse = false } = {}, streamOptions) => {

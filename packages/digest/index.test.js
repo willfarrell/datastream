@@ -5,8 +5,6 @@ import { digestStream } from "@datastream/digest";
 import { variant } from "../variant.js";
 
 describe(`@datastream/digest (${variant})`, async () => {
-	// Under the browser run `@datastream/digest` is the built browser bundle; the
-	// node run imports the source directly so the WebCrypto path is pinned there too.
 	const webDigest = await import(
 		variant === "browser"
 			? "@datastream/digest"
@@ -59,8 +57,6 @@ describe(`@datastream/digest (${variant})`, async () => {
 		];
 		const result = await pipeline(streams);
 
-		// Native alias "SHA256" must normalize to the canonical "SHA2-256" label so
-		// the emitted digest carries the same prefix cross-platform.
 		strictEqual(result.digest.startsWith("SHA2-256:"), true);
 	});
 
@@ -70,7 +66,6 @@ describe(`@datastream/digest (${variant})`, async () => {
 			await digestStream({ algorithm: "SHA384" }),
 		];
 		const result = await pipeline(streams);
-		// Native alias "SHA384" must normalize to the canonical "SHA2-384" label.
 		strictEqual(result.digest.startsWith("SHA2-384:"), true);
 	});
 
@@ -80,7 +75,6 @@ describe(`@datastream/digest (${variant})`, async () => {
 			await digestStream({ algorithm: "SHA512" }),
 		];
 		const result = await pipeline(streams);
-		// Native alias "SHA512" must normalize to the canonical "SHA2-512" label.
 		strictEqual(result.digest.startsWith("SHA2-512:"), true);
 	});
 
@@ -98,14 +92,12 @@ describe(`@datastream/digest (${variant})`, async () => {
 		strictEqual(aliasResult.digest, canonicalResult.digest);
 	});
 
-	// *** node/web parity: native algorithm names *** //
 	test(`web digestStream should accept native algorithm name (parity)`, async (_t) => {
 		const streams = [
 			createReadableStream("test"),
 			await webDigest.digestStream({ algorithm: "SHA256" }),
 		];
 		const result = await pipeline(streams);
-		// Web must accept the native alias (not throw) and emit the canonical prefix.
 		strictEqual(result.digest.startsWith("SHA2-256:"), true);
 	});
 
@@ -123,7 +115,6 @@ describe(`@datastream/digest (${variant})`, async () => {
 		strictEqual(webResult.digest, nodeResult.digest);
 	});
 
-	// *** unsupported algorithm rejected consistently *** //
 	test(`digestStream should reject unsupported algorithm (node)`, async (_t) => {
 		throws(() => digestStream({ algorithm: "MD5" }), {
 			message: "Unsupported algorithm: MD5",
@@ -131,15 +122,11 @@ describe(`@datastream/digest (${variant})`, async () => {
 	});
 
 	test(`web digestStream should reject unsupported algorithm`, (_t) => {
-		// Unified contract: the web factory is now synchronous (matching node), so it
-		// throws synchronously rather than rejecting a Promise.
 		throws(() => webDigest.digestStream({ algorithm: "MD5" }), {
 			message: "Unsupported algorithm: MD5",
 		});
 	});
 
-	// Object.prototype keys are not algorithms: rejected at construction in both
-	// builds, not accepted and left to fail later with an unrelated error.
 	for (const algorithm of ["constructor", "__proto__", "toString"]) {
 		test(`digestStream should reject inherited property name ${algorithm}`, (_t) => {
 			throws(() => digestStream({ algorithm }), {
@@ -154,13 +141,11 @@ describe(`@datastream/digest (${variant})`, async () => {
 		});
 	}
 
-	// *** result() premature finalization guard *** //
 	test(`digestStream.result() throws before stream finishes (node)`, async (_t) => {
 		const stream = await digestStream({ algorithm: "SHA2-256" });
 		throws(() => stream.result(), {
 			message: "digestStream.result() called before the stream finished",
 		});
-		// After consuming the stream, result() works.
 		const streams = [createReadableStream("test"), stream];
 		const result = await pipeline(streams);
 		strictEqual(result.digest.startsWith("SHA2-256:"), true);
@@ -188,7 +173,6 @@ describe(`@datastream/digest (${variant})`, async () => {
 		strictEqual(typeof result.checksum, "string");
 	});
 
-	// *** algorithm variants *** //
 	test(`digestStream should calculate SHA2-384`, async (_t) => {
 		const streams = [
 			createReadableStream("test"),
@@ -234,7 +218,6 @@ describe(`@datastream/digest (${variant})`, async () => {
 		strictEqual(result.digest.startsWith("SHA3-512:"), true);
 	});
 
-	// *** web build: all algorithm variants (exercise web algorithm map) *** //
 	for (const algorithm of [
 		"SHA2-256",
 		"SHA2-384",
@@ -253,17 +236,14 @@ describe(`@datastream/digest (${variant})`, async () => {
 		});
 	}
 
-	// *** unified sync factory contract: both builds return a stream synchronously *** //
 	test(`digestStream returns a stream synchronously (node)`, (_t) => {
 		const stream = digestStream({ algorithm: "SHA2-256" });
-		// Must be a stream, not a Promise, so callers do not need to await.
 		strictEqual(typeof stream?.then, "undefined");
 		strictEqual(typeof stream?.result, "function");
 	});
 
 	test(`web digestStream returns a stream synchronously (parity)`, (_t) => {
 		const stream = webDigest.digestStream({ algorithm: "SHA2-256" });
-		// Web must match node: synchronous return, no Promise wrapper.
 		strictEqual(typeof stream?.then, "undefined");
 		strictEqual(typeof stream?.result, "function");
 	});
@@ -280,7 +260,6 @@ describe(`@datastream/digest (${variant})`, async () => {
 		);
 	});
 
-	// *** full-value cross-build parity for every algorithm *** //
 	for (const algorithm of [
 		"SHA2-256",
 		"SHA2-384",
@@ -303,7 +282,6 @@ describe(`@datastream/digest (${variant})`, async () => {
 		});
 	}
 
-	// *** error propagation: a non-hashable chunk must reject the pipeline *** //
 	test(`digestStream rejects on a non-hashable chunk (node)`, async (_t) => {
 		await rejects(
 			pipeline([
@@ -322,7 +300,6 @@ describe(`@datastream/digest (${variant})`, async () => {
 		);
 	});
 
-	// *** named exports only *** //
 	test(`exports only digestStream (no default export)`, async (_t) => {
 		const mod = await import("@datastream/digest");
 		strictEqual(Object.keys(mod).join(","), "digestStream");

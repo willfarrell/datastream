@@ -46,9 +46,6 @@ export interface CsvError {
 	count?: number;
 }
 
-// Both detect streams decode bytes to text (string chunks pass through as-is)
-// and emit text, so they are transforms, not pass-throughs.
-// csvDetectHeaderStream also strips the header row from the output.
 export function csvDetectDelimitersStream(
 	options?: {
 		maxBufferSize?: number | null;

@@ -48,7 +48,6 @@ describe("@datastream/avro", () => {
 			pipejoin([createReadableStream(input), avroDecodeStream(options)]),
 		);
 
-	// *** avroEncodeStream *** //
 	test(`avroEncodeStream encodes objects to Avro binary (schema object)`, async () => {
 		const encoded = await encodeAll(messages, { schema });
 		strictEqual(encoded.length, 3);
@@ -89,7 +88,6 @@ describe("@datastream/avro", () => {
 				return schema;
 			},
 		});
-		// Not resolved at construction: upstream may not have produced it yet.
 		strictEqual(calls, 0);
 		const encoded = await streamToArray(
 			pipejoin([createReadableStream(messages), stream]),
@@ -156,7 +154,6 @@ describe("@datastream/avro", () => {
 		strictEqual(encoded.length, 3);
 	});
 
-	// *** avroDecodeStream *** //
 	test(`avroDecodeStream decodes one record per chunk`, async () => {
 		const encoded = messages.map((m) => type.toBuffer(m));
 		const decoded = await decodeAll(encoded, { schema });
@@ -164,8 +161,6 @@ describe("@datastream/avro", () => {
 	});
 
 	test(`avroDecodeStream decodes plain Uint8Array views (not just Buffers)`, async () => {
-		// A view into a larger buffer at a non-zero offset, as an unframe stream
-		// would emit via subarray(). avsc 5 needs Buffer methods for strings.
 		const encoded = messages.map((m) => {
 			const bytes = type.toBuffer(m);
 			const backing = new Uint8Array(bytes.length + 5);
@@ -293,7 +288,6 @@ describe("@datastream/avro", () => {
 		);
 	});
 
-	// *** Limits *** //
 	const fixed = (size) => ({ type: "fixed", name: "Blob", size });
 
 	test(`avroDecodeStream rejects a chunk over the 64MiB default maxMessageSize`, async () => {
@@ -353,7 +347,6 @@ describe("@datastream/avro", () => {
 		out.push(v);
 		return out;
 	};
-	// A 5-byte message claiming 50M items: avsc 5 alone allocates ~750MB.
 	const bomb = new Uint8Array([...long(50_000_000), 0]);
 	const bombMessage =
 		"avroDecodeStream: block count 50000000 exceeds the 1 bytes left";
@@ -384,7 +377,6 @@ describe("@datastream/avro", () => {
 
 	test(`avroDecodeStream guards arrays and maps nested in records, unions, arrays and maps`, async () => {
 		const nested = [
-			// record field
 			[
 				{
 					type: "record",
@@ -393,14 +385,11 @@ describe("@datastream/avro", () => {
 				},
 				[],
 			],
-			// union branch 1
 			[["null", { type: "map", values: "null" }], long(1)],
-			// array of arrays: one outer item, then the inner bomb
 			[
 				{ type: "array", items: { type: "array", items: "null" } },
 				[...long(1)],
 			],
-			// map of arrays: one entry with key "k"
 			[
 				{ type: "map", values: { type: "array", items: "null" } },
 				[...long(1), ...long(1), 0x6b],
@@ -487,8 +476,6 @@ describe("@datastream/avro", () => {
 	});
 
 	test(`avroDecodeStream reports an array missing its closing block as truncated`, async () => {
-		// One boolean item, then no closing 0 block: reading the next count runs
-		// past the end, and avsc reports the truncation.
 		await rejects(
 			pipeline([
 				createReadableStream([new Uint8Array([...long(1), 1])]),
@@ -499,9 +486,6 @@ describe("@datastream/avro", () => {
 	});
 
 	test(`avroDecodeStream rejects arrays of zero-width items longer than the bytes left`, async () => {
-		// [null] is count 1 with 1 byte left (the closing 0): allowed. [null,
-		// null] encodes as 2 bytes (count 2, then the closing 0): rejected, a
-		// documented limitation of the block-count guard.
 		const nulls = { type: "array", items: "null" };
 		deepStrictEqual(
 			(
@@ -522,7 +506,6 @@ describe("@datastream/avro", () => {
 		);
 	});
 
-	// *** Per-message schemas (resolveSchema) *** //
 	const v2 = {
 		type: "record",
 		name: "Msg",
@@ -539,7 +522,6 @@ describe("@datastream/avro", () => {
 		frame.set(bytes, 5);
 		return frame;
 	};
-	// Shaped like kafkaConsumeStream's messages.
 	const kafkaMessage = (offset, value) => ({
 		topic: "orders",
 		partition: 0,
@@ -549,7 +531,6 @@ describe("@datastream/avro", () => {
 		headers: {},
 		timestamp: "1700000000000",
 	});
-	// Stands in for confluentSchemaRegistryResolver: same argument and result.
 	const fakeRegistry = (schemas) => {
 		const lookups = [];
 		const resolveSchema = async (schemaId) => {
@@ -602,7 +583,6 @@ describe("@datastream/avro", () => {
 				},
 			],
 		);
-		// Compiled types are cached per id: one lookup each.
 		deepStrictEqual(lookups, [1, 2]);
 	});
 
@@ -646,7 +626,6 @@ describe("@datastream/avro", () => {
 				createReadableStream([frame]),
 				glueUnframeStream(),
 				avroDecodeStream({
-					// Plain schema objects work as well as registry results.
 					resolveSchema: async (id) => {
 						lookups.push(id);
 						return schema;

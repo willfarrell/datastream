@@ -13,7 +13,6 @@ export type GcpBigQueryRow = Record<string, unknown>;
 
 /** The parts of an @google-cloud/bigquery `BigQuery` the query stream uses. */
 export interface GcpBigQueryClient {
-	// A ResourceStream (object-mode Readable of rows).
 	createQueryStream(
 		query: Record<string, unknown>,
 	): AsyncIterable<GcpBigQueryRow> & { end(): unknown };
@@ -21,7 +20,6 @@ export interface GcpBigQueryClient {
 
 /** The parts of an @google-cloud/bigquery `Table` the load stream uses. */
 export interface GcpBigQueryLoadTable {
-	// Emits "job" (Job), "complete" (Job) and "error".
 	createWriteStream(metadata: Record<string, unknown>): Writable;
 }
 

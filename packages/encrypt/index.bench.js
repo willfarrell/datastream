@@ -3,16 +3,12 @@ import { randomBytes } from "node:crypto";
 import { createReadableStream, pipeline } from "@datastream/core";
 import { decryptStream, encryptStream } from "@datastream/encrypt";
 
-// -- Data generators --
-
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 
-const smallBuffer = randomBytes(1_024); // 1KB
-const bigBuffer = randomBytes(1_024 * 1_024); // 1MB
+const smallBuffer = randomBytes(1_024);
+const bigBuffer = randomBytes(1_024 * 1_024);
 const key = randomBytes(32);
-
-// -- Tests --
 
 suite("encryptStream AES-256-GCM", () => {
 	bench("1KB", options, async (b) => {
@@ -96,7 +92,6 @@ suite("roundtrip comparison 1MB", () => {
 				const dec = await decryptStream({ key, iv, authTag, algorithm });
 				const decStream = createReadableStream(encryptedChunks).pipe(dec);
 				for await (const _chunk of decStream) {
-					// consume
 				}
 			}
 			b.end(OPS);

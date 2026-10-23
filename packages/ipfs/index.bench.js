@@ -6,18 +6,14 @@ import {
 } from "@datastream/core";
 import { ipfsAddStream, ipfsGetStream } from "@datastream/ipfs";
 
-// -- Data generators --
-
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 
 const generateChunks = (count, size) =>
 	Array.from({ length: count }, () => "x".repeat(size));
 
-const smallChunks = generateChunks(100, 1_024); // 100 × 1KB
-const largeChunks = generateChunks(1_000, 1_024); // 1000 × 1KB
-
-// -- Tests --
+const smallChunks = generateChunks(100, 1_024);
+const largeChunks = generateChunks(1_000, 1_024);
 
 suite("ipfsGetStream", () => {
 	bench("100 × 1KB chunks", options, async (b) => {

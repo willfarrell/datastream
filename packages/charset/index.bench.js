@@ -9,8 +9,6 @@ import {
 	streamToString,
 } from "@datastream/core";
 
-// -- Data generators --
-
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 
@@ -24,9 +22,7 @@ const generateString = (size) => {
 	return result;
 };
 
-const bigString = generateString(1_024 * 1_024); // 1MB
-
-// -- Tests --
+const bigString = generateString(1_024 * 1_024);
 
 suite("charsetDetectStream", () => {
 	bench("1MB UTF-8 string", options, async (b) => {

@@ -42,11 +42,6 @@ const MAX_DETECTION_SAMPLE = 64 * 1024;
 // spurious ISO-8859-1 winner.
 const normaliseMatchName = (name) => (name === "ASCII" ? "UTF-8" : name);
 
-// The sampled Uint8Array chunks are joined with core's concatBytes rather than
-// the node-only Buffer global, so the shared detect source runs in the browser
-// too. String chunks are encoded as UTF-8 bytes via TextEncoder for the same
-// reason.
-
 export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 	// Accumulate a bounded byte sample and run chardet once on the whole sample
 	// in result(). Running analyse() per-chunk and averaging corrupts results at
@@ -55,14 +50,9 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 	let sampleLength = 0;
 	const encoder = new TextEncoder();
 	const passThrough = (chunk) => {
-		// Once the cap is reached, skip the chunk entirely (no encode, no push):
-		// even an empty subarray view pins its chunk's whole ArrayBuffer, which
-		// leaked every streamed chunk.
 		const remaining = MAX_DETECTION_SAMPLE - sampleLength;
 		if (remaining <= 0) return;
 		const bytes = typeof chunk === "string" ? encoder.encode(chunk) : chunk;
-		// slice (a copy, clamped to the chunk length) rather than subarray, so the
-		// chunk that crosses the cap is not pinned in full by its sample.
 		// Uint8Array's slice: Buffer#slice is a view, so the sample would change
 		// when a later stage reuses the chunk.
 		const slice = Uint8Array.prototype.slice.call(bytes, 0, remaining);

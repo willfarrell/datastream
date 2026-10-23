@@ -7,12 +7,6 @@ import {
 	quoteIdent,
 } from "./shared.js";
 
-// `path` is handed to AsyncDuckDB.open() (e.g. "opfs://file.duckdb");
-// ":memory:" (the default) keeps the freshly instantiated in-memory database.
-// `bundles` are duckdb-wasm bundles (e.g. self-hosted mainModule/mainWorker
-// URLs). The default loads them from jsDelivr: that code is not integrity
-// pinned, and browsers refuse `new Worker()` on a cross-origin URL, so
-// production apps should self-host and pass their own bundles.
 export const duckdbConnect = async (path = ":memory:", { bundles } = {}) => {
 	const { AsyncDuckDB, ConsoleLogger, getJsDelivrBundles, selectBundle } =
 		await import("@duckdb/duckdb-wasm");
@@ -26,19 +20,12 @@ export const duckdbConnect = async (path = ":memory:", { bundles } = {}) => {
 		connection.__duckdb = db;
 		return connection;
 	} catch (error) {
-		// The caller never gets the db, so nobody else can stop its Worker thread.
 		await db.terminate();
 		throw error;
 	}
 };
 
-// Rows are arrow StructRow.toJSON() objects: BIGINT -> bigint, DATE/TIMESTAMP
-// -> epoch-ms number, DECIMAL -> arrow's raw decimal (node: Date / number).
-// `params` bind positionally through a prepared statement.
 export const duckdbQueryStream = ({ db, sql, params }, streamOptions) => {
-	// True only while this stream's own prepare/send/batch fetch is in flight
-	// (not before the first read or while paused between rows). Nothing reads it
-	// once the generator has finished, so it is not reset there.
 	let busy = false;
 	const rows = (async function* () {
 		let prepared;
@@ -61,8 +48,7 @@ export const duckdbQueryStream = ({ db, sql, params }, streamOptions) => {
 	// in-flight next() (a query still running in the worker). Cancel that query
 	// first so the wait ends, then let the generator run its finally.
 	// cancelSent() is connection-wide, so it is skipped when this stream has
-	// nothing in flight. Its rejection is dropped: core's abort path calls
-	// return() without handling the promise.
+	// nothing in flight.
 	const finish = rows.return;
 	rows.return = async () => {
 		if (busy) await db.cancelSent().catch(() => {});
@@ -94,8 +80,6 @@ export const duckdbAppenderStream = async (
 ) => {
 	let prepared;
 	let columnNames;
-	// final() closes the statement and a failed COMMIT then releases again, so
-	// only the first call closes it.
 	const close = async () => {
 		const statement = prepared;
 		prepared = undefined;
@@ -148,8 +132,7 @@ export const duckdbArrowInsertStream = async (
 
 	// insertArrowTable({ create: false }) maps columns by POSITION, but a batch's
 	// field order is arbitrary. Reorder each batch to the table's physical column
-	// order, matching names case-insensitively (DuckDB identifiers are), and
-	// reject a column count/name mismatch with the same errors as the node build.
+	// order, matching names case-insensitively (DuckDB identifiers are).
 	const toTableOrder = (batch) => {
 		const { fields } = batch.schema;
 		const colCount = columnNames.length;
@@ -180,8 +163,6 @@ export const duckdbArrowInsertStream = async (
 			},
 			write: async (batch) => {
 				batch = toTableOrder(batch);
-				// Insert every `batchRows` rows instead of buffering the whole stream
-				// until final() (which then made two more full copies).
 				pending.push(batch);
 				pendingRows += batch.numRows;
 				if (pendingRows >= batchRows) await flush();

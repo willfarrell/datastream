@@ -19,7 +19,6 @@ const messages = Array.from({ length: COUNT }, (_, i) => ({
 	body: `message-${i}`,
 }));
 
-// Fake SDK clients: no I/O, so the numbers are the stream overhead only.
 const sender = {
 	createMessageBatch: async () => {
 		let count = 0;

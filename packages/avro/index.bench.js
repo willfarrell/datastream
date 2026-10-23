@@ -8,8 +8,6 @@ import {
 	streamToArray,
 } from "@datastream/core";
 
-// -- Data generators --
-
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 const ITEMS = 10_000;
@@ -30,12 +28,9 @@ const objects = Array.from({ length: ITEMS }, (_, i) => ({
 	value: i * 1.5,
 }));
 
-// Pre-encoded buffers for the decode benchmark.
 const encoded = await streamToArray(
 	pipejoin([createReadableStream(objects), avroEncodeStream({ schema })]),
 );
-
-// -- Tests --
 
 suite("avroEncodeStream", () => {
 	bench(`${ITEMS} objects`, options, async (b) => {

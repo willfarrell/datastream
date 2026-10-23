@@ -1,7 +1,5 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-// Types for the browser build: web streams only, no node:* imports or Buffer
-// (no @types/node needed), no backpressureGauge (Node.js only).
 import type {
 	ReadableInput,
 	ResultStream,
@@ -41,7 +39,6 @@ export type DatastreamStream =
 	| DatastreamWritable
 	| DatastreamPassThrough;
 
-// Pipeline & utilities
 export function pipeline(
 	streams: DatastreamStream[],
 	streamOptions?: StreamOptions,
@@ -52,7 +49,6 @@ export function result(
 	streams: DatastreamStream[],
 ): Promise<Record<string, unknown>>;
 
-// Stream converters
 export function streamToArray<T = unknown>(
 	stream: DatastreamReadable<T>,
 	options?: StreamCollectorOptions,
@@ -65,14 +61,11 @@ export function streamToString(
 	stream: DatastreamReadable,
 	options?: StreamCollectorOptions,
 ): Promise<string>;
-// No Buffer in the web runtime: resolves a concatenated Uint8Array.
 export function streamToBuffer(
 	stream: DatastreamReadable,
 	options?: StreamCollectorOptions,
 ): Promise<Uint8Array>;
 
-// Type guards: also true for anything with a truthy readable/writable
-// (TransformStream, { readable, writable } pairs).
 export function isReadable(
 	stream: unknown,
 ): stream is ReadableStream | { readable: unknown };
@@ -80,7 +73,6 @@ export function isWritable(
 	stream: unknown,
 ): stream is WritableStream | { writable: unknown };
 
-// Stream creators
 export function createReadableStream<T = unknown>(
 	input?: ReadableInput<T>,
 	streamOptions?: StreamOptions,

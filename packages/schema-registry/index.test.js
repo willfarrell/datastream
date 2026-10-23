@@ -19,7 +19,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 	const helloWorld = new TextEncoder().encode("hello world");
 	const schemaUuid = "12345678-1234-1234-1234-1234567890ab";
 
-	// *** Confluent *** //
 	test(`confluentFrameStream prepends 0x00 + uint32 BE schema id`, async () => {
 		const streams = [
 			createReadableStream([helloWorld]),
@@ -28,7 +27,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		const out = await streamToArray(pipejoin(streams));
 		strictEqual(out.length, 1);
 		strictEqual(out[0][0], 0x00);
-		// 257 = 0x00000101
 		strictEqual(out[0][1], 0x00);
 		strictEqual(out[0][2], 0x00);
 		strictEqual(out[0][3], 0x01);
@@ -59,7 +57,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out.length, 1);
 		strictEqual(out[0].schemaId, 42);
 		deepStrictEqual(Array.from(out[0].payload), Array.from(helloWorld));
-		// .result() still works for compatibility with the csvDetect-style readers.
 		strictEqual(unframe.result().value.schemaId, 42);
 	});
 
@@ -73,7 +70,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** Glue uncompressed *** //
 	test(`glueFrameStream prepends 0x03 + compression byte + uuid`, async () => {
 		const streams = [
 			createReadableStream([helloWorld]),
@@ -81,7 +77,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		];
 		const out = await streamToArray(pipejoin(streams));
 		strictEqual(out[0][0], 0x03);
-		strictEqual(out[0][1], 0x00); // compression none
+		strictEqual(out[0][1], 0x00);
 		strictEqual(out[0].byteLength, 18 + helloWorld.byteLength);
 	});
 
@@ -100,7 +96,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(unframe.result().value.compression, "none");
 	});
 
-	// *** Glue zlib *** //
 	test(`glue frame -> unframe round-trip (zlib compressed)`, async () => {
 		const payload = new TextEncoder().encode("a".repeat(2048));
 		const unframe = glueUnframeStream();
@@ -147,7 +142,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 	test(`glueUnframeStream rejects unknown compression byte`, async () => {
 		const bogus = new Uint8Array(18 + 4);
 		bogus[0] = 0x03;
-		bogus[1] = 0x09; // unsupported
+		bogus[1] = 0x09;
 		try {
 			await pipeline([createReadableStream([bogus]), glueUnframeStream()]);
 			throw new Error("Should have thrown");
@@ -156,7 +151,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** input validation *** //
 	test(`confluentFrameStream rejects non-integer / out-of-range schemaId`, () => {
 		for (const bad of [undefined, "1", -1, 1.5, null, 0x100000000]) {
 			try {
@@ -189,8 +183,8 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 	test(`glueFrameStream rejects malformed schemaVersionId UUID`, () => {
 		for (const bad of [
 			"not-a-uuid",
-			"zzzzzzzz-1234-1234-1234-1234567890ab", // non-hex
-			"1234567812341234123412345678ab", // too short
+			"zzzzzzzz-1234-1234-1234-1234567890ab",
+			"1234567812341234123412345678ab",
 		]) {
 			try {
 				glueFrameStream({ schemaVersionId: bad });
@@ -212,9 +206,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** asBytes input-type handling (finding: numeric chunk -> zero-filled buffer) *** //
 	test(`confluentUnframeStream accepts string chunks`, async () => {
-		// Build a framed Confluent envelope, then feed it back as a latin1 string.
 		const framed = await streamToArray(
 			pipejoin([
 				createReadableStream([helloWorld]),
@@ -224,8 +216,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		const asString = Array.from(framed[0])
 			.map((b) => String.fromCharCode(b))
 			.join("");
-		// Re-encode via TextEncoder would corrupt high bytes; helloWorld is ASCII so
-		// round-trips, and the header bytes are < 0x80, so a latin1 string is exact.
 		const out = await streamToArray(
 			pipejoin([createReadableStream([asString]), confluentUnframeStream()]),
 		);
@@ -241,8 +231,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 				confluentFrameStream({ schemaId: 9 }),
 			]),
 		);
-		// Place the frame inside a larger buffer at a non-zero offset, then hand a
-		// subarray view (byteOffset > 0) to the unframe stream.
 		const backing = new Uint8Array(framed[0].byteLength + 3);
 		backing.set(framed[0], 3);
 		const view = backing.subarray(3);
@@ -266,10 +254,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** Glue zlib: input written to DecompressionStream in 16KiB slices *** //
-	// A browser DecompressionStream inflates each written chunk synchronously,
-	// so the frame must be fed in slices with the limit checked in between.
-	// A fake DecompressionStream records each write and expands it by `ratio`.
 	const withFakeDecompressionStream = async (ratio, fn) => {
 		const original = globalThis.DecompressionStream;
 		const writes = [];
@@ -326,7 +310,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 
 	test(`glueUnframeStream stops feeding a zlib bomb once maxOutputSize is exceeded`, async () => {
 		await withFakeDecompressionStream(1000, async (writes) => {
-			// 1MiB of input = 64 slices; each slice inflates to ~16MB.
 			const frame = glueZlibFrame(new Uint8Array(1024 * 1024));
 			await rejects(
 				pipeline([
@@ -342,7 +325,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		});
 	});
 
-	// *** Glue zlib failure / round-trip edge cases *** //
 	test(`glueUnframeStream rejects a malformed zlib payload`, async () => {
 		// magic 0x03 + compression 0x05 (zlib) + 16-byte UUID + garbage payload.
 		const frame = new Uint8Array(18 + 4);
@@ -408,7 +390,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		deepStrictEqual(Array.from(out.payload), Array.from(payload));
 	});
 
-	// *** .result() reports every distinct id instead of throwing on mixed ids *** //
 	test(`confluentUnframeStream: pipeline() resolves with the distinct schemaIds when ids are mixed`, async () => {
 		const [frameA] = await streamToArray(
 			pipejoin([
@@ -435,9 +416,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		});
 	});
 
-	// *** one chunk = one frame: emitted immediately, not held for the next chunk *** //
-	// A live consumer (e.g. Kafka) may not send another message for a long time;
-	// the latest message must reach downstream without waiting for a successor.
 	const emitsBeforeNextChunk = async (frame, unframe) => {
 		let emitted;
 		const seen = new Promise((resolve) => {
@@ -529,10 +507,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		});
 	});
 
-	// *** large frames: one chunk = one frame, no heuristic re-splitting *** //
 	test(`confluent frame -> unframe round-trips a single >16KB frame delivered as one chunk`, async () => {
-		// 40KB payload whose bytes at framed offsets 16384 and 32768 are 0x00: the
-		// old magic-byte re-splitting heuristic mis-split exactly this shape.
 		const big = new Uint8Array(40 * 1024);
 		for (let i = 0; i < big.byteLength; i++) big[i] = i % 251;
 		big[16384 - 5] = 0x00;
@@ -556,7 +531,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 	test(`glue frame -> unframe round-trips a single >16KB frame delivered as one chunk`, async () => {
 		const big = new Uint8Array(40 * 1024);
 		for (let i = 0; i < big.byteLength; i++) big[i] = (i * 7) % 251;
-		// 0x03 (the Glue magic byte) at framed offsets 16384 and 32768.
 		big[16384 - 18] = 0x03;
 		big[32768 - 18] = 0x03;
 		const framed = await streamToArray(
@@ -575,7 +549,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		deepStrictEqual(Array.from(out[0].payload), Array.from(big));
 	});
 
-	// *** envelope shape protects against per-message schemaVersionId drift *** //
 	test(`glueUnframeStream envelope correctly pairs payload with its own schemaVersionId`, async () => {
 		const idA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 		const idB = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -610,17 +583,15 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		);
 	});
 
-	// *** UUID regex anchoring: ^ and $ must both match (not substring) *** //
 	test(`glueFrameStream rejects a 33-char hex string (fails $ anchor on UUID regex)`, () => {
-		// After replaceAll("-",""), 33 hex chars is not 32 - both anchors must hold.
-		const tooLong = "0123456789abcdef0123456789abcdef0"; // 33 hex chars, no hyphens
+		const tooLong = "0123456789abcdef0123456789abcdef0";
 		try {
 			glueFrameStream({ schemaVersionId: tooLong });
 			throw new Error("Should have thrown");
 		} catch (e) {
 			ok(e.message.includes("UUID"), `Expected UUID error, got: ${e.message}`);
 		}
-		const alsoTooLong = "012345678901234567890123456789abc"; // 33 hex chars
+		const alsoTooLong = "012345678901234567890123456789abc";
 		try {
 			glueFrameStream({ schemaVersionId: alsoTooLong });
 			throw new Error("Should have thrown");
@@ -629,9 +600,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** asBytes: ArrayBuffer.isView path (non-Uint8Array typed array) *** //
 	test(`confluentFrameStream accepts an Int16Array (ArrayBuffer.isView branch)`, async () => {
-		// Int16Array is an ArrayBuffer view but NOT a Uint8Array - hits ArrayBuffer.isView branch.
 		const int16 = new Int16Array([1, 2, 3, 4]);
 		const out = await streamToArray(
 			pipejoin([
@@ -640,14 +609,12 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 			]),
 		);
 		strictEqual(out.length, 1);
-		strictEqual(out[0][0], 0x00); // magic byte
+		strictEqual(out[0][0], 0x00);
 		strictEqual(out[0].byteLength, 5 + int16.byteLength);
 	});
 
-	// *** asBytes: plain ArrayBuffer path *** //
 	test(`confluentFrameStream accepts a plain ArrayBuffer`, async () => {
-		// Plain ArrayBuffer (not a view) hits the instanceof ArrayBuffer branch.
-		const buf = new Uint8Array([0x61, 0x62, 0x63]).buffer; // "abc"
+		const buf = new Uint8Array([0x61, 0x62, 0x63]).buffer;
 		const out = await streamToArray(
 			pipejoin([
 				createReadableStream([buf]),
@@ -657,15 +624,12 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out.length, 1);
 		strictEqual(out[0][0], 0x00);
 		strictEqual(out[0].byteLength, 5 + 3);
-		// Verify payload bytes are "abc"
 		strictEqual(out[0][5], 0x61);
 		strictEqual(out[0][6], 0x62);
 		strictEqual(out[0][7], 0x63);
 	});
 
-	// *** asBytes: Uint8Array fast-path returns the chunk identity *** //
 	test(`asBytes Uint8Array fast-path preserves the original bytes exactly`, async () => {
-		// Exercise the first branch in asBytes: Uint8Array -> return chunk directly.
 		const bytes = new Uint8Array([0x41, 0x42, 0x43]);
 		const out = await streamToArray(
 			pipejoin([
@@ -678,7 +642,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[0][7], 0x43);
 	});
 
-	// *** confluentFrameStream schemaId boundary values *** //
 	test(`confluentFrameStream accepts schemaId === 0 (minimum valid, exact boundary)`, async () => {
 		const out = await streamToArray(
 			pipejoin([
@@ -717,7 +680,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** confluentFrameStream typeof validation: number type check *** //
 	test(`confluentFrameStream rejects schemaId that is a number string (type check)`, () => {
 		try {
 			confluentFrameStream({ schemaId: "42" });
@@ -730,9 +692,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** confluentFrameStream uses big-endian encoding (setUint32 false) *** //
 	test(`confluentFrameStream header bytes are big-endian (setUint32 little=false)`, async () => {
-		// 0x01020304 big-endian => bytes [0x01, 0x02, 0x03, 0x04]
 		const out = await streamToArray(
 			pipejoin([
 				createReadableStream([new Uint8Array([0xff])]),
@@ -745,9 +705,8 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[0][4], 0x04);
 	});
 
-	// *** confluentUnframeStream: frame exactly 4 bytes -> too short *** //
 	test(`confluentUnframeStream rejects a frame that is exactly 4 bytes (byteLength < 5)`, async () => {
-		const short = new Uint8Array([0x00, 0x00, 0x00, 0x01]); // valid magic, but only 4 bytes
+		const short = new Uint8Array([0x00, 0x00, 0x00, 0x01]);
 		try {
 			await pipeline([createReadableStream([short]), confluentUnframeStream()]);
 			throw new Error("Should have thrown");
@@ -759,9 +718,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** confluentUnframeStream: schemaId read as big-endian (getUint32 false) *** //
 	test(`confluentUnframeStream reads schemaId as big-endian (not little-endian)`, async () => {
-		// magic 0x00 + [0x01, 0x02, 0x03, 0x04] big-endian = 0x01020304
 		const frame = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0x04, 0xaa]);
 		const out = await streamToArray(
 			pipejoin([createReadableStream([frame]), confluentUnframeStream()]),
@@ -770,7 +727,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[0].payload[0], 0xaa);
 	});
 
-	// *** confluentUnframeStream distinct schemaIds tracking *** //
 	test(`confluentUnframeStream.result() succeeds when exactly 1 distinct schemaId is seen`, async () => {
 		const unframe = confluentUnframeStream();
 		const frameA = await streamToArray(
@@ -782,7 +738,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		const frameB = await streamToArray(
 			pipejoin([
 				createReadableStream([new Uint8Array([0x01])]),
-				confluentFrameStream({ schemaId: 5 }), // same id
+				confluentFrameStream({ schemaId: 5 }),
 			]),
 		);
 		await streamToArray(
@@ -820,7 +776,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		});
 	});
 
-	// *** confluentUnframeStream.result() uses resultKey when provided *** //
 	test(`confluentUnframeStream.result() uses custom resultKey`, async () => {
 		const unframe = confluentUnframeStream({ resultKey: "myKey" });
 		await streamToArray(
@@ -845,7 +800,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(unframe.result().key, "confluentSchemaId");
 	});
 
-	// *** confluentFrameStream.result() resultKey *** //
 	test(`confluentFrameStream.result() uses custom resultKey`, async () => {
 		const stream = confluentFrameStream({
 			schemaId: 7,
@@ -862,7 +816,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(stream.result().value.schemaId, 7);
 	});
 
-	// *** collectStream maxOutputSize boundary: total > maxOutputSize, not >= *** //
 	test(`glueUnframeStream allows decompressed output exactly equal to maxOutputSize`, async () => {
 		const payload = new TextEncoder().encode("a".repeat(100));
 		const out = await streamToArray(
@@ -875,7 +828,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[0].payload.byteLength, 100);
 	});
 
-	// *** collectStream: maxOutputSize null means no limit *** //
 	test(`glueUnframeStream with default maxOutputSize handles payloads without throwing`, async () => {
 		const payload = new TextEncoder().encode("test payload");
 		const out = await streamToArray(
@@ -889,7 +841,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		deepStrictEqual(Array.from(out[0].payload), Array.from(payload));
 	});
 
-	// *** one chunk = one frame: a frame split across chunks is rejected, not reassembled *** //
 	test(`confluentUnframeStream rejects a frame split into 2 chunks`, async () => {
 		const framed = await streamToArray(
 			pipejoin([
@@ -900,9 +851,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		const full = framed[0];
 		const headerChunk = full.slice(0, 5);
 		const payloadChunk = full.slice(5);
-		// The 5-byte header chunk parses as its own (empty-payload) frame; the
-		// payload-only chunk then fails the magic-byte check instead of being
-		// silently glued back on.
 		try {
 			await pipeline([
 				createReadableStream([headerChunk, payloadChunk]),
@@ -924,8 +872,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 			]),
 		);
 		const full = framed[0];
-		// The 18-byte header chunk parses as its own (empty-payload) frame; the
-		// payload-only chunk then fails the magic-byte check.
 		try {
 			await pipeline([
 				createReadableStream([full.slice(0, 18), full.slice(18)]),
@@ -937,7 +883,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** glueUnframeStream: frame exactly 17 bytes -> too short *** //
 	test(`glueUnframeStream rejects a frame that is exactly 17 bytes (byteLength < 18)`, async () => {
 		const short = new Uint8Array(17);
 		short[0] = 0x03;
@@ -952,7 +897,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** glueUnframeStream distinct schemaVersionIds tracking *** //
 	test(`glueUnframeStream.result() succeeds when exactly 1 distinct schemaVersionId seen`, async () => {
 		const frameA = await streamToArray(
 			pipejoin([
@@ -1006,7 +950,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		});
 	});
 
-	// *** glueUnframeStream.result() resultKey *** //
 	test(`glueUnframeStream.result() uses custom resultKey`, async () => {
 		const unframe = glueUnframeStream({ resultKey: "myGlueKey" });
 		await streamToArray(
@@ -1031,7 +974,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(unframe.result().key, "glueSchemaVersionId");
 	});
 
-	// *** glueFrameStream.result() resultKey *** //
 	test(`glueFrameStream.result() uses custom resultKey`, async () => {
 		const stream = glueFrameStream({
 			schemaVersionId: schemaUuid,
@@ -1048,9 +990,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(stream.result().value.schemaVersionId, schemaUuid);
 	});
 
-	// *** glueUnframeStream: unsupported compression byte error message includes zero-padded hex *** //
 	test(`glueUnframeStream unsupported compression error message includes zero-padded hex byte`, async () => {
-		// byte 0x09 -> padStart(2,"0") gives "09", not "9"
 		const frame = new Uint8Array(18 + 1);
 		frame[0] = 0x03;
 		frame[1] = 0x09;
@@ -1065,7 +1005,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** header-length check is `< headerSize`: an exactly-headerSize chunk is a valid frame *** //
 	test(`confluentUnframeStream accepts a frame chunk of exactly 5 bytes as new-frame start`, async () => {
 		const emptyPayload = new Uint8Array(0);
 		const framed = await streamToArray(
@@ -1100,7 +1039,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[0].payload.byteLength, 0);
 	});
 
-	// *** flush does nothing on empty stream *** //
 	test(`confluentUnframeStream flush does nothing when stream had no input`, async () => {
 		const out = await streamToArray(
 			pipejoin([createReadableStream([]), confluentUnframeStream()]),
@@ -1115,7 +1053,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out.length, 0);
 	});
 
-	// *** Error messages must be non-empty strings (StringLiteral mutants) *** //
 	test(`confluentFrameStream schemaId validation error message is non-empty`, () => {
 		throws(() => confluentFrameStream({ schemaId: undefined }), {
 			message:
@@ -1134,7 +1071,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		);
 	});
 
-	// *** envelope contains both schemaId and payload fields (not empty object) *** //
 	test(`confluentUnframeStream envelope has schemaId and payload fields`, async () => {
 		const out = await streamToArray(
 			pipejoin([
@@ -1148,7 +1084,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[0].schemaId, 999);
 	});
 
-	// *** confluentFrameStream value object has schemaId field *** //
 	test(`confluentFrameStream.result() value object contains schemaId`, async () => {
 		const stream = confluentFrameStream({ schemaId: 42 });
 		await streamToArray(pipejoin([createReadableStream([helloWorld]), stream]));
@@ -1156,7 +1091,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(stream.result().value.schemaId, 42);
 	});
 
-	// *** glueUnframeStream value object has schemaVersionId and compression *** //
 	test(`glueUnframeStream.result() value object contains schemaVersionId and compression`, async () => {
 		const unframe = glueUnframeStream();
 		await streamToArray(
@@ -1171,7 +1105,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(unframe.result().value.schemaVersionId, schemaUuid);
 	});
 
-	// *** confluentUnframeStream.result() value object has schemaId field *** //
 	test(`confluentUnframeStream.result() value has schemaId field (not empty object)`, async () => {
 		const unframe = confluentUnframeStream();
 		await streamToArray(
@@ -1185,9 +1118,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(unframe.result().value.schemaId, 88);
 	});
 
-	// *** bytesToUuid: padStart with "0" is needed for single-digit hex bytes *** //
 	test(`glueUnframeStream decodes UUID bytes with single-digit hex values (padStart needed)`, async () => {
-		// "00010203-0405-0607-0809-0a0b0c0d0e0f" has bytes 0x00..0x0f requiring padStart(2,"0")
 		const uuidWithSmallBytes = "00010203-0405-0607-0809-0a0b0c0d0e0f";
 		const out = await streamToArray(
 			pipejoin([
@@ -1199,9 +1130,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[0].schemaVersionId, uuidWithSmallBytes);
 	});
 
-	// *** bytesToUuid loop: i < 16 not <= 16 (exactly 16 bytes needed) *** //
 	test(`glueUnframeStream decodes all 16 UUID bytes correctly (loop bound i < 16)`, async () => {
-		// All-FF UUID - if loop ran 17 iterations (i <= 16) it would read out-of-bounds bytes.
 		const allFF = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 		const out = await streamToArray(
 			pipejoin([
@@ -1213,13 +1142,11 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[0].schemaVersionId, allFF);
 	});
 
-	// *** named exports only (no default export) *** //
 	test(`has no default export`, async () => {
 		const mod = await import("@datastream/schema-registry");
 		strictEqual(mod.default, undefined);
 	});
 
-	// *** a chunk < headerSize is a truncated frame even if it starts with magic *** //
 	test(`confluentUnframeStream rejects a chunk shorter than 5 bytes starting with 0x00`, async () => {
 		try {
 			await pipeline([
@@ -1243,10 +1170,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		}
 	});
 
-	// *** collectStream: maxOutputSize null/undefined -> no limit applied *** //
 	test(`confluentUnframeStream initial value has schemaId as null before any frames`, async () => {
-		// Test that result().value.schemaId is null (not undefined) before frames processed.
-		// With the { schemaId: null } mutation -> {}, value.schemaId would be undefined.
 		const unframe = confluentUnframeStream();
 		await streamToArray(
 			pipejoin([
@@ -1259,8 +1183,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 	});
 
 	test(`glueUnframeStream initial value fields present after processing`, async () => {
-		// Test that result().value has schemaVersionId and compression (not an empty object).
-		// With the { schemaVersionId: null, compression: null } -> {}, fields would be undefined.
 		const unframe = glueUnframeStream();
 		await streamToArray(
 			pipejoin([
@@ -1274,9 +1196,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(v.compression, "none");
 	});
 
-	// *** confluentUnframeStream initial value has schemaId as null (not undefined) *** //
 	test(`confluentUnframeStream.result() value.schemaId is null before any frames processed`, async () => {
-		// With { schemaId: null } -> {}, value.schemaId would be undefined, not null.
 		const unframe = confluentUnframeStream();
 		const result = unframe.result();
 		deepStrictEqual(result.value, {
@@ -1286,9 +1206,7 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		});
 	});
 
-	// *** glueUnframeStream initial value fields are null (not undefined) *** //
 	test(`glueUnframeStream.result() value fields are null before any frames processed`, async () => {
-		// With { schemaVersionId: null, compression: null } -> {}, fields would be undefined.
 		const unframe = glueUnframeStream();
 		const result = unframe.result();
 		deepStrictEqual(result.value, {
@@ -1299,9 +1217,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		});
 	});
 
-	// *** consecutive chunks are independent frames ***
-	// A second frame that is EXACTLY headerSize bytes (empty payload) is its own
-	// envelope, never folded into the previous frame.
 	test(`confluentUnframeStream treats an exactly-5-byte second frame as a new frame`, async () => {
 		const frameA = await streamToArray(
 			pipejoin([
@@ -1309,7 +1224,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 				confluentFrameStream({ schemaId: 811 }),
 			]),
 		);
-		// Second frame: empty payload => exactly 5 bytes, distinct schemaId.
 		const frameB = await streamToArray(
 			pipejoin([
 				createReadableStream([new Uint8Array(0)]),
@@ -1323,7 +1237,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 				confluentUnframeStream(),
 			]),
 		);
-		// Correct: TWO distinct envelopes, one per chunk.
 		strictEqual(out.length, 2);
 		strictEqual(out[0].schemaId, 811);
 		deepStrictEqual(Array.from(out[0].payload), Array.from(helloWorld));
@@ -1331,9 +1244,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[1].payload.byteLength, 0);
 	});
 
-	// *** maxOutputSize: null disables the ceiling ***
-	// null maps to Infinity; a mutant that let null through to the comparison
-	// (`total > null` => `total > 0`) would throw for any non-empty output.
 	test(`glueUnframeStream with maxOutputSize: null imposes no ceiling`, async () => {
 		const payload = new TextEncoder().encode("a".repeat(2048));
 		const out = await streamToArray(
@@ -1347,8 +1257,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(out[0].compression, "zlib");
 		deepStrictEqual(Array.from(out[0].payload), Array.from(payload));
 	});
-	// *** maxSchemaIds bounds the distinct-id list in long-lived consumers;
-	// ids past the cap are counted, not recorded. null = unlimited. *** //
 	const confluentFrame = (schemaId) => {
 		const frame = new Uint8Array(6);
 		new DataView(frame.buffer).setUint32(1, schemaId, false);
@@ -1436,9 +1344,6 @@ describe(`@datastream/schema-registry (${variant})`, () => {
 		strictEqual(value.untrackedSchemaVersionIds, 0);
 	});
 
-	// *** Message envelopes (e.g. kafkaConsumeStream output) *** //
-	// Shaped like kafkaConsumeStream's chunks: the frame is in `value`, and
-	// kafkaCommitStream needs topic/partition/offset to survive unframing.
 	const kafkaMessage = (value, offset = "5") => ({
 		topic: "orders",
 		partition: 2,
@@ -1554,7 +1459,6 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 	const url = "https://registry.example.com";
 	const avroSchema = '{"type":"string"}';
 
-	// Fake fetch recording every call; `respond(id)` builds the Response.
 	const fakeFetch = (respond = () => Response.json({ schema: avroSchema })) => {
 		const calls = [];
 		const fetch = async (requestUrl, init) => {
@@ -1611,7 +1515,6 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 		);
 	});
 
-	// Waits for the request's signal, like a real fetch to a hung registry.
 	const hangingFetch = (calls) => async (requestUrl, init) => {
 		calls.push({ url: requestUrl, init });
 		return new Promise((_resolve, reject) => {
@@ -1636,7 +1539,6 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 			hang ? hangingFetch(calls)(requestUrl, init) : respond(requestUrl, init);
 		const resolve = confluentSchemaRegistryResolver({ url, fetch, timeout: 5 });
 		await rejects(resolve(1), { name: "TimeoutError" });
-		// The timed-out lookup must not stay in the in-flight map.
 		hang = false;
 		strictEqual((await resolve(1)).schemaId, 1);
 		strictEqual(calls.length, 1);
@@ -1655,7 +1557,6 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 		const reason = new Error("shutting down");
 		controller.abort(reason);
 		await rejects(pending, (e) => e === reason);
-		// Combined with the timeout, not passed through as-is.
 		ok(calls[0].init.signal !== controller.signal);
 	});
 
@@ -1669,8 +1570,6 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 		await rejects(resolve(1), { name: "TimeoutError" });
 	});
 
-	// A Response whose JSON body is exactly `size` bytes, sent in two chunks so
-	// the limit has to count across chunks.
 	const sizedResponse = (size) => {
 		const json = new TextEncoder().encode(
 			JSON.stringify({ schema: "a".repeat(size - 13) }),
@@ -1806,7 +1705,6 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 			});
 		}
 		strictEqual(calls.length, 0);
-		// Both ends of the range are valid.
 		strictEqual((await resolve(0)).schemaId, 0);
 		strictEqual((await resolve(0xffffffff)).schemaId, 0xffffffff);
 	});
@@ -1876,7 +1774,7 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 		t.mock.timers.tick(9);
 		await resolve(1);
 		strictEqual(calls.length, 1);
-		t.mock.timers.tick(1); // expiry === now: stale
+		t.mock.timers.tick(1);
 		await resolve(1);
 		strictEqual(calls.length, 2);
 	});
@@ -1900,7 +1798,6 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 		const [a, b] = await Promise.all([resolve(1), resolve(1)]);
 		strictEqual(a, b);
 		strictEqual(calls.length, 1);
-		// In-flight entry is cleared once settled; the cache answers from here.
 		await resolve(2);
 		strictEqual(calls.length, 2);
 	});
@@ -1914,10 +1811,10 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 		});
 		await resolve(1);
 		await resolve(2);
-		await resolve(3); // evicts 1
+		await resolve(3);
 		await resolve(2);
 		await resolve(3);
-		await resolve(1); // re-fetch, evicts 2
+		await resolve(1);
 		await resolve(3);
 		deepStrictEqual(
 			calls.map((c) => c.url.split("/").pop()),
@@ -1931,7 +1828,7 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 		for (let id = 0; id < 1000; id++) await resolve(id);
 		await resolve(0);
 		strictEqual(calls.length, 1000);
-		await resolve(1000); // evicts 0
+		await resolve(1000);
 		await resolve(1);
 		strictEqual(calls.length, 1001);
 		await resolve(0);
@@ -1971,14 +1868,14 @@ describe(`confluentSchemaRegistryResolver (${variant})`, () => {
 			cacheExpiry: 10,
 			maxCacheSize: 3,
 		});
-		await resolve(1); // expires 1010
+		await resolve(1);
 		t.mock.timers.tick(5);
-		await resolve(2); // expires 1015
+		await resolve(2);
 		t.mock.timers.tick(7);
-		await resolve(1); // stale -> refreshed, now newest
+		await resolve(1);
 		await resolve(3);
-		await resolve(4); // evicts the oldest: 2
-		await resolve(1); // still cached
+		await resolve(4);
+		await resolve(1);
 		deepStrictEqual(
 			calls.map((c) => c.url.split("/").pop()),
 			["1", "2", "1", "3", "4"],

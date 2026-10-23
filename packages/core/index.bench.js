@@ -9,14 +9,11 @@ import {
 	streamToArray,
 } from "@datastream/core";
 
-// -- Data generators --
-
 const ITEMS = 10_000;
 const COLS = 10;
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 
-// ~1MB string (matches CSV benchmark scale)
 const generateString = (rows, cols, newline = "\r\n") => {
 	const header = Array.from({ length: cols }, (_, i) => `col${i}`).join(",");
 	const dataRows = Array.from({ length: rows }, (_, r) =>
@@ -36,8 +33,6 @@ const generateObjects = (rows, cols) =>
 
 const bigString = generateString(ITEMS, COLS);
 const objects = generateObjects(ITEMS, COLS);
-
-// -- Tests --
 
 suite("readable → streamToArray (string)", () => {
 	bench(`${bigString.length} chars, 16KB chunks`, options, async (b) => {
@@ -78,7 +73,6 @@ suite("readable → transform(identity) → streamToArray", () => {
 });
 
 suite("readable → transform(1→N) → streamToArray", () => {
-	// Simulate csvParseStream: ~68 string chunks in, ~147 objects out per chunk = 10K total
 	const itemsPerChunk = Math.ceil(
 		ITEMS / Math.ceil(bigString.length / (16 * 1024)),
 	);
@@ -93,7 +87,6 @@ suite("readable → transform(1→N) → streamToArray", () => {
 				const streams = [
 					createReadableStream(bigString),
 					createTransformStream((chunk, enqueue) => {
-						// Simulate parser: emit ~itemsPerChunk rows per chunk
 						const count = Math.ceil((chunk.length / bigString.length) * ITEMS);
 						for (let i = 0; i < count; i++) {
 							enqueue(row);

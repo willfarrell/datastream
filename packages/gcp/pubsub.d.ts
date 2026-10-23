@@ -35,12 +35,8 @@ export interface GcpPubSubMessage {
 
 /** The parts of an @google-cloud/pubsub `Subscription` the streams use. */
 export interface GcpPubSubSubscription {
-	// Emits "message" (a Message), "error" and "close"; loose so the SDK's
-	// overloaded on()/off() (or any EventEmitter) are assignable.
-	// biome-ignore lint/suspicious/noExplicitAny: Message | Error | none
-	on(event: string, listener: (...args: any[]) => void): unknown;
-	// biome-ignore lint/suspicious/noExplicitAny: Message | Error | none
-	off(event: string, listener: (...args: any[]) => void): unknown;
+	on(event: string, listener: (...args: unknown[]) => void): unknown;
+	off(event: string, listener: (...args: unknown[]) => void): unknown;
 	close(): Promise<void>;
 }
 

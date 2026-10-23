@@ -15,7 +15,6 @@ import {
 } from "@datastream/gcp/bigquery";
 import { describe, expect, test } from "tstyche";
 
-// A Transform (like the SDK's ResourceStream) is accepted.
 const bigquery = {
 	createQueryStream: (_query: Record<string, unknown>) =>
 		new PassThrough({ objectMode: true }),

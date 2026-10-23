@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: MIT
 import { createChunkDecoder, createTransformStream } from "@datastream/core";
 
-// A per-stream chunk decoder (streaming TextDecoder) keeps a multibyte char
-// split across byte chunks intact; `buffer += chunk` decoded (node) or
-// comma-joined (browser) each chunk on its own. String chunks pass through.
-
 // Returns a per-stream function that drops a leading byte-order mark from the
 // first non-empty text only. TextDecoder already strips it from byte input,
 // but string chunks (e.g. a file read as text) keep it, and JSON.parse / the
@@ -20,9 +16,6 @@ const createBomStripper = () => {
 	};
 };
 
-// Error map entry per id (csv parity): `idx` keeps at most maxErrorRows row
-// indexes so a stream of bad rows can't grow memory without bound, while
-// `count` records the true total. null = unlimited.
 const createErrorTracker = (errors, maxErrorRows) => {
 	const limit = maxErrorRows ?? Number.POSITIVE_INFINITY;
 	return (id, message, idx) => {
@@ -66,8 +59,6 @@ export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
 			const nlIdx = buffer.indexOf("\n", pos);
 			if (nlIdx === -1) {
 				buffer = buffer.substring(pos);
-				// maxBufferSize bounds the incomplete trailing line only (csv
-				// parity), so one large chunk of many short lines is accepted.
 				if (buffer.length > bufferLimit) {
 					throw new RangeError(
 						`ndjsonParseStream buffer (${buffer.length}) exceeds maxBufferSize (${maxBufferSize})`,
@@ -91,8 +82,6 @@ export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const flush = (enqueue) => {
-		// Flush bytes held by the streaming decoder (an incomplete trailing
-		// sequence becomes U+FFFD rather than being silently dropped).
 		buffer += decoder.flush();
 		// Parse the trailing (unterminated) line if it has any content. JSON.parse
 		// tolerates surrounding whitespace, so the raw buffer is parsed directly.
@@ -113,8 +102,6 @@ export const ndjsonParseStream = (options = {}, streamOptions = {}) => {
 	return stream;
 };
 
-// No `space` option: NDJSON is one record per line, and pretty-printing would
-// split a record across lines.
 export const ndjsonFormatStream = (_options = {}, streamOptions = {}) => {
 	const batch = [];
 
@@ -155,7 +142,6 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 	let escaped = false;
 	let started = false;
 	let rejected = false;
-	// ended: the top-level `]` was seen. trailing: non-whitespace followed it.
 	let ended = false;
 	let trailing = false;
 	let elementStart = -1;
@@ -199,10 +185,6 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 		while (pos < len) {
 			const ch = text.charCodeAt(pos);
 
-			// Only whitespace may precede the top-level `[`. Skipping ahead to the
-			// first `[` anywhere would stream a nested array out of e.g.
-			// {"a":[1,2]}; anything else means the input is not a JSON array, so
-			// stop scanning for good.
 			if (!started) {
 				if (ch === 0x5b) {
 					started = true;
@@ -214,8 +196,6 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 				continue;
 			}
 
-			// Only whitespace may follow the top-level `]`. Anything else (e.g.
-			// `[1]2` or `[1][2]`) is recorded once and the rest is ignored.
 			if (ended) {
 				if (!isWhitespace(ch)) {
 					trailing = true;
@@ -236,8 +216,6 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 			}
 
 			if (inStr) {
-				// Consume string content in a tight loop: only `\` and `"` matter,
-				// so the per-char state checks above are skipped until one is hit.
 				while (pos < len) {
 					const next = text.charCodeAt(pos++);
 					if (next === 0x5c) {
@@ -271,8 +249,6 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 			if (ch === 0x5d || ch === 0x7d) {
 				if (level > 0) {
 					level--;
-					// level was > 0, so the matching open brace already set
-					// elStart; it is provably !== -1 here.
 					if (level === 0) {
 						emitElement(text.substring(elStart, pos + 1), enqueue);
 						elStart = -1;
@@ -307,28 +283,17 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 		depth = level;
 		inString = inStr;
 		escaped = esc;
-		// Trim the processed portion from the buffer. trimFrom is always >= 0:
-		// it is either elStart (>= 0 when an element is in progress) or pos
-		// (>= 0). A trimFrom of 0 makes the substring/offset updates no-ops, so
-		// the trim runs unconditionally. A rejected/trailing scan trims too: its
-		// buffer is only ever rescanned from the stopping char (flush), which
-		// rejects again.
 		const trimFrom = elStart !== -1 ? elStart : pos;
 		buffer = text.substring(trimFrom);
 		scanPos = pos - trimFrom;
-		// The in-progress element (if any) now begins at the start of the buffer.
 		elementStart = elStart !== -1 ? 0 : -1;
 	};
 
 	const transform = (chunk, enqueue) => {
-		// Not a JSON array, or content after it: the rest is ignored.
 		if (rejected || trailing) return;
 		buffer += stripBom(decoder.decode(chunk));
 		scan(enqueue);
-		// A stopped scan leaves the buffer untrimmed, but it is never read again.
 		if (rejected || trailing) return;
-		// After scan() the buffer holds only the incomplete trailing element, so
-		// maxBufferSize bounds that (csv parity), not the whole chunk.
 		if (buffer.length > bufferLimit) {
 			throw new RangeError(
 				`jsonParseStream buffer (${buffer.length}) exceeds maxBufferSize (${maxBufferSize})`,
@@ -337,20 +302,13 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const flush = (enqueue) => {
-		// TrailingData was already recorded; nothing more to scan.
 		if (trailing) return;
-		// Flush bytes held by the streaming decoder (a truncated trailing
-		// sequence becomes U+FFFD, i.e. invalid JSON, not silently dropped) and
-		// scan them, so a lone U+FFFD before any `[` is rejected too. Rescanning
-		// an already-rejected buffer just rejects again.
 		buffer += decoder.flush();
 		scan(enqueue);
 		if (rejected) {
 			trackError("NoArrayStart", "Input did not contain a top-level array");
 			return;
 		}
-		// Empty/whitespace-only input, a complete array, or trailing content found
-		// in the decoder's flushed bytes: nothing pending.
 		if (!started || ended) return;
 		// After scan(), the buffer holds exactly the trailing in-progress element
 		// (starting at its first non-whitespace char) or only whitespace when no
@@ -361,7 +319,6 @@ export const jsonParseStream = (options = {}, streamOptions = {}) => {
 		if (/\S/.test(buffer)) {
 			emitElement(buffer, enqueue);
 		}
-		// The top-level array was opened but never closed (truncated input).
 		trackError(
 			"UnexpectedEnd",
 			"Input ended before the top-level array closed",

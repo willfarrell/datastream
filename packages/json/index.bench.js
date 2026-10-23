@@ -12,8 +12,6 @@ import {
 	ndjsonParseStream,
 } from "@datastream/json";
 
-// -- Data generators --
-
 const generateNdjsonString = (rows) => {
 	const lines = Array.from({ length: rows }, (_, i) =>
 		JSON.stringify({ id: i, name: `item_${i}`, value: Math.random() }),
@@ -37,8 +35,6 @@ const generateObjects = (rows) =>
 		value: Math.random(),
 	}));
 
-// -- Benchmark config --
-
 const ROWS = 100_000;
 const OPS = 1;
 const options = { warmup: 1, samples: 30 };
@@ -46,8 +42,6 @@ const options = { warmup: 1, samples: 30 };
 const ndjsonString = generateNdjsonString(ROWS);
 const jsonArrayString = generateJsonArrayString(ROWS);
 const objects = generateObjects(ROWS);
-
-// -- Tests --
 
 suite("ndjsonParseStream", () => {
 	bench(`${ROWS} rows`, options, async (b) => {

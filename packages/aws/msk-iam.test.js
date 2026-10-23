@@ -22,7 +22,6 @@ describe(`@datastream/aws/msk-iam (${variant})`, () => {
 		}
 	});
 
-	// Named exports are canonical; a default export must not come back.
 	test(`msk-iam has no default export`, (_t) => {
 		strictEqual(Object.hasOwn(awsModule, "default"), false);
 	});
@@ -43,8 +42,6 @@ describe(`@datastream/aws/msk-iam (${variant})`, () => {
 		try {
 			const mech = awsMskIamMechanism({ region: "us-east-1" });
 			const result = await mech.oauthBearerProvider();
-			// The provider must surface generateAuthToken's { token, expiryTime } as
-			// { value, expiryTime } — a `{}` body (or a `{}` return) drops these.
 			ok(typeof result.value === "string");
 			ok(result.value.length > 0);
 			ok(typeof result.expiryTime === "number");
@@ -59,19 +56,12 @@ describe(`@datastream/aws/msk-iam (${variant})`, () => {
 		}
 	});
 
-	// The `generateAuthToken({ region, awsDebugCreds })` argument object must
-	// forward the resolver's region; a `{}` mutant drops region and the signer
-	// rejects with a region-required error. We assert the provider rejects when no
-	// region can be resolved from args or environment.
 	test(`oauthBearerProvider forwards region to the signer`, async () => {
 		const prevRegion = process.env.AWS_REGION;
 		const prevDefault = process.env.AWS_DEFAULT_REGION;
 		delete process.env.AWS_REGION;
 		delete process.env.AWS_DEFAULT_REGION;
 		try {
-			// Build the mechanism with a region so awsMskIamMechanism itself passes,
-			// then strip the env so the ONLY region the signer can see is the one
-			// forwarded inside the generateAuthToken({ region }) object literal.
 			const mech = awsMskIamMechanism({ region: "us-east-1" });
 			process.env.AWS_ACCESS_KEY_ID = "AKIAIOSFODNN7EXAMPLE";
 			process.env.AWS_SECRET_ACCESS_KEY =

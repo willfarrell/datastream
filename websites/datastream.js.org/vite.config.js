@@ -18,7 +18,6 @@ export default defineConfig({
 			adapter: adapter({}),
 			appDir: "_",
 			csp: tardisec.kit.csp,
-			// Also the CSRF trusted origin and prerender url.origin
 			paths: {
 				origin: `https://${domain}`,
 			},

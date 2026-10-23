@@ -15,7 +15,6 @@ import {
 } from "@datastream/core";
 import { variant } from "../variant.js";
 
-// Fake container whose bulk responses come from `respond(operations, call)`.
 const container = (respond) => {
 	const calls = [];
 	return {
@@ -55,7 +54,6 @@ describe(`@datastream/azure/cosmos (${variant})`, () => {
 			maxItemCount: 5,
 		});
 		deepStrictEqual(await streamToArray(stream), [{ id: "1" }, { id: "2" }]);
-		// An internal signal, aborted only if the stream is destroyed early.
 		const { abortSignal } = args[1];
 		strictEqual(abortSignal instanceof AbortSignal, true);
 		strictEqual(abortSignal.aborted, false);
@@ -140,7 +138,6 @@ describe(`@datastream/azure/cosmos (${variant})`, () => {
 		strictEqual(client.calls.length, 1);
 	});
 
-	// One non-throttle failure alongside throttled ones is not retried.
 	test(`azureCosmosUpsertItemStream fails fast when any failure is not throttling`, async () => {
 		const client = container((operations, call) =>
 			call === 0
@@ -160,7 +157,6 @@ describe(`@datastream/azure/cosmos (${variant})`, () => {
 		strictEqual(client.calls.length, 1);
 	});
 
-	// A result carrying neither a response nor an error has no status: failed.
 	test(`azureCosmosUpsertItemStream treats a result without status as failed`, async () => {
 		const client = container(() => [{}]);
 		await rejects(
@@ -196,8 +192,6 @@ describe(`@datastream/azure/cosmos (${variant})`, () => {
 		}
 	};
 
-	// final() never runs on destroy/abort: the unsent items must surface on the
-	// error (kafkaProduceStream's err.failedMessages contract), not vanish.
 	test(`azureCosmosUpsertItemStream destroy attaches unsent items`, async () => {
 		const client = container(ok);
 		const stream = azureCosmosUpsertItemStream({ client });
@@ -210,7 +204,6 @@ describe(`@datastream/azure/cosmos (${variant})`, () => {
 			e.message,
 			"azureCosmosBulkOperations destroyed with a buffered batch",
 		);
-		// The written items (not operations), so they can be re-written as-is.
 		deepStrictEqual(e.failedMessages, [{ id: "100" }]);
 		strictEqual(client.calls.length, 1);
 	});

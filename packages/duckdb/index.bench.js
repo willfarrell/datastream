@@ -11,13 +11,9 @@ import {
 } from "@datastream/duckdb";
 import { Field, Int32, Schema, Utf8 } from "apache-arrow";
 
-// -- Config --
-
 const OPS = 5;
 const options = { warmup: 1, samples: 30 };
 const N = 10_000;
-
-// -- Data generators --
 
 const rows = Array.from({ length: N }, (_, i) => ({
 	id: i,
@@ -28,8 +24,6 @@ const arrowSchema = new Schema([
 	new Field("id", new Int32(), true),
 	new Field("name", new Utf8(), true),
 ]);
-
-// -- Tests --
 
 suite("duckdbAppenderStream", () => {
 	let db;

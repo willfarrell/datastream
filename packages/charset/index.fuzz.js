@@ -39,13 +39,10 @@ const supportedCharsets = [
 	"Big5",
 	"GB18030",
 ];
-// The browser encoder only supports UTF-8 (TextEncoder)
 const encodeCharsets = variant === "browser" ? ["UTF-8"] : supportedCharsets;
 // The browser build runs on Node's ICU TextDecoder here, whose GB18030 decoder
 // throws on some invalid input even in non-fatal mode; real browsers substitute
-// U+FFFD. Skip that label only for this environment quirk. Node 26's
-// TextDecoder also lacks the legacy CJK labels (Shift_JIS, EUC-JP, ...) that
-// browsers ship, so only fuzz labels the host can construct.
+// U+FFFD.
 const webDecodable = (charset) => {
 	try {
 		new TextDecoder(charset);
@@ -184,7 +181,6 @@ test("fuzz charset roundtrip encode -> decode w/ UTF-8", async () => {
 	);
 });
 
-// *** charsetEncodeStream w/ unsupported charset: rejected, never a fallback *** //
 test("fuzz charsetEncodeStream w/ random charset string", async () => {
 	await fc.assert(
 		fc.asyncProperty(

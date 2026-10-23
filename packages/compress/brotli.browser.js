@@ -56,8 +56,6 @@ export const brotliDecompressStream = (options = {}, streamOptions = {}) => {
 	const limit = resolveDecompressLimit(options.maxOutputSize);
 	const engine = new DecompressStream();
 	let outputSize = 0;
-	// Last engine result; anything but ResultSuccess at flush (including no input
-	// at all) means the brotli stream was cut short.
 	let code;
 	const transform = (chunk, enqueue) => {
 		const input = toBytes(chunk);
@@ -74,9 +72,6 @@ export const brotliDecompressStream = (options = {}, streamOptions = {}) => {
 			inputOffset += result.input_offset;
 			code = result.code;
 		} while (code === BrotliStreamResultCode.NeedsMoreOutput);
-		// The loop only stops early on ResultSuccess, so leftover input after it
-		// means trailing/garbage data; strict decoders reject it rather than
-		// silently dropping it.
 		if (inputOffset < input.byteLength) {
 			throw new Error(
 				"Decompression has trailing bytes after end of brotli stream",
@@ -84,7 +79,6 @@ export const brotliDecompressStream = (options = {}, streamOptions = {}) => {
 		}
 	};
 	const flush = () => {
-		// Same message as node:zlib so both builds fail alike on truncation.
 		if (code !== BrotliStreamResultCode.ResultSuccess) {
 			throw new Error("unexpected end of file");
 		}

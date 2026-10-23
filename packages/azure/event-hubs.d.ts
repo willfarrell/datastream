@@ -8,7 +8,6 @@ import type {
 
 export function azureEventHubsReceiveEventsStream(
 	options: {
-		// EventHubConsumerClient
 		client: unknown;
 		partitionId?: string;
 		pollingActive?: boolean;
@@ -21,7 +20,6 @@ export function azureEventHubsReceiveEventsStream(
 
 export function azureEventHubsSendEventsStream(
 	options: {
-		// EventHubProducerClient
 		client: unknown;
 		partitionKey?: string;
 		partitionId?: string;

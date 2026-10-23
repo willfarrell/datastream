@@ -38,7 +38,6 @@ export const validateStream = (
 	}
 
 	idxStart ??= 0;
-	// undefined -> the 1000 defaults above; null -> unlimited.
 	const rowLimit = maxErrorRows ?? Number.POSITIVE_INFINITY;
 	const keyLimit = maxErrorKeys ?? Number.POSITIVE_INFINITY;
 
@@ -53,16 +52,12 @@ export const validateStream = (
 		idx += 1;
 
 		// Validate a clone so AJV coercion does not mutate the caller's object.
-		// Non-cloneable: fall back to validating the original (best-effort; it
-		// may then be coerced in place).
 		let validateTarget;
 		try {
 			validateTarget = clone(chunk);
 		} catch {
 			validateTarget = chunk;
 		}
-		// allowCoerceTypes: false emits the original (uncoerced) chunk;
-		// otherwise the coerced clone.
 		const emitChunk = allowCoerceTypes === false ? chunk : validateTarget;
 
 		const chunkValid = schema(validateTarget);
@@ -111,8 +106,7 @@ const clone = (root) => {
 			}
 		}
 		// Plain assignment of an own "__proto__" key would replace the prototype;
-		// structuredClone keeps it as a data property (and still rejects a function
-		// value inside, which is how a mutant forcing this path is observed).
+		// structuredClone keeps it as a data property.
 		if (Object.hasOwn(value, "__proto__")) return structuredClone(value);
 		const found = seen.get(value);
 		if (found) return found;

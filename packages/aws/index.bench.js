@@ -43,8 +43,6 @@ import {
 } from "@datastream/core";
 import { mockClient } from "aws-sdk-client-mock";
 
-// -- Config --
-
 const ITEMS = 1_000;
 const OPS = 10;
 const benchOptions = { warmup: 2, samples: 30 };
@@ -57,8 +55,6 @@ const generateItems = (count) =>
 	}));
 
 const items = generateItems(ITEMS);
-
-// -- SNS Tests --
 
 suite("awsSNSPublishMessageStream", () => {
 	before(() => {
@@ -82,8 +78,6 @@ suite("awsSNSPublishMessageStream", () => {
 		b.end(OPS);
 	});
 });
-
-// -- SQS Tests --
 
 suite("awsSQSSendMessageStream", () => {
 	before(() => {
@@ -138,7 +132,6 @@ suite("awsSQSReceiveMessageStream", () => {
 			const client = mockClient(SQSClient);
 			awsSQSSetClient(client);
 
-			// Generate sequential responses: ITEMS/10 batches of 10, then empty
 			const batchCount = Math.ceil(ITEMS / 10);
 			let stub = client.on(ReceiveMessageCommand);
 			for (let i = 0; i < batchCount; i++) {
@@ -157,8 +150,6 @@ suite("awsSQSReceiveMessageStream", () => {
 		b.end(OPS);
 	});
 });
-
-// -- DynamoDB Tests --
 
 suite("awsDynamoDBPutItemStream", () => {
 	before(() => {
@@ -257,8 +248,6 @@ suite("awsDynamoDBScanStream", () => {
 		b.end(OPS);
 	});
 });
-
-// -- S3 Tests --
 
 suite("awsS3GetObjectStream", () => {
 	const bigString = "x".repeat(1_024 * 1_024);

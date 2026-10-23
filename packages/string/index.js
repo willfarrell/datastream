@@ -33,7 +33,6 @@ export const stringCountStream = (
 			}
 			value += 1;
 		}
-		// slice(-0) would keep everything, so a 1-char substr carries nothing
 		carry = combined.slice(Math.max(0, combined.length - substr.length + 1));
 	};
 	const stream = createPassThroughStream(passThrough, streamOptions);
@@ -112,7 +111,7 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 		lookbehind = 16,
 		maxBufferSize = 16_777_216, // 16MB
 	} = options;
-	const bufferLimit = maxBufferSize ?? Number.POSITIVE_INFINITY; // null = unlimited
+	const bufferLimit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	const isString = typeof pattern === "string";
 	if (
 		!isString &&
@@ -126,9 +125,6 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 	if (pattern === "") {
 		throw new Error("stringReplaceStream requires a non-empty pattern");
 	}
-	// A string pattern gets an indexOf matcher with the RegExp exec interface,
-	// so both share one scanner. A RegExp is used as given (exec honours
-	// lastIndex for g and y); scan restores the caller's lastIndex
 	const regexp = isString
 		? {
 				lastIndex: 0,
@@ -147,18 +143,9 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 			}
 		: pattern;
 	const unicode = regexp.unicode || regexp.unicodeSets;
-	// Longest possible match; unknown for a RegExp unless given, in which case
-	// the latest chunk is held back instead
 	const holdLength = isString ? pattern.length : maxMatchLength;
-	// $` and $' need the whole stream, so such a template is applied at flush
 	const wholeStream =
 		typeof replacement === "string" && /\$[`']/.test(replacement);
-	// String.prototype.replace's template expansion ($$, $&, $`, $', $n, $nn,
-	// $<name>), compiled once into literal and token parts that each match
-	// joins, instead of a regex pass over the template per match. The first
-	// match fixes what the tokens mean: `match.length` (group count) and
-	// whether the RegExp has named groups are the same for every match of one
-	// RegExp. Empty literal parts are kept so no part needs a guard.
 	const compile = (template, match) => {
 		const parts = [];
 		let last = 0;
@@ -210,19 +197,10 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 					}
 					return output;
 				};
-	// Raw (not yet replaced) text; replacing twice would corrupt output
 	let buffer = "";
-	// Tail of already-emitted raw text, so lookbehind, ^ and \b see what
-	// preceded the buffer instead of treating the buffer start as stream start
 	let context = "";
-	// Stream position of buffer[0], for function replacement offsets
 	let offset = 0;
 	let stopped = false;
-	// Why: replacing each emitted slice on its own let the RegExp see neither
-	// side of the slice (lookaround, ^/$, sticky, greedy matches split at the
-	// buffer end). Instead run one exec pass over context + buffer, emitting
-	// matches that start before `safe` and don't end at `holdEnd` (they could
-	// still grow); the scan always resumes where emitting stopped.
 	const scan = (safe, holdEnd) => {
 		const text = context + buffer;
 		const base = context.length;
@@ -237,7 +215,6 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 				const index = match === null ? Infinity : match.index - base;
 				if (index >= safe || index + match[0].length >= holdEnd) {
 					const emitTo = Math.max(start, Math.min(index, safe));
-					// A sticky miss before `safe` can't succeed later, so matching ends
 					if (match === null && regexp.sticky && start < safe) {
 						stopped = true;
 					}
@@ -283,7 +260,6 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 		}
 	};
 	const flush = (enqueue) => {
-		// With $` or $' nothing was scanned yet, so text is the whole stream
 		const output = scan(Infinity, Infinity);
 		if (output !== "") {
 			enqueue(output);
@@ -297,7 +273,7 @@ export const stringSplitStream = (options, streamOptions = {}) => {
 		separator,
 		maxBufferSize = 16_777_216, // 16MB
 	} = options;
-	const bufferLimit = maxBufferSize ?? Number.POSITIVE_INFINITY; // null = unlimited
+	const bufferLimit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	if (typeof separator !== "string" || separator.length === 0) {
 		throw new Error("stringSplitStream requires a non-empty separator");
 	}

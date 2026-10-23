@@ -3,46 +3,14 @@
 /* global CompressionStream, DecompressionStream */
 import { concatBytes, createTransformStream } from "@datastream/core";
 
-// Each frame/unframe transform treats one input chunk as one WHOLE Schema
-// Registry envelope. This matches the Kafka use case (one Kafka message = one
-// chunk = one Schema Registry-framed record). Envelopes carry no embedded
-// length, so a frame split across chunks cannot be reassembled reliably (a
-// continuation slice may itself start with the magic byte); callers piping
-// concatenated or sliced framed buffers must re-frame them upstream (e.g. via
-// a length-prefix transform). Each chunk is decoded and emitted immediately,
-// so a live consumer's latest message is never held back waiting for the next.
-//
-// A chunk may also be a message envelope carrying the frame in `value`, e.g.
-// kafkaConsumeStream's { topic, partition, offset, key, value, ... }. Its other
-// fields are copied onto the emitted envelope, so kafkaCommitStream can still
-// commit the message after it has been unframed and decoded.
-//
-// Unframe streams emit { schemaId | schemaVersionId, payload } envelopes
-// downstream so downstream decoders (e.g. protobufDecodeStream) can pick the
-// right schema per chunk without sharing mutable state via `.result()`. The
-// `.result()` accessor is still exposed for parity with the csvDetect pattern:
-// it lists every distinct id seen plus the *most recently seen* one, which is
-// racy under backpressure — prefer the per-chunk envelope when wiring a decoder.
-
 const GLUE_COMPRESSION_NONE = 0x00;
 const GLUE_COMPRESSION_ZLIB = 0x05;
 const UUID_HEX_RE = /^[0-9a-fA-F]{32}$/;
-// Cap on distinct ids an unframe stream records for .result(): a long-lived
-// consumer must not grow its id list forever. null opts out.
 const DEFAULT_MAX_SCHEMA_IDS = 1000;
-// Cap on bytes a zlib (de)compression buffers per frame, matching
-// @datastream/compress. null opts out.
-const DEFAULT_MAX_OUTPUT_SIZE = 268_435_456; // 256MiB
+const DEFAULT_MAX_OUTPUT_SIZE = 268_435_456;
 
-// Shared no-op for swallowing secondary promise rejections in error-handling
-// catch blocks (see transcode). Using a named reference avoids creating
-// uncalled anonymous functions that inflate function-coverage miss counts.
 const noop = () => {};
 
-// A chunk with a `value` field is a message envelope (see the top of this
-// file). Bytes, ArrayBuffers and strings have no `value`, so they stay frames.
-// A null value (a Kafka tombstone) still counts, and asBytes rejects it. A
-// stream chunk is never null/undefined, so no optional chaining.
 const asEnvelope = (chunk) => (chunk.value === undefined ? undefined : chunk);
 
 const asBytes = (chunk) => {
@@ -61,8 +29,6 @@ const asBytes = (chunk) => {
 	);
 };
 
-// `outputLimit` is the byte cap with null already mapped to Infinity;
-// `message` is the RangeError message for exceeding it.
 const collectStream = async (readable, outputLimit, message) => {
 	const reader = readable.getReader();
 	const chunks = [];
@@ -107,8 +73,6 @@ const transcode = async (transform, bytes, maxOutputSize, outputLimit) => {
 		await writeP;
 		return result;
 	} catch (err) {
-		// Swallow the writeP rejection after collect throws — read-side error
-		// is the underlying cause.
 		writeP.catch(noop);
 		throw err;
 	}
@@ -139,9 +103,6 @@ export const confluentFrameStream = (
 		enqueue(concatBytes([header, asBytes(chunk)]));
 	};
 	const stream = createTransformStream(transform, streamOptions);
-	// For frame streams `.result()` echoes the schemaId the caller configured
-	// (not detected). Its default key differs from confluentUnframeStream's so
-	// both can share one pipeline result.
 	stream.result = () => ({
 		key: resultKey ?? "confluentFrameSchemaId",
 		value,
@@ -153,8 +114,6 @@ export const confluentUnframeStream = (
 	{ maxSchemaIds = DEFAULT_MAX_SCHEMA_IDS, resultKey } = {},
 	streamOptions = {},
 ) => {
-	// schemaId: most recently seen; schemaIds: distinct ids, first-seen order,
-	// up to maxSchemaIds; untrackedSchemaIds: frames whose new id was past the cap.
 	const value = { schemaId: null, schemaIds: [], untrackedSchemaIds: 0 };
 	const seenIds = new Set();
 	const idLimit = maxSchemaIds ?? Number.POSITIVE_INFINITY;
@@ -179,24 +138,13 @@ export const confluentUnframeStream = (
 			}
 		}
 		value.schemaId = schemaId;
-		// subarray (zero-copy) — the source bytes outlive the chunk.
-		// Spreading undefined adds nothing, so a bare frame emits only these keys.
 		enqueue({ ...envelope, schemaId, payload: bytes.subarray(5) });
 	};
 	const stream = createTransformStream(transform, streamOptions);
-	// `.result()` reports every distinct id seen rather than throwing on mixed
-	// ids: pipeline() always calls result(), so a throw would reject a run
-	// after all of its data had already been processed. Per-chunk schema
-	// selection still belongs on the envelope { schemaId, payload }.
 	stream.result = () => ({ key: resultKey ?? "confluentSchemaId", value });
 	return stream;
 };
 
-// Looks schema ids up in a Confluent Schema Registry (GET /schemas/ids/{id}).
-// Same cache/eviction/dedup semantics as @datastream/aws
-// awsGlueSchemaRegistryResolver, and both results carry schemaDefinition and
-// dataFormat, but this one is keyed by schemaId (Glue: schemaVersionId) and
-// adds the registry's references.
 export const confluentSchemaRegistryResolver = ({
 	url,
 	headers,
@@ -204,7 +152,7 @@ export const confluentSchemaRegistryResolver = ({
 	maxCacheSize = 1000,
 	timeout = 30_000,
 	signal,
-	maxBodySize = 1_048_576, // 1MiB
+	maxBodySize = 1_048_576,
 	fetch = globalThis.fetch,
 } = {}) => {
 	if (typeof url !== "string" || !URL.canParse(url)) {
@@ -212,20 +160,12 @@ export const confluentSchemaRegistryResolver = ({
 			"confluentSchemaRegistryResolver: url must be an absolute URL",
 		);
 	}
-	// Append to the path, not the string: a base with a query string
-	// (?tenant=a) must keep it after /schemas/ids/{id}.
 	const baseUrl = new URL(url);
 	const basePath = baseUrl.pathname.replace(/\/$/, "");
-	// null = no body cap
 	const bodyLimit = maxBodySize ?? Number.POSITIVE_INFINITY;
-	// null = unbounded cache
 	const cacheCap = maxCacheSize ?? Number.POSITIVE_INFINITY;
-	// Map preserves insertion order, so we get O(1) FIFO eviction by deleting
-	// the oldest key when we hit the cap.
-	const cache = new Map(); // schemaId -> { value, expires }
-	// Dedup in-flight lookups so parallel resolves for the same id don't fan
-	// out to N registry calls.
-	const inflight = new Map(); // schemaId -> Promise<value>
+	const cache = new Map();
+	const inflight = new Map();
 
 	const lookup = async (schemaId) => {
 		const requestUrl = new URL(baseUrl);
@@ -250,8 +190,6 @@ export const confluentSchemaRegistryResolver = ({
 				`confluentSchemaRegistryResolver: schema ${schemaId} lookup returned no body`,
 			);
 		}
-		// response.json() would buffer a body of any size; the registry is a
-		// trust boundary, so cap it.
 		const bytes = await collectStream(
 			response.body,
 			bodyLimit,
@@ -269,21 +207,15 @@ export const confluentSchemaRegistryResolver = ({
 	};
 
 	return async (schemaId) => {
-		// The id goes into the request path, so it must be the same unsigned
-		// 32-bit integer the wire format carries (confluentFrameStream's check).
 		if (!Number.isInteger(schemaId) || schemaId < 0 || schemaId > 0xffffffff) {
 			throw new TypeError(
 				"confluentSchemaRegistryResolver: schemaId must be an unsigned 32-bit integer",
 			);
 		}
 		const hit = cache.get(schemaId);
-		// expires === -1 is the never-expires sentinel; otherwise it is an absolute
-		// timestamp and the entry is fresh while it is still in the future.
 		if (hit && (hit.expires === -1 || hit.expires > Date.now())) {
 			return hit.value;
 		}
-		// Drop the stale entry so the refreshed one is set() at the Map's tail,
-		// keeping eviction true-FIFO.
 		cache.delete(schemaId);
 		const pending = inflight.get(schemaId);
 		if (pending) return pending;
@@ -291,8 +223,6 @@ export const confluentSchemaRegistryResolver = ({
 		const promise = (async () => {
 			try {
 				const value = await lookup(schemaId);
-				// maxCacheSize <= 0 disables caching; evicting down to a non-positive
-				// cap would otherwise spin forever on an empty Map.
 				if (cacheCap > 0) {
 					while (cache.size >= cacheCap) {
 						cache.delete(cache.keys().next().value);
@@ -379,9 +309,6 @@ export const glueFrameStream = (
 
 	const transform = async (chunk, enqueue) => {
 		const bytes = asBytes(chunk);
-		// transcode() buffers the whole compressed result; bound it with
-		// maxOutputSize, mirroring glueUnframeStream (no other buffering path
-		// here is unbounded).
 		const payload =
 			compression === "zlib"
 				? await transcode(
@@ -394,8 +321,6 @@ export const glueFrameStream = (
 		enqueue(concatBytes([header, payload]));
 	};
 	const stream = createTransformStream(transform, streamOptions);
-	// Default key differs from glueUnframeStream's so both can share one
-	// pipeline result.
 	stream.result = () => ({
 		key: resultKey ?? "glueFrameSchemaVersionId",
 		value,
@@ -411,9 +336,6 @@ export const glueUnframeStream = (
 	} = {},
 	streamOptions = {},
 ) => {
-	// schemaVersionId/compression: most recently seen; schemaVersionIds: distinct
-	// ids, first-seen order, up to maxSchemaIds; untrackedSchemaVersionIds:
-	// frames whose new id was past the cap.
 	const value = {
 		schemaVersionId: null,
 		compression: null,
@@ -466,7 +388,6 @@ export const glueUnframeStream = (
 		);
 	};
 	const stream = createTransformStream(transform, streamOptions);
-	// See confluentUnframeStream: report every distinct id rather than throw.
 	stream.result = () => ({ key: resultKey ?? "glueSchemaVersionId", value });
 	return stream;
 };

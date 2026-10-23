@@ -13,15 +13,11 @@ export const azureBlobDownloadStream = async (options, streamOptions = {}) => {
 		abortSignal: streamOptions.signal,
 	});
 	if (!Body) {
-		// Only the blob name: other options (customerProvidedKey) are secrets
-		// that must not leak into logged error causes.
 		throw new Error("Blob.download has no body", {
 			cause: { name: client.name },
 		});
 	}
 	const stream = createReadableStream(Body, streamOptions);
-	// Tie the SDK body (live socket-backed readable) to the wrapper so a
-	// consumer error/abort releases the HTTP connection.
 	const teardownBody = () => {
 		try {
 			Body.destroy();
@@ -33,11 +29,7 @@ export const azureBlobDownloadStream = async (options, streamOptions = {}) => {
 		if (signal.aborted) {
 			teardownBody();
 		} else {
-			// No `once`: an abort destroys the stream (Readable.from honors the
-			// signal), so the 'close' handler below always drops the listener.
 			signal.addEventListener("abort", teardownBody);
-			// Drop the listener once the stream is done so a long-lived signal shared
-			// across many downloads does not accumulate listeners (each pinning a body).
 			stream.once("close", () =>
 				signal.removeEventListener("abort", teardownBody),
 			);
@@ -46,9 +38,6 @@ export const azureBlobDownloadStream = async (options, streamOptions = {}) => {
 	return stream;
 };
 
-// client = ContainerClient; listBlobsFlat pages internally. The signal aborts
-// an in-flight page request when the stream is destroyed early, and the
-// generator's return() (on destroy) closes the SDK iterator via for-await.
 export const azureBlobListStream = async (options, streamOptions = {}) => {
 	const { client, ...listOptions } = options;
 	if (!client) {

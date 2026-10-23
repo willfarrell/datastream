@@ -30,8 +30,6 @@ const receiver = (pages) => {
 		calls,
 		receiveMessages: async (...args) => {
 			calls.push(args);
-			// Like a real request: yields to the event loop (so a consumer can run
-			// between empty polls) and rejects once the signal aborts.
 			await new Promise((resolve) => setImmediate(resolve));
 			args[1].abortSignal.throwIfAborted();
 			return pages.shift() ?? [];
@@ -47,7 +45,6 @@ describe(`@datastream/azure/service-bus (${variant})`, () => {
 			maxWaitTimeInMs: 5,
 		});
 		deepStrictEqual(await streamToArray(stream), [{ body: 1 }, { body: 2 }]);
-		// An internal signal, aborted only if the stream is destroyed early.
 		const { abortSignal } = client.calls[0][1];
 		strictEqual(abortSignal instanceof AbortSignal, true);
 		strictEqual(abortSignal.aborted, false);
@@ -186,7 +183,6 @@ describe(`@datastream/azure/service-bus (${variant})`, () => {
 		]);
 	});
 
-	// A failed settle (e.g. MessageLockLost) fails the pipeline, like complete.
 	for (const [name, factory, method] of [
 		["Abandon", azureServiceBusAbandonMessageStream, "abandonMessage"],
 		["DeadLetter", azureServiceBusDeadLetterMessageStream, "deadLetterMessage"],
@@ -212,8 +208,6 @@ describe(`@datastream/azure/service-bus (${variant})`, () => {
 		deepStrictEqual(await streamToArray(pipejoin([stream])), [{ body: 1 }]);
 	});
 
-	// A generator's return() only lands at its next yield; destroying the stream
-	// must also abort the idle poll wait so polling stops and 'close' fires.
 	test(`azureServiceBusReceiveMessagesStream destroy stops an idle poll`, {
 		timeout: 1000,
 	}, async () => {
@@ -251,8 +245,6 @@ describe(`@datastream/azure/service-bus (${variant})`, () => {
 		);
 	});
 
-	// Without pollingActive every non-empty page is followed by another receive,
-	// and the stream ends on the first empty page without waiting pollingDelay.
 	test(`azureServiceBusReceiveMessagesStream reads every page then ends without waiting`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = receiver([[{ body: 1 }], [{ body: 2 }], []]);
@@ -270,7 +262,6 @@ describe(`@datastream/azure/service-bus (${variant})`, () => {
 		deepStrictEqual(await result, [{ body: 1 }, { body: 2 }]);
 	});
 
-	// pollingDelay only applies after an empty page, and 0 schedules no timer.
 	for (const [label, pages, pollingDelay] of [
 		["after a non-empty page", [[{ body: 1 }], [{ body: 2 }]], 60_000],
 		["with pollingDelay 0", [[], [{ body: 1 }], [{ body: 2 }]], 0],

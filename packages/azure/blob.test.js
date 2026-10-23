@@ -153,8 +153,6 @@ describe(`@datastream/azure/blob (${variant})`, () => {
 		);
 	});
 
-	// A failed upload stops reading the body; without forwarding the error the
-	// writer would sit on backpressure forever instead of failing.
 	test(`azureBlobUploadStream destroys the stream when the upload fails`, {
 		timeout: 1000,
 	}, async () => {
@@ -188,7 +186,6 @@ describe(`@datastream/azure/blob (${variant})`, () => {
 			{ name: "a/1" },
 			{ name: "a/2" },
 		]);
-		// An internal signal, aborted only if the stream is destroyed early.
 		const { abortSignal } = args[0];
 		strictEqual(abortSignal instanceof AbortSignal, true);
 		strictEqual(abortSignal.aborted, false);
@@ -205,8 +202,6 @@ describe(`@datastream/azure/blob (${variant})`, () => {
 		});
 	});
 
-	// Backpressure parks the generator at a yield: destroy must reach the SDK
-	// iterator's return() so it stops paging.
 	test(`azureBlobListStream destroy calls the iterator's return()`, {
 		timeout: 1000,
 	}, async () => {
@@ -240,8 +235,6 @@ describe(`@datastream/azure/blob (${variant})`, () => {
 		strictEqual(abortSignal.aborted, true);
 	});
 
-	// A destroy while a page request is in flight aborts that request so the
-	// stream can close instead of waiting on the network.
 	test(`azureBlobListStream destroy aborts an in-flight page request`, {
 		timeout: 1000,
 	}, async () => {

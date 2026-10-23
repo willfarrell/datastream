@@ -9,11 +9,6 @@ import {
 import { variant } from "../variant.js";
 
 describe(`@datastream/compress/brotli-partial (${variant})`, async () => {
-	// brotli-wasm's streaming contract lets compress()/decompress() consume only
-	// part of their input when the output buffer fills (input_offset < length),
-	// but the shipped wasm never actually does: it always swallows the whole
-	// input first. Swap it, for this process only, for an echo codec that takes
-	// five bytes per call, so the re-feed loop in brotli.browser.js is exercised.
 	register(
 		`data:text/javascript,${encodeURIComponent(`
 			export async function resolve(specifier, context, nextResolve) {
@@ -47,7 +42,7 @@ describe(`@datastream/compress/brotli-partial (${variant})`, async () => {
 	);
 
 	test(`browser brotli streams re-feed the unconsumed input tail until the engine drains it`, async () => {
-		const input = ["abcdefghijkl", "mnopq"]; // 12 = 5 + 5 + 2, then 5
+		const input = ["abcdefghijkl", "mnopq"];
 		const echoed = async (stream) => {
 			const chunks = [];
 			await pipeline([
@@ -59,7 +54,6 @@ describe(`@datastream/compress/brotli-partial (${variant})`, async () => {
 			]);
 			return chunks;
 		};
-		// The compressor's flush drains the engine one last time (an empty buffer here).
 		deepStrictEqual(await echoed(brotliCompressStream()), [
 			"abcde",
 			"fghij",

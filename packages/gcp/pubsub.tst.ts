@@ -16,7 +16,6 @@ const topic = {
 	publishMessage: async (_message: GcpPubSubPublishMessage) => "id",
 	flush: async () => {},
 };
-// An EventEmitter-based Subscription (like the SDK's) is accepted.
 const subscription = Object.assign(new EventEmitter(), {
 	close: async () => {},
 });

@@ -20,15 +20,12 @@ const catchError = (input, e) => {
 	if (expectedErrors.includes(e.message)) {
 		return;
 	}
-	// Row-shape errors name the offending keys or counts.
 	if (
 		e.message.startsWith("sqliteInsertStream: row has keys not in columns: ") ||
 		e.message.startsWith("sqliteInsertStream: array row has ")
 	) {
 		return;
 	}
-	// SQLite rejected the statement (no such table/column, a NUL truncating the
-	// SQL text, ...), a value could not be bound, or a named param is unknown.
 	if (
 		e.code === "ERR_SQLITE_ERROR" ||
 		e.code === "ERR_INVALID_ARG_TYPE" ||
@@ -42,10 +39,6 @@ const catchError = (input, e) => {
 
 const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 
-// ---------------------------------------------------------------------------
-// fuzz: identifiers never escape their quotes
-// ---------------------------------------------------------------------------
-
 test("fuzz sqliteInsertStream w/ random identifiers", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -56,10 +49,7 @@ test("fuzz sqliteInsertStream w/ random identifiers", async () => {
 				db.exec("CREATE TABLE victim (v)");
 				try {
 					db.exec(`CREATE TABLE ${quote(table)} (${quote(column)})`);
-				} catch {
-					// Some names (NUL, sqlite_ prefix, ...) can't be created; the stream
-					// must still fail cleanly against them.
-				}
+				} catch {}
 				try {
 					await pipeline([
 						createReadableStream([{ [column]: 1 }]),
@@ -69,7 +59,6 @@ test("fuzz sqliteInsertStream w/ random identifiers", async () => {
 					catchError({ table, column }, e);
 				}
 				strictEqual(db.isTransaction, false);
-				// A broken-out identifier would have dropped or altered this table.
 				strictEqual(db.prepare("SELECT count(*) AS n FROM victim").get().n, 0);
 				db.close();
 			},
@@ -81,10 +70,6 @@ test("fuzz sqliteInsertStream w/ random identifiers", async () => {
 		},
 	);
 });
-
-// ---------------------------------------------------------------------------
-// fuzz: random rows round-trip or roll back entirely
-// ---------------------------------------------------------------------------
 
 test("fuzz sqliteInsertStream w/ random rows", async () => {
 	await fc.assert(
@@ -99,7 +84,6 @@ test("fuzz sqliteInsertStream w/ random rows", async () => {
 						{ requiredKeys: [] },
 					),
 					fc.array(fc.oneof(fc.integer(), fc.string()), { maxLength: 3 }),
-					// not bindable: exercises the mid-stream rollback path
 					fc.record({ a: fc.object() }),
 				),
 				{ maxLength: 20 },
@@ -121,7 +105,6 @@ test("fuzz sqliteInsertStream w/ random rows", async () => {
 				const stored = await streamToArray(
 					sqliteQueryStream({ db, sql: "SELECT * FROM t" }),
 				);
-				// All or nothing.
 				strictEqual(stored.length, ok ? rows.length : 0);
 				db.close();
 			},
@@ -133,10 +116,6 @@ test("fuzz sqliteInsertStream w/ random rows", async () => {
 		},
 	);
 });
-
-// ---------------------------------------------------------------------------
-// fuzz: query params
-// ---------------------------------------------------------------------------
 
 test("fuzz sqliteQueryStream w/ random params", async () => {
 	await fc.assert(

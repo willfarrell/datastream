@@ -18,7 +18,6 @@ import {
 import { variant } from "../variant.js";
 
 describe(`@datastream/string (${variant})`, () => {
-	// *** Major-version API *** //
 	test(`exports only *Stream names (no default, aliases or stringReadableStream)`, async (_t) => {
 		const mod = await import("@datastream/string");
 		for (const name of [
@@ -32,7 +31,6 @@ describe(`@datastream/string (${variant})`, () => {
 		}
 	});
 
-	// *** stringLengthStream *** //
 	test(`stringLengthStream should count length of chunks`, async (_t) => {
 		const input = ["1", "2", "3"];
 		const streams = [createReadableStream(input), stringLengthStream()];
@@ -60,7 +58,6 @@ describe(`@datastream/string (${variant})`, () => {
 		strictEqual(value, 3);
 	});
 
-	// *** stringSkipConsecutiveDuplicatesStream *** //
 	test(`stringSkipConsecutiveDuplicatesStream should skip consecutive duplicates`, async (_t) => {
 		const input = ["1", "2", "2", "3"];
 		const streams = [
@@ -74,7 +71,6 @@ describe(`@datastream/string (${variant})`, () => {
 		deepStrictEqual(output, ["1", "2", "3"]);
 	});
 
-	// *** stringSplitStream *** //
 	test(`stringSplitStream should split into empty strings`, async (_t) => {
 		const input = [",,", ",,"];
 		const streams = [
@@ -101,7 +97,6 @@ describe(`@datastream/string (${variant})`, () => {
 		deepStrictEqual(output, ["a", "bc", "d"]);
 	});
 
-	// *** stringCountStream *** //
 	test(`stringCountStream should count occurrences of substring`, async (_t) => {
 		const input = ["hello world", "hello universe"];
 		const streams = [
@@ -166,7 +161,6 @@ describe(`@datastream/string (${variant})`, () => {
 		strictEqual(result.matches, 2);
 	});
 
-	// *** stringReplaceStream *** //
 	test(`stringReplaceStream should replace pattern across chunks`, async (_t) => {
 		const input = ["hello world", "hello universe"];
 		const streams = [
@@ -261,7 +255,6 @@ describe(`@datastream/string (${variant})`, () => {
 		const output = await streamToArray(pipejoin(streams));
 
 		deepStrictEqual(output, ["xc", "b"]);
-		// the caller's RegExp is never used directly, so its lastIndex is untouched
 		strictEqual(pattern.lastIndex, 1);
 	});
 
@@ -276,7 +269,6 @@ describe(`@datastream/string (${variant})`, () => {
 		ok(threw);
 	});
 
-	// *** stringReplaceStream: whole-string semantics across chunks *** //
 	const replaceChunks = (input, options) =>
 		streamToArray(
 			pipejoin([createReadableStream(input), stringReplaceStream(options)]),
@@ -568,7 +560,6 @@ describe(`@datastream/string (${variant})`, () => {
 		);
 	});
 
-	// *** stringMinimumFirstChunkSizeStream *** //
 	test(`stringMinimumFirstChunkSizeStream should buffer until chunkSize reached`, async (_t) => {
 		const input = ["ab", "cd", "ef"];
 		const streams = [
@@ -605,7 +596,6 @@ describe(`@datastream/string (${variant})`, () => {
 		deepStrictEqual(output, ["abcdef", "gh", "ij"]);
 	});
 
-	// *** stringMinimumChunkSizeStream *** //
 	test(`stringMinimumChunkSizeStream should buffer until chunkSize reached`, async (_t) => {
 		const input = ["ab", "cd", "ef"];
 		const streams = [
@@ -642,7 +632,6 @@ describe(`@datastream/string (${variant})`, () => {
 		deepStrictEqual(output, ["abcdef", "ghij"]);
 	});
 
-	// *** stringReplaceStream buffer limit regression *** //
 	test(`stringReplaceStream should throw when buffer exceeds maxBufferSize`, async (_t) => {
 		const input = ["aaaa", "bbbb", "cccc"];
 		const streams = [
@@ -661,7 +650,6 @@ describe(`@datastream/string (${variant})`, () => {
 		}
 	});
 
-	// *** stringSplitStream buffer limit regression *** //
 	test(`stringSplitStream should throw when buffer exceeds maxBufferSize`, async (_t) => {
 		const input = ["aaaaaa", "bbbbbb", "cccccc"];
 		const streams = [
@@ -676,7 +664,6 @@ describe(`@datastream/string (${variant})`, () => {
 		}
 	});
 
-	// *** stringSplitStream empty separator guard *** //
 	test(`stringSplitStream should throw on empty separator at construction`, (_t) => {
 		let threw = false;
 		try {
@@ -691,7 +678,6 @@ describe(`@datastream/string (${variant})`, () => {
 		ok(threw, "stringSplitStream({ separator: '' }) should throw");
 	});
 
-	// *** stringCountStream cross-chunk boundary *** //
 	test(`stringCountStream should count occurrences spanning chunk boundaries`, async (_t) => {
 		const input = ["hel", "lo"];
 		const streams = [
@@ -705,7 +691,6 @@ describe(`@datastream/string (${variant})`, () => {
 		strictEqual(value, 1);
 	});
 
-	// *** stringCountStream guard: typeof check *** //
 	test(`stringCountStream should throw when substr is not a string (number)`, (_t) => {
 		let threw = false;
 		try {
@@ -739,9 +724,7 @@ describe(`@datastream/string (${variant})`, () => {
 		ok(threw, "stringCountStream({ substr: '' }) should throw");
 	});
 
-	// *** stringCountStream: cursor boundary (< vs <=) *** //
 	test(`stringCountStream should count match at the very end of combined string`, async (_t) => {
-		// substr "ab" with combined exactly ending in "ab" — exercises cursor at length boundary
 		const input = ["xab"];
 		const streams = [
 			createReadableStream(input),
@@ -752,10 +735,7 @@ describe(`@datastream/string (${variant})`, () => {
 		strictEqual(value, 1);
 	});
 
-	// *** stringCountStream: carry arithmetic (substr.length - 1 vs + 1) *** //
 	test(`stringCountStream should NOT double-count across chunk boundary when carry is exact`, async (_t) => {
-		// substr = "ab", chunk1 = "a", chunk2 = "b" => carry="a", combined="ab" => 1 match
-		// if carry used -(length+1) it would incorrectly carry "xa" or extra chars, changing count
 		const input = ["a", "b", "ab"];
 		const streams = [
 			createReadableStream(input),
@@ -767,10 +747,6 @@ describe(`@datastream/string (${variant})`, () => {
 	});
 
 	test(`stringCountStream carry should not include extra characters that cause false positives`, async (_t) => {
-		// substr = "ab" (length 2), carry should be 1 char (length-1)
-		// chunk1="xxa", chunk2="b" => combined="xxab", carry after chunk1 = "a" (1 char)
-		// if carry were 2 chars ("xa"), combined in chunk2 = "xab", still finds "ab" once
-		// but with "aab" boundary: chunk1="aab", chunk2="c" => should count 1 not 2
 		const input = ["aab", "c"];
 		const streams = [
 			createReadableStream(input),
@@ -782,11 +758,6 @@ describe(`@datastream/string (${variant})`, () => {
 	});
 
 	test(`stringCountStream carry boundary with 3-char substr`, async (_t) => {
-		// substr = "abc" (length 3), carry should be 2 chars (length-1=2)
-		// chunk1="xab", chunk2="cd" => carry="ab" (2 chars), combined="abcd", finds "abc" once total
-		// if carry were 3 chars "xab", combined="xabcd", still finds "abc" once - same
-		// Better: chunk1="abc" chunk2="abc" => 2 matches; carry from chunk1 = "bc" (2 chars)
-		// combined in chunk2 = "bcabc" => finds "abc" at pos 2 => total = 2
 		const input = ["abc", "abc"];
 		const streams = [
 			createReadableStream(input),
@@ -797,11 +768,7 @@ describe(`@datastream/string (${variant})`, () => {
 		strictEqual(value, 2);
 	});
 
-	// *** stringMinimumFirstChunkSizeStream: buffer reset after emit *** //
 	test(`stringMinimumFirstChunkSizeStream should output exact chunk size when met and not carry leftovers`, async (_t) => {
-		// chunkSize=4, input ["ab","cd","ef"]
-		// After emitting "abcd", buffer must be "" so next chunk "ef" is passed through as-is
-		// If buffer="" mutant used "Stryker was here!", subsequent chunk would be wrong
 		const input = ["ab", "cd", "ef"];
 		const streams = [
 			createReadableStream(input),
@@ -813,7 +780,6 @@ describe(`@datastream/string (${variant})`, () => {
 	});
 
 	test(`stringMinimumFirstChunkSizeStream should not emit in flush when done=true and buffer empty`, async (_t) => {
-		// When chunkSize is met exactly, done=true and buffer="" => flush should emit nothing
 		const input = ["abcd"];
 		const streams = [
 			createReadableStream(input),
@@ -821,12 +787,10 @@ describe(`@datastream/string (${variant})`, () => {
 		];
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
-		// "abcd" meets chunkSize=4 exactly, emitted in transform; flush emits nothing (buffer empty, done=true)
 		deepStrictEqual(output, ["abcd"]);
 	});
 
 	test(`stringMinimumFirstChunkSizeStream should not flush empty buffer when done=false`, async (_t) => {
-		// Input is empty => done=false, buffer="" => flush should NOT emit empty string
 		const input = [""];
 		const streams = [
 			createReadableStream(input),
@@ -834,11 +798,9 @@ describe(`@datastream/string (${variant})`, () => {
 		];
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
-		// buffer is "" — flush condition `buffer.length > 0` must prevent enqueue
 		deepStrictEqual(output, []);
 	});
 
-	// *** stringReplaceStream: RegExp guard *** //
 	test(`stringReplaceStream should throw on RegExp without g or y flag`, (_t) => {
 		let threw = false;
 		try {
@@ -886,10 +848,7 @@ describe(`@datastream/string (${variant})`, () => {
 		strictEqual(output.join(""), "hi");
 	});
 
-	// *** stringReplaceStream: useReplaceAll (string vs RegExp path) *** //
 	test(`stringReplaceStream should replace ALL occurrences with string pattern (replaceAll path)`, async (_t) => {
-		// String pattern uses replaceAll, regex uses replace
-		// With string "a", input "aaa" => all 3 replaced
 		const input = ["aaa"];
 		const streams = [
 			createReadableStream(input),
@@ -911,11 +870,7 @@ describe(`@datastream/string (${variant})`, () => {
 		strictEqual(output.join(""), "bbb");
 	});
 
-	// *** stringReplaceStream: maxBufferSize exact boundary (> vs >=) *** //
 	test(`stringReplaceStream should NOT throw when buffer equals maxBufferSize exactly`, async (_t) => {
-		// buffer.length === maxBufferSize should NOT throw (only > maxBufferSize should)
-		// Use pattern that never matches so buffer grows; first chunk "aaaa" (4 chars) with maxBufferSize=4
-		// 4 > 4 is false => should NOT throw
 		const input = ["aaaa"];
 		const streams = [
 			createReadableStream(input),
@@ -925,14 +880,12 @@ describe(`@datastream/string (${variant})`, () => {
 				maxBufferSize: 4,
 			}),
 		];
-		// Should not throw for 4-char buffer with maxBufferSize=4
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
 		strictEqual(output.join(""), "aaaa");
 	});
 
 	test(`stringReplaceStream should throw when buffer exceeds maxBufferSize by 1`, async (_t) => {
-		// buffer.length = 5 > maxBufferSize = 4 => throws
 		const input = ["aaaaa"];
 		const streams = [
 			createReadableStream(input),
@@ -950,7 +903,6 @@ describe(`@datastream/string (${variant})`, () => {
 		}
 	});
 
-	// *** stringSplitStream: typeof separator guard *** //
 	test(`stringSplitStream should throw when separator is not a string (number)`, (_t) => {
 		let threw = false;
 		try {
@@ -979,10 +931,7 @@ describe(`@datastream/string (${variant})`, () => {
 		ok(threw, "stringSplitStream({}) should throw");
 	});
 
-	// *** stringSplitStream: maxBufferSize exact boundary (> vs >=) *** //
 	test(`stringSplitStream should NOT throw when buffer equals maxBufferSize exactly`, async (_t) => {
-		// separator "zzz" won't be found; chunk "aaaa" (4 chars), maxBufferSize=4
-		// previousChunk.length=4, 4 > 4 is false => should NOT throw
 		const input = ["aaaa"];
 		const streams = [
 			createReadableStream(input),
@@ -994,7 +943,6 @@ describe(`@datastream/string (${variant})`, () => {
 	});
 
 	test(`stringSplitStream should throw when buffer exceeds maxBufferSize by 1`, async (_t) => {
-		// chunk "aaaaa" (5 chars), maxBufferSize=4; 5 > 4 => throws
 		const input = ["aaaaa"];
 		const streams = [
 			createReadableStream(input),
@@ -1008,7 +956,6 @@ describe(`@datastream/string (${variant})`, () => {
 		}
 	});
 
-	// *** Major-version limits: null = unlimited, RangeError on overflow *** //
 	test(`string maxBufferSize accepts null as unlimited`, async (_t) => {
 		const input = ["a".repeat(10), "b".repeat(10)];
 		deepStrictEqual(

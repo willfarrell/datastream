@@ -76,7 +76,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		const options = { pollingActive: true, pollingDelay: 0 };
 		const stream = await awsSQSReceiveMessageStream(options);
 
-		// Collect first 2 items manually since pollingActive means infinite generator
 		const output = [];
 		for await (const item of stream) {
 			output.push(item);
@@ -109,9 +108,7 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 			}
 		})();
 
-		// Allow microtasks to settle so generator reaches setTimeout
 		await new Promise((resolve) => setImmediate(resolve));
-		// Advance mock timer past pollingDelay
 		t.mock.timers.tick(1000);
 
 		await consuming;
@@ -133,7 +130,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 
 		const consuming = (async () => {
 			for await (const _item of stream) {
-				// queue is always empty
 			}
 		})();
 
@@ -259,7 +255,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(result, {});
 	});
 
-	// *** Failed entries (data loss) *** //
 	test(`awsSQSSendMessageStream should retry failed entries`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -344,9 +339,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		});
 	});
 
-	// SenderFault: true marks a permanent (caller-side) failure: it is set aside
-	// (never retried) while retryable failures in the same batch keep backing
-	// off, then the stream throws with every entry that did not get through.
 	test(`awsSQSSendMessageStream retries retryable failures alongside a SenderFault entry, then throws`, async (_t) => {
 		const permanent = {
 			Id: "1",
@@ -387,7 +379,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 				return true;
 			},
 		);
-		// Only the retryable entry is re-sent; the SenderFault entry is not.
 		deepStrictEqual(sent, [
 			[
 				{ Id: "0", MessageBody: "a" },
@@ -478,8 +469,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 
 		client.on(SendMessageBatchCommand).resolves({ Successful: [], Failed: [] });
 
-		// 5 messages of ~400KB each => 2MB total, well under count of 10
-		// but over the 1MiB byte limit, forcing multiple flushes.
 		const body = "x".repeat(400 * 1024);
 		const input = Array.from({ length: 5 }, (_v, i) => ({
 			Id: `${i}`,
@@ -526,14 +515,11 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		];
 		const consuming = pipeline(stream);
 
-		// Let the first send + partial-failure path schedule the backoff timer.
 		await new Promise((resolve) => setImmediate(resolve));
-		// At 1ms the retry must NOT have fired (old behavior was 3**0 == 1ms).
 		t.mock.timers.tick(1);
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(client.commandCalls(SendMessageBatchCommand).length, 1);
 
-		// Advancing to the 50ms floor lets the retry proceed.
 		t.mock.timers.tick(49);
 		await consuming;
 		deepStrictEqual(client.commandCalls(SendMessageBatchCommand).length, 2);
@@ -544,9 +530,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		awsSQSSetClient(client);
 		client.on(SendMessageBatchCommand).resolves({ Successful: [], Failed: [] });
 
-		// A single message whose serialized size already exceeds the 1MiB batch
-		// limit must be rejected with a descriptive error instead of being sent and
-		// having SQS reject the whole batch.
 		const tooBig = "x".repeat(1024 * 1024 + 1);
 		const input = [{ Id: "0", MessageBody: tooBig }];
 		const options = {
@@ -561,7 +544,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 			name: "RangeError",
 			message: "awsSQSSendMessageBatch entry exceeds 1MiB limit",
 		});
-		// The oversize entry must NOT have been sent to SQS.
 		deepStrictEqual(client.commandCalls(SendMessageBatchCommand).length, 0);
 	});
 
@@ -598,8 +580,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(await streamToArray(pipejoin([stream])), [{ id: "a" }]);
 	});
 
-	// A generator's return() only lands at its next yield; destroying the stream
-	// must also abort the idle poll wait so polling stops and 'close' fires.
 	test(`awsSQSReceiveMessageStream destroy stops an idle poll`, {
 		timeout: 1000,
 	}, async (_t) => {
@@ -619,12 +599,10 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(ReceiveMessageCommand).length, 1);
 	});
 
-	// Named exports are canonical; a default export must not come back.
 	test(`sqs has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
 	});
 
-	// *** setClient swaps the active client *** //
 	test(`awsSQSSetClient routes subsequent sends to the new client`, async (_t) => {
 		const first = mockClient(SQSClient);
 		awsSQSSetClient(first);
@@ -656,7 +634,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		};
 		awsSQSSetClient(stub);
 
-		// Not polling: one page with messages, then the empty page ends the stream.
 		const stream = await awsSQSReceiveMessageStream({});
 		const output = await streamToArray(stream);
 
@@ -664,8 +641,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(calls, 2);
 	});
 
-	// A per-call `client` option must route that call's sends to it (not the
-	// module client) and must not be forwarded into the command input.
 	test(`awsSQS streams use the per-call client option and do not forward it`, async (_t) => {
 		awsSQSSetClient({
 			send: async () => {
@@ -700,14 +675,10 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		]);
 	});
 
-	// *** idle-wait guard conjuncts (mock timers) *** //
 	test(`awsSQSReceiveMessageStream does not schedule a timer when messages are present`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
-		// Messages always present so `messages.length === 0` is false -> no idle wait.
-		// A `true` mutant on that conjunct would delay after every poll and the
-		// consumer would stall on the un-ticked mock timer.
 		client.on(ReceiveMessageCommand).resolves({ Messages: [{ id: "a" }] });
 
 		const options = { pollingActive: true, pollingDelay: 60_000 };
@@ -725,9 +696,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
-		// pollingActive, empty queue, pollingDelay === 0: `pollingDelay > 0` is false
-		// so no idle wait. A `> 0` -> `true` or `>= 0` mutant would await timeout(0)
-		// which the un-ticked mock timer never resolves.
 		client
 			.on(ReceiveMessageCommand)
 			.resolvesOnce({ Messages: [] })
@@ -748,10 +716,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
-		// Not polling: an empty page ends the stream WITHOUT entering the idle wait.
-		// The `&&` -> `||` mutant makes `pollingActive || messages.length === 0` true
-		// on the empty page, scheduling a (default 1000ms) timeout the un-ticked mock
-		// timer never resolves -> the stream would hang instead of completing.
 		client
 			.on(ReceiveMessageCommand)
 			.resolvesOnce({ Messages: [{ id: "a" }] })
@@ -763,12 +727,10 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(output, [{ id: "a" }]);
 	});
 
-	// *** backoff is abortable (signal forwarded to the timeout) *** //
 	test(`awsSQSSendMessageStream aborts during retry backoff`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
-		// Persistent partial failure so the stream enters the backoff.
 		let sends = 0;
 		client.on(SendMessageBatchCommand).callsFake(() => {
 			sends++;
@@ -784,22 +746,17 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 			awsSQSSendMessageStream({ QueueUrl: "q" }, { signal: controller.signal }),
 		]);
 
-		// Let the first send fail and enter the backoff timer, then abort.
 		await new Promise((resolve) => setImmediate(resolve));
 		controller.abort();
 
 		await rejects(consuming, (error) => {
 			return error.cause?.code === "AbortError" || /Abort/i.test(error.message);
 		});
-		// The backoff timeout was given `{ signal }`; a `{}` mutant (dropping the
-		// signal) leaves the timer pending, so advancing the mocked clock past it
-		// wakes it and retries -> more than one send.
 		t.mock.timers.tick(60_000);
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(sends, 1);
 	});
 
-	// *** AbortSignal forwarding *** //
 	test(`awsSQSReceiveMessageStream forwards abortSignal to client.send`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -816,8 +773,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(ReceiveMessageCommand);
-		// Forwarded as a signal that follows streamOptions.signal (and also
-		// aborts when the stream is destroyed early).
 		const sent = calls[0].args[1]?.abortSignal;
 		deepStrictEqual(sent.aborted, false);
 		controller.abort();
@@ -839,7 +794,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
 	});
 
-	// *** Error cause carries the Failed subset *** //
 	test(`awsSQSSendMessageStream error cause is the Failed entries array`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -868,7 +822,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		);
 	});
 
-	// *** Oversize entry: error cause shape and chunk?.Id *** //
 	test(`awsSQSSendMessageStream oversize error cause carries Id, bytes and limit`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -899,7 +852,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		);
 	});
 
-	// *** Per-entry boundary: exactly 1MiB is allowed (strict `>`) *** //
 	test(`awsSQSSendMessageStream allows an entry whose message size is exactly 1MiB`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -912,11 +864,9 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 			awsSQSSendMessageStream({ QueueUrl: "q" }),
 		]);
 
-		// Exactly at the limit is allowed (strict `>`), so it is sent.
 		deepStrictEqual(client.commandCalls(SendMessageBatchCommand).length, 1);
 	});
 
-	// *** Delete entries carry no message, so only the 10-entry cap applies *** //
 	test(`awsSQSDeleteMessageStream batches by count only`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -924,9 +874,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 			.on(DeleteMessageBatchCommand)
 			.resolves({ Successful: [], Failed: [] });
 
-		// DeleteMessageBatch has no message-byte limit. Received messages piped
-		// straight in still carry their attributes (here 2MiB in total), which
-		// must not split or reject the batch.
 		const input = Array.from({ length: 10 }, (_v, i) => ({
 			Id: `${i}`,
 			ReceiptHandle: "r",
@@ -943,13 +890,11 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(calls[0].args[0].input.Entries.length, 10);
 	});
 
-	// *** Count cap split at exactly 10 entries *** //
 	test(`awsSQSSendMessageStream flushes at exactly 10 entries`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
 		client.on(SendMessageBatchCommand).resolves({ Successful: [], Failed: [] });
 
-		// 11 tiny entries: the count cap (10) forces a flush of 10, then 1.
 		const input = Array.from({ length: 11 }, (_v, i) => ({
 			Id: `${i}`,
 			MessageBody: "x",
@@ -965,7 +910,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(calls[1].args[0].input.Entries.length, 1);
 	});
 
-	// *** Receive without pollingActive stops once the queue drains *** //
 	test(`awsSQSReceiveMessageStream without pollingActive stops when queue empties`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -978,12 +922,9 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		const output = await streamToArray(stream);
 
 		deepStrictEqual(output, [{ id: "a" }]);
-		// One call returns a message (keep going), the next is empty (stop):
-		// expectMore = pollingActive(false) || messages.length > 0.
 		deepStrictEqual(client.commandCalls(ReceiveMessageCommand).length, 2);
 	});
 
-	// *** retryMaxCount is an inclusive ceiling on the number of retries *** //
 	test(`awsSQSSendMessageStream retries exactly retryMaxCount times then throws`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -1000,7 +941,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 				]),
 			{ message: "awsSQSSendMessageBatch has failed entries" },
 		);
-		// initial attempt + 2 retries == 3 calls (kills `>=`->`>` and `++`->`--`).
 		deepStrictEqual(client.commandCalls(SendMessageBatchCommand).length, 3);
 	});
 
@@ -1023,7 +963,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(SendMessageBatchCommand).length, 2);
 	});
 
-	// *** retryMaxCount: null = unlimited retries (undefined keeps the default) *** //
 	test(`awsSQSSendMessageStream retries without limit when retryMaxCount is null`, async (t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -1031,8 +970,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 			Successful: [],
 			Failed: [{ Id: "0", Code: "InternalError", SenderFault: false }],
 		};
-		// 11 failures: one more than the default retryMaxCount of 10. Backoff
-		// timers fire on the next macrotask so the retries take no real time.
 		t.mock.method(globalThis, "setTimeout", (fn) => setImmediate(fn));
 		const mock = client.on(SendMessageBatchCommand);
 		for (let i = 0; i < 11; i++) mock.resolvesOnce(failed);
@@ -1045,8 +982,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(SendMessageBatchCommand).length, 12);
 	});
 
-	// *** batch byte-cap is exclusive: two entries summing to exactly 1MiB stay
-	// together in a single batch (strict `>`) *** //
 	test(`awsSQSSendMessageStream keeps two entries summing to exactly 1MiB in one batch`, async (_t) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -1061,17 +996,11 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 			awsSQSSendMessageStream({ QueueUrl: "q" }),
 		]);
 
-		// Sum is exactly at the cap: `> cap` is false, both go in ONE batch. A
-		// `>= cap` mutant would split them.
 		const calls = client.commandCalls(SendMessageBatchCommand);
 		deepStrictEqual(calls.length, 1);
 		deepStrictEqual(calls[0].args[0].input.Entries.length, 2);
 	});
 
-	// --- buffered entries on destroy / abort ---
-	// final() never runs on destroy() or an abort, so entries still buffered
-	// below the batch limit are handed to the teardown error as failedMessages
-	// (the kafkaProduceStream contract) and nothing is sent.
 	const writeEach = async (stream, chunks) => {
 		for (const chunk of chunks) {
 			await new Promise((resolve, reject) =>
@@ -1079,7 +1008,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 			);
 		}
 	};
-	// Resolves stream.errored once closed (null when no error was raised).
 	const destroyedWith = async (stream, error) => {
 		const closed = new Promise((resolve) => stream.once("close", resolve));
 		stream.once("error", () => {});
@@ -1266,9 +1194,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(DeleteMessageBatchCommand).length, 0);
 	});
 
-	// --- message size: what SQS counts ---
-	// SQS counts the UTF-8 bytes of the body plus each message attribute's
-	// name, data type and value; Id and JSON escaping do not count.
 	const sizeOf = async (chunks) => {
 		const client = mockClient(SQSClient);
 		awsSQSSetClient(client);
@@ -1283,7 +1208,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 	};
 
 	test(`awsSQSSendMessageStream does not count JSON escaping toward the limit`, async (_t) => {
-		// 600KiB of quotes is 600KiB of UTF-8, though JSON.stringify doubles it.
 		deepStrictEqual(
 			await sizeOf([{ Id: "0", MessageBody: '"'.repeat(600 * 1024) }]),
 			[["0"]],
@@ -1318,7 +1242,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 	});
 
 	test(`awsSQSSendMessageStream counts attribute names, types and string values`, async (_t) => {
-		// "k" + "String" + "v" = 8 bytes.
 		const MessageAttributes = { k: { DataType: "String", StringValue: "v" } };
 		deepStrictEqual(
 			await sizeOf([
@@ -1350,7 +1273,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 	});
 
 	test(`awsSQSSendMessageStream counts a missing MessageBody as 0 bytes`, async (_t) => {
-		// "k" + "String" + value = exactly the limit, with no body at all.
 		const MessageAttributes = {
 			k: { DataType: "String", StringValue: "v".repeat(1_048_576 - 7) },
 		};
@@ -1358,7 +1280,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 	});
 
 	test(`awsSQSSendMessageStream counts binary attribute values`, async (_t) => {
-		// "k" + "Binary" + 3 bytes = 10 bytes.
 		const MessageAttributes = {
 			k: { DataType: "Binary", BinaryValue: new Uint8Array(3) },
 		};
@@ -1386,7 +1307,6 @@ describe(`@datastream/aws/sqs (${variant})`, () => {
 	});
 
 	test(`awsSQSSendMessageStream counts an attribute without a value by name and type`, async (_t) => {
-		// "kk" + "Number" = 8 bytes; no StringValue / BinaryValue.
 		const MessageAttributes = { kk: { DataType: "Number" } };
 		await rejects(
 			() =>

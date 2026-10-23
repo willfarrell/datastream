@@ -112,7 +112,6 @@ describe("streamToBuffer", () => {
 });
 
 describe("type guards", () => {
-	// The node build checks `instanceof` node Readable/Writable.
 	test("isReadable narrows to a node Readable", () => {
 		const stream: unknown = {};
 		if (isReadable(stream)) {
@@ -127,8 +126,6 @@ describe("type guards", () => {
 		}
 	});
 
-	// The browser build also accepts anything with a truthy readable/writable
-	// (TransformStream, { readable, writable } pairs).
 	test("browser isReadable narrows to ReadableStream or a readable pair", () => {
 		const stream: unknown = {};
 		if (coreBrowser.isReadable(stream)) {

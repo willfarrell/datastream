@@ -1,8 +1,5 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-// Clone / equality helpers used by the object streams (moved from
-// @datastream/core, whose only user was this package). Imported relatively so
-// esbuild leaves the import in place; shipped via package.json `files`.
 export const shallowClone = (obj) => ({ ...obj });
 
 export const deepClone = (obj) => {
@@ -23,18 +20,11 @@ export const shallowEqual = (a, b) => {
 	const keysA = Object.keys(a);
 	if (keysA.length !== Object.keys(b).length) return false;
 	for (const key of keysA) {
-		// hasOwn: equal counts alone let {x: undefined} match {y: undefined}
 		if (!Object.hasOwn(b, key) || a[key] !== b[key]) return false;
 	}
 	return true;
 };
 
-// Structural compare standing in for node:util's isDeepStrictEqual (which the
-// node build uses via the `#deepEqual` import): key-order insensitive,
-// Object.is for primitives (NaN), Date/RegExp/Map/Set/typed arrays, cycle-safe.
-// Lives here (not in deepEqual.browser.js) so the node test run covers it too.
-// ponytail: Set members and Map keys compare by identity, not structure;
-// upgrade to pairwise deep matching if a caller ever needs deep Set/Map members.
 const deepEqualInner = (a, b, seen) => {
 	if (Object.is(a, b)) return true;
 	if (
@@ -62,7 +52,6 @@ const deepEqualInner = (a, b, seen) => {
 		}
 		return true;
 	}
-	// Typed arrays fall through: their own enumerable keys are the indices.
 	const keys = Object.keys(a);
 	if (keys.length !== Object.keys(b).length) return false;
 	for (const key of keys) {

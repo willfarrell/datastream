@@ -1,4 +1,3 @@
-/* global Headers, Response */
 import { before, bench, suite } from "node:bench";
 import {
 	createReadableStream,
@@ -10,8 +9,6 @@ import {
 	fetchSetDefaults,
 	fetchWritableStream,
 } from "@datastream/fetch";
-
-// -- Mock setup --
 
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
@@ -77,8 +74,6 @@ global.fetch = (url, _options) => {
 
 	return Promise.resolve(new Response("", { status: 404 }));
 };
-
-// -- Tests --
 
 suite("fetchResponseStream (single JSON)", () => {
 	before(() => {

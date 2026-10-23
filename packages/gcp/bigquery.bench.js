@@ -23,7 +23,6 @@ const rows = Array.from({ length: COUNT }, (_, i) => ({
 }));
 const lines = rows.map((row) => `${JSON.stringify(row)}\n`);
 
-// Fake SDK objects: no I/O, so the numbers are the stream overhead only.
 const bigquery = {
 	createQueryStream: () => {
 		const stream = new PassThrough({ objectMode: true });
@@ -33,7 +32,6 @@ const bigquery = {
 	},
 };
 const insertTable = { insert: async () => [{}] };
-// createWriteStream: 'job' after the body ends, then 'complete' with the Job.
 const loadTable = {
 	createWriteStream: () => {
 		const job = Object.assign(new EventEmitter(), {

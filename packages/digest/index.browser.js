@@ -26,7 +26,6 @@ const aliasMap = {
 };
 
 const normalizeAlgorithm = (algorithm) => {
-	// Own keys only: "constructor" etc. are inherited, not algorithms.
 	if (Object.hasOwn(algorithms, algorithm)) return algorithm;
 	if (Object.hasOwn(aliasMap, algorithm)) return aliasMap[algorithm];
 	throw new Error(`Unsupported algorithm: ${algorithm}`);

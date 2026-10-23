@@ -15,8 +15,6 @@ class PartialFailureError extends Error {
 	}
 }
 
-// outcomes[call]: "ok", "partial" (rows at odd positions fail) or "fail"
-// (whole request); each insert settles after `delay` ticks.
 const fakeTable = (outcomes, delay) => {
 	const table = {
 		inserted: [],
@@ -41,8 +39,6 @@ const fakeTable = (outcomes, delay) => {
 	return table;
 };
 
-// Every written row is inserted, handed back (err.failedMessages), rejected
-// up front (oversize RangeError), or in an insert still in flight at teardown.
 test("fuzz gcpBigQueryInsertStream batch accounting", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -75,7 +71,6 @@ test("fuzz gcpBigQueryInsertStream batch accounting", async () => {
 					const done = new Promise((resolve) =>
 						stream.write({ value }, resolve),
 					);
-					// Tear down while this write's insert may still be in flight.
 					if (index === destroyAt) {
 						await tick();
 						break;

@@ -6,8 +6,6 @@ import {
 	timeout,
 } from "@datastream/core";
 
-// Partial failures (Cosmos 429s) are throttling-driven: floor the first retries
-// at 50ms so capacity can recover, and cap at 3^10ms (~59s).
 const BACKOFF_FLOOR_MS = 50;
 const BACKOFF_CAP_MS = 3 ** 10;
 export const azureBackoff = (retryCount, streamOptions) =>
@@ -29,7 +27,6 @@ export const azureReadableStream = (command, streamOptions) => {
 	const stream = createReadableStream(command(signal), streamOptions);
 	const destroy = stream.destroy;
 	stream.destroy = function (...args) {
-		// Not after a natural end: the forwarded signal stays un-aborted.
 		if (!this.readableEnded) controller.abort();
 		return destroy.apply(this, args);
 	};
@@ -38,8 +35,6 @@ export const azureReadableStream = (command, streamOptions) => {
 
 // Node's final() runs only on a graceful end(), never on destroy() or an
 // AbortSignal teardown, so a partly filled batch would be dropped silently.
-// Like kafkaProduceStream, hand the unsent entries to the teardown error as
-// err.failedMessages (nothing is sent on abort) so callers can retry them.
 export const azureDestroyWithFailedMessages = (stream, pending, message) => {
 	const destroy = stream._destroy.bind(stream);
 	stream._destroy = (err, callback) => {
@@ -64,13 +59,10 @@ export const azureBatchStream = (
 	let batch;
 	let pending = [];
 	const tryAdd = (chunk) => add(batch, chunk) && pending.push(chunk);
-	// Cleared before the send: in-flight entries are no longer buffered.
 	const send = () => {
 		pending = [];
 		return sendBatch(batch);
 	};
-	// Before the first chunk, or once one does not fit: send what is buffered
-	// and open a new batch.
 	const rotate = async (chunk) => {
 		if (batch?.count) {
 			await send();
@@ -83,8 +75,6 @@ export const azureBatchStream = (
 			cause: { limit: batch.maxSizeInBytes },
 		});
 	};
-	// Returns a promise only when rotating: an async write would allocate and
-	// settle a promise per chunk.
 	const write = (chunk) => {
 		if (batch && tryAdd(chunk)) {
 			return;

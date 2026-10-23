@@ -10,8 +10,6 @@ const INSERT_MAX_BATCH_BYTES = 9 * 1024 * 1024;
 // Per-row envelope the SDK adds: {"insertId":"<uuid>","json":...},
 const INSERT_ROW_OVERHEAD_BYTES = 64;
 
-// createQueryStream returns a @google-cloud/paginator ResourceStream: an
-// object-mode Readable of rows, paging via jobs.getQueryResults.
 export const gcpBigQueryQueryStream = async (options, streamOptions = {}) => {
 	const { bigquery, ...query } = options;
 	if (!bigquery) {
@@ -62,8 +60,6 @@ export const gcpBigQueryLoadStream = (options, streamOptions = {}) => {
 	};
 	upload.on("job", (created) => {
 		job = created;
-		// Aborted after end() but before the upload response: the job exists
-		// now, so cancel it.
 		if (aborted) cancel();
 	});
 	let settled = false;
@@ -73,7 +69,6 @@ export const gcpBigQueryLoadStream = (options, streamOptions = {}) => {
 	}).finally(() => {
 		settled = true;
 	});
-	// An upload or job failure while no write/final is waiting on it.
 	done.catch((error) => stream.destroy(error));
 
 	let value;
@@ -120,7 +115,6 @@ export const gcpBigQueryInsertStream = (options, streamOptions = {}) => {
 	}
 	let batch = [];
 	let batchBytes = 0;
-	// Rows of a failed insert that were not inserted.
 	let failed = [];
 	const send = async () => {
 		const rows = batch;
@@ -139,7 +133,6 @@ export const gcpBigQueryInsertStream = (options, streamOptions = {}) => {
 		}
 	};
 	const write = (chunk) => {
-		// JSON is what insertAll sends.
 		const bytes =
 			Buffer.byteLength(JSON.stringify(chunk)) + INSERT_ROW_OVERHEAD_BYTES;
 		if (bytes > maxBatchBytes) {
@@ -148,8 +141,6 @@ export const gcpBigQueryInsertStream = (options, streamOptions = {}) => {
 				{ cause: { bytes, limit: maxBatchBytes } },
 			);
 		}
-		// send() swaps the batch out synchronously, so this chunk is buffered
-		// (and handed back on failure) even when that insert fails.
 		const sending =
 			batch.length === batchSize || batchBytes + bytes > maxBatchBytes
 				? send()

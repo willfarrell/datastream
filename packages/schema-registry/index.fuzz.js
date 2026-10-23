@@ -23,7 +23,6 @@ const catchError = (input, e) => {
 		"glueUnframeStream: missing 0x03 magic byte / frame is too short (each chunk must be one whole frame)",
 		// glueUnframeStream compression errors (dynamic message with hex byte)
 		"unsupported compression",
-		// glueFrameStream / glueUnframeStream output size guard
 		"schema-registry: maxOutputSize exceeded",
 		// confluentFrameStream schemaId validation
 		"confluentFrameStream: schemaId must be an unsigned 32-bit integer",

@@ -12,8 +12,6 @@ const resolvePaginationUrl = (nextUrl, currentUrl, origin) => {
 	if (!nextUrl) return;
 	const url = URL.parse(nextUrl, currentUrl);
 	if (!url) {
-		// Unparseable even as a relative reference, so there is nothing to
-		// redact-and-show (redactUrl could only return "[INVALID URL]").
 		throw new Error("Invalid pagination URL");
 	}
 	if (url.origin !== origin) {
@@ -49,13 +47,12 @@ let defaults = {
 	qs: {}, // object to convert to query string
 	offsetParam: undefined, // offset query parameter to use for pagination
 	offsetAmount: undefined, // offset amount to use for pagination
-	concurrency: 1, // array items fetched at once; read from the first item
-	// Limits: null = unlimited
-	maxPages: 10_000, // JSON pagination: max pages fetched per request config
-	maxBodySize: 16_777_216, // bytes; max JSON page body
-	retryMaxCount: 10, // max attempts on 429 / 5xx / network error before throwing
-	retryAfterMax: 60_000, // ms; upper bound for a Retry-After wait (<= 2^31-1)
-	timeout: undefined, // ms; per attempt (body included); undefined/null = none
+	concurrency: 1,
+	maxPages: 10_000,
+	maxBodySize: 16_777_216,
+	retryMaxCount: 10,
+	retryAfterMax: 60_000,
+	timeout: undefined,
 
 	// fetch
 	method: "GET",
@@ -72,8 +69,6 @@ const merge = (base, options) => ({
 	qs: { ...base.qs, ...options.qs },
 });
 
-// Per request, an option left undefined falls back to its default (so
-// `maxPages: undefined` keeps the 10_000 cap; only null lifts a limit).
 const mergeOptions = (options = {}) =>
 	merge(
 		defaults,
@@ -82,7 +77,6 @@ const mergeOptions = (options = {}) =>
 		),
 	);
 
-// Unfiltered: fetchSetDefaults({ key: undefined }) clears a default.
 export const fetchSetDefaults = (options) => {
 	defaults = merge(defaults, options);
 };
@@ -90,16 +84,8 @@ export const fetchSetDefaults = (options) => {
 // Note: requires EncodeStream to ensure it's Uint8Array
 // Poor browser support - https://github.com/Fyrd/caniuse/issues/6375
 export const fetchWritableStream = async (options, streamOptions = {}) => {
-	// Aborting/destroying the writable before it finishes cancels the request
-	// (and errors its body) through this controller; see abort() below.
 	const controller = new AbortController();
-	// The request body is a plain web ReadableStream (fetch accepts one in both
-	// builds) rather than a createReadableStream push-mode stream: push mode has
-	// no pull hook, so it could only throw once its queue filled. Here write()
-	// waits while the queue is at highWaterMark until fetch pulls the next
-	// chunk, so a slow server slows the writer instead of failing the upload.
 	let bodyController;
-	// Resolves the write waiting for room in the queue (a no-op otherwise).
 	let resume = () => {};
 	const release = () => resume();
 	// Set when fetch cancels the body: enqueue()/close() would then throw.
@@ -123,8 +109,6 @@ export const fetchWritableStream = async (options, streamOptions = {}) => {
 	});
 	// Duplex: half - For browser compatibility - https://developer.chrome.com/articles/fetch-streaming-requests/#half-duplex
 	options = mergeOptions(options);
-	// Not awaited: a server may read the whole body before responding, so the
-	// writable must be returned (and written to) while the request is pending.
 	const response = fetchRateLimit(
 		{
 			...options,
@@ -141,10 +125,6 @@ export const fetchWritableStream = async (options, streamOptions = {}) => {
 			]),
 		},
 	);
-	// Record an early failure (e.g. an immediate 401) so the next write throws
-	// it (a write waiting on a body nobody reads is woken to throw it too).
-	// final() still awaits the rejection. Once a response has arrived, fetch
-	// may never read the rest of the body, so writes stop waiting for it.
 	let fetchError;
 	let responded = false;
 	response.then(
@@ -160,7 +140,6 @@ export const fetchWritableStream = async (options, streamOptions = {}) => {
 	let value;
 	const write = async (chunk) => {
 		if (fetchError) throw fetchError;
-		// fetch stopped reading (e.g. the server answered early): drop the rest.
 		if (cancelled) return;
 		bodyController.enqueue(chunk);
 		if (responded || bodyController.desiredSize > 0) return;
@@ -169,14 +148,10 @@ export const fetchWritableStream = async (options, streamOptions = {}) => {
 		});
 		if (fetchError) throw fetchError;
 	};
-	// Signal end-of-body so the duplex request body terminates and the
-	// in-flight upload can complete.
 	const final = async () => {
 		if (!cancelled) bodyController.close();
 		value = await response;
 	};
-	// Torn down before finishing (destroy/abort, upstream error, signal): end
-	// the upload instead of leaving the request and its body open.
 	const abort = (reason) => controller.abort(reason);
 	const stream = createWritableStream(write, final, {
 		...streamOptions,
@@ -202,7 +177,6 @@ const fetchItem = async (options, streamOptions) => {
 	const url = new URL(options.url);
 	if (Object.keys(options.qs).length) {
 		const qs = `${new URLSearchParams(options.qs)}`.replaceAll("+", "%20");
-		// Append to (rather than replace) any query already on the url.
 		url.search = url.search ? `${url.search}&${qs}` : qs;
 		options.url = url.toString();
 	}
@@ -210,8 +184,6 @@ const fetchItem = async (options, streamOptions) => {
 	return fetchUnknown(options, streamOptions);
 };
 
-// A consumer error must release the body (its socket). The JSON page
-// generator holds nothing, so fetchGenerator delegates to it directly.
 async function* drainResponse(body) {
 	try {
 		for await (const chunk of body) {
@@ -225,9 +197,6 @@ async function* drainResponse(body) {
 
 async function* fetchGenerator(fetchOptions, streamOptions) {
 	if (!Array.isArray(fetchOptions)) fetchOptions = [fetchOptions];
-	// One knob for the whole array, so it is taken from the first item (or the
-	// fetchSetDefaults default).
-	// Anything not above 1 (0, negative, null) means sequential.
 	const { concurrency } = mergeOptions(fetchOptions[0]);
 	if (concurrency > 1) {
 		yield* fetchConcurrent(fetchOptions, concurrency, streamOptions);
@@ -239,15 +208,12 @@ async function* fetchGenerator(fetchOptions, streamOptions) {
 		options = mergeOptions(options);
 		options.rateLimitTimestamp ??= rateLimitTimestamp;
 		const response = await fetchItem(options, streamOptions);
-		yield* response; // stream chunk-by-chunk (backpressure)
+		yield* response;
 		rateLimitTimestamp = options.rateLimitTimestamp;
 	}
 }
 
 async function* fetchConcurrent(fetchOptions, concurrency, streamOptions) {
-	// Shared by every item so the first error, or the consumer stopping early,
-	// cancels the in-flight siblings instead of waiting for them to finish
-	// downloading (and paginating) in the finally below.
 	const controller = new AbortController();
 	streamOptions = {
 		...streamOptions,
@@ -256,8 +222,6 @@ async function* fetchConcurrent(fetchOptions, concurrency, streamOptions) {
 		),
 	};
 	let clock = 0;
-	// Starts are spaced by the previous item's rateLimit; a zero wait still
-	// yields a macrotask, which is negligible next to a network round trip.
 	const pace = async (rateLimit) => {
 		const now = Date.now();
 		const wait = Math.max(0, clock - now);
@@ -287,8 +251,6 @@ async function* fetchConcurrent(fetchOptions, concurrency, streamOptions) {
 		inFlight.push(promise);
 	};
 	try {
-		// forEach rather than a `while (…) start()` loop, whose exit condition
-		// depends on start() and so spins forever if start() ever does nothing.
 		fetchOptions.slice(0, concurrency).forEach(start);
 		while (inFlight.length) {
 			yield* await inFlight.shift();
@@ -302,15 +264,10 @@ async function* fetchConcurrent(fetchOptions, concurrency, streamOptions) {
 	}
 }
 
-// `json` optionally followed by `;parameters` (or a bare trailing `;`).
-// Note: the parameter portion is intentionally NOT `;.+` — that form admits a
-// Stryker-equivalent mutant (`;.+` and `;.` accept the exact same inputs under
-// `.test()`), so we match a bare `;` and let any following parameters be free.
 // Case-insensitive: media types are (RFC 9110 §8.3.1).
 const jsonContentTypeRegExp = /^application\/(.+\+)?json($|;)/i;
 const fetchUnknown = async (options, streamOptions) => {
 	const response = await fetchRateLimit(options, streamOptions);
-	// No body (204, HEAD): nothing to stream or parse, even with a JSON type.
 	if (!response.body) return [];
 	if (jsonContentTypeRegExp.test(response.headers.get("Content-Type"))) {
 		options.prefetchResponse = response; // hack
@@ -364,7 +321,6 @@ async function* fetchJson(options, streamOptions) {
 	const maxPages = options.maxPages ?? Number.POSITIVE_INFINITY;
 
 	while (options.url) {
-		// Bounds a server that paginates forever (e.g. a cycle of next links).
 		if (++pages > maxPages) {
 			throw new RangeError(
 				`fetch ${options.method} ${redactUrl(options.url)} exceeded maxPages (${options.maxPages})`,
@@ -374,15 +330,11 @@ async function* fetchJson(options, streamOptions) {
 			options.prefetchResponse ??
 			(await fetchRateLimit(options, streamOptions));
 		delete options.prefetchResponse;
-		// NOTE: each JSON page is buffered whole before any item is yielded —
-		// unlike the binary branch which streams chunk-by-chunk with
-		// backpressure — so readJsonBody caps it at maxBodySize.
 		const body = await readJsonBody(response, options);
 		url = parseLinkFromHeader(response.headers);
 		url ??= parseNextPath(body, nextPath);
 		url ??= paginateUsingQuery(options);
 		const nextUrl = resolvePaginationUrl(url, options.url, options.__origin);
-		// A page linking to itself would be re-fetched forever.
 		if (nextUrl === new URL(options.url).href) {
 			throw new Error(
 				`fetch ${options.method} ${redactUrl(nextUrl)} pagination next URL repeats the current page`,
@@ -410,7 +362,6 @@ const paginateUsingQuery = (options) => {
 	if (!offset) return null;
 
 	offset = Number.parseInt(offset, 10) + options.offsetAmount;
-	// set() replaces every existing value in place (no delete() needed).
 	url.searchParams.set(options.offsetParam, offset);
 	return url.toString();
 };
@@ -504,7 +455,6 @@ const canRetry = (options) =>
 	idempotentMethods.has(options.method.toUpperCase()) &&
 	!isStreamBody(options.body);
 
-// Counts this failed attempt; true once retryMaxCount attempts are spent.
 const retriesExhausted = (options) => {
 	options.retryCount = (options.retryCount ?? 0) + 1;
 	return (
@@ -515,7 +465,6 @@ const retriesExhausted = (options) => {
 const backoff = (options, streamOptions, retryAfter) =>
 	timeout(
 		retryAfterMs(retryAfter, options.retryAfterMax) ??
-			// Full jitter (AWS architecture blog) avoids retry-storm sync-up.
 			Math.random() * Math.min(1000 * 2 ** (options.retryCount - 1), 30_000),
 		streamOptions,
 	);
@@ -532,8 +481,6 @@ const assertHttpUrl = (options) => {
 	);
 };
 
-// Issues the request, following (and origin-checking) redirects ourselves
-// unless the caller set `redirect`.
 const request = async (options, fetchInit, manageRedirects, initialOrigin) => {
 	let response = await fetch(options.url, fetchInit);
 	if (!manageRedirects) return response;
@@ -541,8 +488,6 @@ const request = async (options, fetchInit, manageRedirects, initialOrigin) => {
 	// Location hidden), so let the browser follow it and check where it
 	// ended up instead. Node exposes the 3xx and is handled below.
 	if (response.type === "opaqueredirect") {
-		// Re-issuing is only safe for GET/HEAD: a POST would send its body
-		// twice (and a streamed body cannot be replayed at all).
 		if (!replayableMethods.has(options.method.toUpperCase())) {
 			const safeUrl = redactUrl(options.url);
 			throw new Error(
@@ -686,7 +631,6 @@ export const fetchRateLimit = async (options = {}, streamOptions = {}) => {
 		integrity,
 		keepalive,
 		duplex,
-		// A fresh timeout per attempt, so a retry is not born already expired.
 		signal:
 			(options.timeout ?? null) === null
 				? streamOptions.signal
@@ -752,7 +696,6 @@ export const fetchRateLimit = async (options = {}, streamOptions = {}) => {
 			cause,
 		});
 	}
-	// Retries are per request: a later page gets the full retry budget again.
 	options.retryCount = 0;
 	return response;
 };

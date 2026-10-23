@@ -15,7 +15,6 @@ export const gcpReadableStream = (command, streamOptions) => {
 	const stream = createReadableStream(command(signal), streamOptions);
 	const destroy = stream.destroy;
 	stream.destroy = function (...args) {
-		// Not after a natural end: the forwarded signal stays un-aborted.
 		if (!this.readableEnded) controller.abort();
 		return destroy.apply(this, args);
 	};
@@ -24,8 +23,6 @@ export const gcpReadableStream = (command, streamOptions) => {
 
 // Node's final() runs only on a graceful end(), never on destroy() or an
 // AbortSignal teardown, so a partly filled batch would be dropped silently.
-// Like kafkaProduceStream, hand the unsent entries to the teardown error as
-// err.failedMessages (nothing is sent on abort) so callers can retry them.
 export const gcpDestroyWithFailedMessages = (stream, pending, message) => {
 	const destroy = stream._destroy.bind(stream);
 	stream._destroy = (err, callback) => {

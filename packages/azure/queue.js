@@ -45,7 +45,6 @@ export const azureQueueSendMessageStream = (options, streamOptions = {}) => {
 	return createWritableStream(write, streamOptions);
 };
 
-// chunk = { messageId, popReceipt } (a received message item works as-is).
 export const azureQueueDeleteMessageStream = (options, streamOptions = {}) => {
 	const { client } = options;
 	const write = async (chunk) => {

@@ -22,7 +22,6 @@ const files = Array.from({ length: COUNT }, (_, i) => ({
 	metadata: { name: `exports/${i}.csv`, size: "1024" },
 }));
 
-// Fake SDK objects: no I/O, so the numbers are the stream overhead only.
 const bucket = {
 	getFiles: async (query) => {
 		const offset = query.pageToken ?? 0;

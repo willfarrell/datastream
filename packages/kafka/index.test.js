@@ -16,11 +16,6 @@ import {
 } from "@datastream/kafka";
 
 describe("@datastream/kafka", () => {
-	// ---------------------------------------------------------------------------
-	// Fake Kafka factory helpers
-	// ---------------------------------------------------------------------------
-
-	/** Build a simple fake kafkajs-like Kafka constructor. */
 	const makeFakeKafka = ({
 		connectProducer = async () => {},
 		disconnectProducer = async () => {},
@@ -28,7 +23,6 @@ describe("@datastream/kafka", () => {
 		connectConsumer = async () => {},
 		disconnectConsumer = async () => {},
 		subscribe = async () => {},
-		// run: caller can override; default drives one message then resolves
 		run,
 	} = {}) => {
 		const producerMock = {
@@ -74,7 +68,6 @@ describe("@datastream/kafka", () => {
 			run:
 				run ??
 				(async () => {
-					// Return a promise that resolves when stop() is called
 					return new Promise((resolve) => {
 						consumerMock._runResolve = resolve;
 					});
@@ -95,10 +88,6 @@ describe("@datastream/kafka", () => {
 
 		return { Kafka, producerMock, consumerMock };
 	};
-
-	// ---------------------------------------------------------------------------
-	// kafkaConnect
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConnect: returns kafka, producer, consumer, disconnect", async () => {
 		const { Kafka, producerMock, consumerMock } = makeFakeKafka();
@@ -296,10 +285,6 @@ describe("@datastream/kafka", () => {
 		]);
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaProduceStream: validation
-	// ---------------------------------------------------------------------------
-
 	test("kafkaProduceStream: throws when producer is missing", async () => {
 		await rejects(
 			async () => kafkaProduceStream({ topic: "t" }),
@@ -364,10 +349,6 @@ describe("@datastream/kafka", () => {
 		stream.end();
 		await new Promise((resolve) => stream.on("finish", resolve));
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaProduceStream: normalizeMessage
-	// ---------------------------------------------------------------------------
 
 	test("kafkaProduceStream: sends string chunk wrapped as { value }", async () => {
 		const { producerMock } = makeFakeKafka();
@@ -438,10 +419,6 @@ describe("@datastream/kafka", () => {
 		ok(err.message.includes("number"), "error message includes 'number'");
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaProduceStream: batching
-	// ---------------------------------------------------------------------------
-
 	test("kafkaProduceStream: batches messages and flushes at batchSize", async () => {
 		const { producerMock } = makeFakeKafka();
 		const stream = await kafkaProduceStream({
@@ -452,7 +429,6 @@ describe("@datastream/kafka", () => {
 		for (let i = 0; i < 6; i++) stream.write(`msg${i}`);
 		stream.end();
 		await new Promise((resolve) => stream.on("finish", resolve));
-		// 2 batches of 3
 		strictEqual(producerMock.sendArgs.length, 2);
 		strictEqual(producerMock.sendArgs[0].messages.length, 3);
 		strictEqual(producerMock.sendArgs[1].messages.length, 3);
@@ -547,10 +523,6 @@ describe("@datastream/kafka", () => {
 		strictEqual(producerMock.sendArgs[0].timeout, 5000);
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaProduceStream: send error attaches failedMessages
-	// ---------------------------------------------------------------------------
-
 	test("kafkaProduceStream: send error attaches failedMessages", async () => {
 		const sendErr = new Error("send failed");
 		const { producerMock } = makeFakeKafka({
@@ -571,10 +543,6 @@ describe("@datastream/kafka", () => {
 		strictEqual(err.failedMessages[0].value, "msg");
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaProduceStream: destroy with buffered batch
-	// ---------------------------------------------------------------------------
-
 	test("kafkaProduceStream: destroy with buffered batch attaches failedMessages to error", async () => {
 		const { producerMock } = makeFakeKafka();
 		const stream = await kafkaProduceStream({
@@ -583,7 +551,6 @@ describe("@datastream/kafka", () => {
 			batchSize: 100,
 		});
 		const errPromise = new Promise((resolve) => stream.once("error", resolve));
-		// Await both writes so they land in the batch before destroy
 		const w1Done = new Promise((resolve) => {
 			stream.write("msg1", resolve);
 		});
@@ -610,7 +577,6 @@ describe("@datastream/kafka", () => {
 			batchSize: 100,
 		});
 		const errPromise = new Promise((resolve) => stream.once("error", resolve));
-		// Await write so msg lands in batch before destroy
 		const wDone = new Promise((resolve) => {
 			stream.write("msg", resolve);
 		});
@@ -630,17 +596,10 @@ describe("@datastream/kafka", () => {
 			topic: "t",
 			batchSize: 100,
 		});
-		// No writes — batch is empty
 		const closePromise = new Promise((resolve) => stream.on("close", resolve));
 		stream.destroy();
 		await closePromise;
-		// No error should have been emitted with failedMessages
-		// since batch was empty we never set failedMessages
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: validation
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConsumeStream: throws when consumer is missing", async () => {
 		await rejects(
@@ -677,17 +636,12 @@ describe("@datastream/kafka", () => {
 		);
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: subscribe
-	// ---------------------------------------------------------------------------
-
 	test("kafkaConsumeStream: subscribes to a single string topic", async () => {
 		const { consumerMock } = makeFakeKafka();
 		const stream = await kafkaConsumeStream({
 			consumer: consumerMock,
 			topics: "my-topic",
 		});
-		// Subscribe happens during stream creation; assert then clean up
 		deepStrictEqual(consumerMock.subscribeCalls, [
 			{ topic: "my-topic", fromBeginning: false },
 		]);
@@ -724,11 +678,6 @@ describe("@datastream/kafka", () => {
 		await closePromise;
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: message delivery
-	// ---------------------------------------------------------------------------
-
-	/** Helper: build a fake consumer that delivers messages via run(). */
 	const makeMessageConsumer = (_messages) => {
 		const consumerMock = {
 			subscribeCalls: [],
@@ -782,7 +731,6 @@ describe("@datastream/kafka", () => {
 		const consumer = makeMessageConsumer(msgs);
 		const stream = await kafkaConsumeStream({ consumer, topics: "t" });
 
-		// Deliver messages then stop
 		setTimeout(async () => {
 			for (const m of msgs) await consumer._eachMessage(m);
 			await stream.stop();
@@ -838,7 +786,7 @@ describe("@datastream/kafka", () => {
 		const stream = await kafkaConsumeStream({ consumer, topics: "t" });
 
 		await stream.stop();
-		await stream.stop(); // second call should be no-op
+		await stream.stop();
 		strictEqual(consumer.stopCalled, 1, "consumer.stop called only once");
 	});
 
@@ -850,8 +798,6 @@ describe("@datastream/kafka", () => {
 		stream.on("data", (chunk) => receivedChunks.push(chunk));
 
 		await stream.stop();
-		// A message arriving after stop is never delivered downstream; resolving
-		// would let kafkajs commit its offset and lose it, so it must reject.
 		await rejects(
 			consumer._eachMessage({
 				topic: "t",
@@ -870,7 +816,6 @@ describe("@datastream/kafka", () => {
 			},
 		);
 
-		// Give event loop a tick to see if anything was pushed
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		strictEqual(receivedChunks.length, 0, "no chunks after stop");
 	});
@@ -927,10 +872,6 @@ describe("@datastream/kafka", () => {
 		stream.destroy();
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: abort signal
-	// ---------------------------------------------------------------------------
-
 	test("kafkaConsumeStream: already-aborted signal calls stop immediately", async () => {
 		const consumer = makeMessageConsumer([]);
 		const ac = new AbortController();
@@ -940,12 +881,11 @@ describe("@datastream/kafka", () => {
 			{ consumer, topics: "t" },
 			{ signal: ac.signal },
 		);
-		// Stream should be ended because signal was already aborted
 		const endedPromise = new Promise((resolve) => {
 			if (stream.readableEnded) return resolve();
 			stream.once("end", resolve);
 		});
-		stream.resume(); // drain to trigger end event
+		stream.resume();
 		await endedPromise;
 	});
 
@@ -958,7 +898,7 @@ describe("@datastream/kafka", () => {
 			{ signal: ac.signal },
 		);
 		const endedPromise = new Promise((resolve) => stream.once("end", resolve));
-		stream.resume(); // start flowing
+		stream.resume();
 		ac.abort();
 		await endedPromise;
 		strictEqual(consumer.stopCalled, 1);
@@ -1018,7 +958,6 @@ describe("@datastream/kafka", () => {
 		stream.destroy();
 		await closePromise;
 
-		// Aborting after destroy should not call consumer.stop a second time
 		ac.abort();
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		strictEqual(consumer.stopCalled, 1, "consumer.stop called only once");
@@ -1034,15 +973,10 @@ describe("@datastream/kafka", () => {
 		);
 		await stream.stop();
 
-		// Aborting after stop should not call consumer.stop again
 		ac.abort();
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		strictEqual(consumer.stopCalled, 1);
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: highWaterMark option
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConsumeStream: respects highWaterMark streamOption", async () => {
 		const consumer = makeMessageConsumer([]);
@@ -1055,13 +989,8 @@ describe("@datastream/kafka", () => {
 		stream.destroy();
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: backpressure (wantsMore === false triggers waitForRead)
-	// ---------------------------------------------------------------------------
-
 	test("kafkaConsumeStream: backpressure suspends eachMessage until _read is called", async () => {
 		const consumer = makeMessageConsumer([]);
-		// Use a very small HWM so backpressure kicks in quickly
 		const stream = await kafkaConsumeStream(
 			{ consumer, topics: "t" },
 			{ highWaterMark: 1 },
@@ -1069,7 +998,6 @@ describe("@datastream/kafka", () => {
 
 		let msg2Sent = false;
 		const deliveryDone = (async () => {
-			// Send first message - should go through
 			await consumer._eachMessage({
 				topic: "t",
 				partition: 0,
@@ -1081,7 +1009,6 @@ describe("@datastream/kafka", () => {
 					timestamp: "0",
 				},
 			});
-			// Send second message - may block until stream reads first
 			await consumer._eachMessage({
 				topic: "t",
 				partition: 0,
@@ -1104,9 +1031,6 @@ describe("@datastream/kafka", () => {
 	});
 
 	test("kafkaConsumeStream: stop() does not deadlock when consumer.stop waits for a parked eachMessage", async () => {
-		// kafkajs runner.stop() waits for any in-flight eachMessage. Under
-		// backpressure that callback is parked in waitForRead(); stop() must
-		// release it before awaiting consumer.stop() or the two wait on each other.
 		let inFlight = Promise.resolve();
 		const consumer = makeMessageConsumer([]);
 		const baseStop = consumer.stop;
@@ -1118,8 +1042,6 @@ describe("@datastream/kafka", () => {
 			{ consumer, topics: "t" },
 			{ highWaterMark: 1 },
 		);
-		// Nobody reads the stream: the first push fills the buffer (HWM 1) and
-		// the callback parks waiting for _read.
 		inFlight = consumer._eachMessage({
 			topic: "t",
 			partition: 0,
@@ -1228,16 +1150,10 @@ describe("@datastream/kafka", () => {
 		} finally {
 			clearTimeout(timer);
 		}
-		// consumer.stop() ran (after the parked callback settled) and the stream
-		// ended rather than hanging.
 		await new Promise((resolve) => setImmediate(resolve));
 		strictEqual(consumer.stopCalled, 1);
 		stream.destroy();
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: stopConsumerOnce memoization
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConsumeStream: stopConsumerOnce is memoized (stop + destroy only calls consumer.stop once)", async () => {
 		const consumer = makeMessageConsumer([]);
@@ -1246,17 +1162,12 @@ describe("@datastream/kafka", () => {
 		const closePromise = new Promise((resolve) =>
 			stream.once("close", resolve),
 		);
-		// Call stop() then destroy() — both trigger stopConsumerOnce
 		await stream.stop();
 		stream.destroy();
 		await closePromise;
 
 		strictEqual(consumer.stopCalled, 1, "consumer.stop called exactly once");
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConnect: producerOptions passed to kafka.producer()
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConnect: producerOptions are passed through to kafka.producer()", async () => {
 		let capturedProducerOpts;
@@ -1287,17 +1198,11 @@ describe("@datastream/kafka", () => {
 				disconnect: async () => {},
 			});
 		};
-		// No producerOptions provided — should default to {}
 		await kafkaConnect({ Kafka: FakeKafka });
 		deepStrictEqual(capturedProducerOpts, {});
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConnect: optional chaining in error teardown
-	// ---------------------------------------------------------------------------
-
 	test("kafkaConnect: consumer connect error with producer===false does not throw in teardown", async () => {
-		// producer is null; in the catch block, producer?.disconnect() must NOT throw
 		const FakeKafka = function () {
 			this.producer = () => ({
 				connect: async () => {},
@@ -1310,7 +1215,6 @@ describe("@datastream/kafka", () => {
 				disconnect: async () => {},
 			});
 		};
-		// producer: false => producer is null => in catch block producer?.disconnect() is safe
 		await rejects(
 			async () =>
 				kafkaConnect({ producer: false, groupId: "g1", Kafka: FakeKafka }),
@@ -1318,10 +1222,6 @@ describe("@datastream/kafka", () => {
 			"should rethrow consumer connect error",
 		);
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaProduceStream: null chunk error message specifics
-	// ---------------------------------------------------------------------------
 
 	test("kafkaProduceStream: error message includes type 'number' for numeric chunk", async () => {
 		const { producerMock } = makeFakeKafka();
@@ -1352,10 +1252,6 @@ describe("@datastream/kafka", () => {
 		ok(err.message.includes("object"), "message includes type 'object'");
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaProduceStream: batch reset is correct after flush
-	// ---------------------------------------------------------------------------
-
 	test("kafkaProduceStream: after batch flush, next messages go into a fresh batch", async () => {
 		const { producerMock } = makeFakeKafka();
 		const stream = await kafkaProduceStream({
@@ -1363,7 +1259,6 @@ describe("@datastream/kafka", () => {
 			topic: "t",
 			batchSize: 2,
 		});
-		// 4 messages = 2 full batches
 		stream.write("a");
 		stream.write("b");
 		stream.write("c");
@@ -1371,21 +1266,12 @@ describe("@datastream/kafka", () => {
 		stream.end();
 		await new Promise((resolve) => stream.on("finish", resolve));
 		strictEqual(producerMock.sendArgs.length, 2, "two separate flushes");
-		// First batch: a, b
 		strictEqual(producerMock.sendArgs[0].messages[0].value, "a");
 		strictEqual(producerMock.sendArgs[0].messages[1].value, "b");
-		// Second batch: c, d (not ["Stryker was here", "c", "d"])
 		strictEqual(producerMock.sendArgs[1].messages.length, 2);
 		strictEqual(producerMock.sendArgs[1].messages[0].value, "c");
 		strictEqual(producerMock.sendArgs[1].messages[1].value, "d");
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: autoCommit defaults to false (breaking change). With
-	// autoCommit, kafkajs commits once eachMessage resolves, i.e. once the message
-	// is merely buffered in the Readable — a crash/destroy then loses
-	// committed-but-unprocessed messages.
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConsumeStream: autoCommit defaults to false and is passed to consumer.run", async () => {
 		let capturedOpts;
@@ -1410,10 +1296,6 @@ describe("@datastream/kafka", () => {
 		await closePromise;
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: destroy sets stopped=true so eachMessage rejects
-	// ---------------------------------------------------------------------------
-
 	test("kafkaConsumeStream: destroy() sets stopped=true so eachMessage after destroy rejects", async () => {
 		const consumer = makeMessageConsumer([]);
 		const stream = await kafkaConsumeStream({ consumer, topics: "t" });
@@ -1424,7 +1306,6 @@ describe("@datastream/kafka", () => {
 		stream.destroy();
 		await closePromise;
 
-		// A late message must reject (not resolve) so kafkajs leaves it uncommitted.
 		await rejects(
 			consumer._eachMessage({
 				topic: "late",
@@ -1443,10 +1324,6 @@ describe("@datastream/kafka", () => {
 			},
 		);
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: abort event listener uses "abort" event name
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConsumeStream: abort event listener is on 'abort' event (not '')", async () => {
 		const consumer = makeMessageConsumer([]);
@@ -1468,11 +1345,9 @@ describe("@datastream/kafka", () => {
 			{ consumer, topics: "t" },
 			{ signal: mockSignal },
 		);
-		// Listener was registered on 'abort' event
 		strictEqual(listeners.length, 1, "one listener added");
 		strictEqual(listeners[0].event, "abort", "listener is on 'abort' event");
 
-		// stop() removes it
 		await stream.stop();
 		strictEqual(listeners.length, 0, "listener removed after stop");
 		stream.destroy();
@@ -1509,10 +1384,6 @@ describe("@datastream/kafka", () => {
 		strictEqual(listeners.length, 0, "listener removed on destroy");
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: stop() correctly handles already-stopped idempotency
-	// ---------------------------------------------------------------------------
-
 	test("kafkaConsumeStream: stop() when not stopped pushes null to end stream", async () => {
 		const consumer = makeMessageConsumer([]);
 		const stream = await kafkaConsumeStream({ consumer, topics: "t" });
@@ -1521,17 +1392,11 @@ describe("@datastream/kafka", () => {
 		const endPromise = new Promise((resolve) => stream.once("end", resolve));
 		await stream.stop();
 		await endPromise;
-		// Second call is no-op
 		await stream.stop();
 		strictEqual(consumer.stopCalled, 1);
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: wantsMore backpressure - eachMessage completes when wantsMore=true
-	// ---------------------------------------------------------------------------
-
 	test("kafkaConsumeStream: wantsMore=true means eachMessage does NOT call waitForRead", async () => {
-		// With large HWM, push() returns true (wantsMore), so waitForRead is NOT called
 		const consumer = makeMessageConsumer([]);
 		const stream = await kafkaConsumeStream(
 			{ consumer, topics: "t" },
@@ -1554,7 +1419,6 @@ describe("@datastream/kafka", () => {
 			delivered = true;
 		})();
 
-		// Give a tick; eachMessage should complete without blocking (no waitForRead)
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		ok(delivered, "eachMessage completed without waiting for read");
 
@@ -1562,10 +1426,6 @@ describe("@datastream/kafka", () => {
 		await delivery;
 		stream.destroy();
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: signal.aborted check prevents double-stop
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConsumeStream: non-aborted signal does NOT call stop immediately", async () => {
 		const consumer = makeMessageConsumer([]);
@@ -1575,7 +1435,6 @@ describe("@datastream/kafka", () => {
 			{ consumer, topics: "t" },
 			{ signal: ac.signal },
 		);
-		// Consumer.stop should NOT have been called yet (signal is not aborted)
 		strictEqual(
 			consumer.stopCalled,
 			0,
@@ -1602,7 +1461,6 @@ describe("@datastream/kafka", () => {
 			{ consumer, topics: "t" },
 			{ signal: mockSignal },
 		);
-		// Should have added listener (not called stop)
 		strictEqual(consumer.stopCalled, 0);
 		strictEqual(listeners.length, 1);
 		strictEqual(listeners[0].event, "abort");
@@ -1610,14 +1468,7 @@ describe("@datastream/kafka", () => {
 		stream.destroy();
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConnect: dynamic import fallback (Kafka not injected)
-	// ---------------------------------------------------------------------------
-
 	test("kafkaConnect: uses dynamic import when Kafka is not provided (no connect)", async () => {
-		// Call without injecting Kafka — exercises the `Kafka ??= (await import('kafkajs')).Kafka` branch.
-		// Pass producer:false and omit groupId so neither producer nor consumer is
-		// created, meaning connect() is never called and no broker is needed.
 		const result = await kafkaConnect({ producer: false });
 		strictEqual(result.producer, null, "producer is null");
 		strictEqual(result.consumer, null, "consumer is null");
@@ -1625,10 +1476,6 @@ describe("@datastream/kafka", () => {
 		ok(typeof result.disconnect === "function");
 		await result.disconnect();
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConnect: disconnect() throws during error teardown (catch handlers)
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConnect: producer.disconnect() throwing in catch block is swallowed", async () => {
 		const { Kafka } = makeFakeKafka({
@@ -1639,7 +1486,6 @@ describe("@datastream/kafka", () => {
 				throw new Error("producer disconnect also failed");
 			},
 		});
-		// Should still rethrow the original connect error, not the disconnect error
 		await rejects(
 			async () => kafkaConnect({ Kafka }),
 			/producer connect failed/,
@@ -1655,20 +1501,13 @@ describe("@datastream/kafka", () => {
 				throw new Error("consumer disconnect also failed");
 			},
 		});
-		// Should rethrow the consumer connect error despite disconnect throwing
 		await rejects(
 			async () => kafkaConnect({ groupId: "g1", Kafka }),
 			/consumer connect failed/,
 		);
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: consumer.stop() throwing is swallowed by stopConsumerOnce
-	// ---------------------------------------------------------------------------
-
 	test("kafkaConsumeStream: consumer.stop() throwing is swallowed (stopConsumerOnce catch)", async () => {
-		// Build a consumer whose stop() rejects — this exercises the .catch(() => {})
-		// in stopConsumerOnce, which must not propagate the error.
 		const consumer = {
 			connect: async () => {},
 			disconnect: async () => {},
@@ -1688,31 +1527,14 @@ describe("@datastream/kafka", () => {
 
 		const stream = await kafkaConsumeStream({ consumer, topics: "t" });
 		stream.resume();
-		// stop() must not throw even though consumer.stop() does
 		await stream.stop();
 		strictEqual(consumer.stopCalled, 1);
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: runPromise rejection is swallowed (anonymous_22)
-	// ---------------------------------------------------------------------------
-
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: precise backpressure contract
-	//   - when the buffer is FULL (push returns false / wantsMore=false) eachMessage
-	//     MUST suspend on waitForRead() until the next _read releases it.
-	//   - when the buffer has ROOM (push returns true / wantsMore=true) eachMessage
-	//     MUST NOT suspend.
-	// These pin down `if (!wantsMore) await waitForRead()` and waitForRead()'s
-	// Promise so the BooleanLiteral / ConditionalExpression / ArrowFunction mutants
-	// all fail.
-	// ---------------------------------------------------------------------------
 
 	const microtick = () => new Promise((resolve) => setImmediate(resolve));
 
 	test("kafkaConsumeStream: eachMessage SUSPENDS while buffer is full, resumes on read", async () => {
 		const consumer = makeMessageConsumer([]);
-		// HWM 1 => first push fills the buffer and returns false (wantsMore=false).
 		const stream = await kafkaConsumeStream(
 			{ consumer, topics: "t" },
 			{ highWaterMark: 1 },
@@ -1735,7 +1557,6 @@ describe("@datastream/kafka", () => {
 				settled = true;
 			});
 
-		// eachMessage must still be parked on waitForRead() — nothing has read yet.
 		await microtick();
 		strictEqual(
 			settled,
@@ -1743,7 +1564,6 @@ describe("@datastream/kafka", () => {
 			"eachMessage should be suspended while buffer full",
 		);
 
-		// Reading one item triggers _read -> releaseReaders -> resolves waitForRead.
 		const item = stream.read();
 		strictEqual(item.value, "v1");
 		await p;
@@ -1755,7 +1575,6 @@ describe("@datastream/kafka", () => {
 
 	test("kafkaConsumeStream: eachMessage does NOT suspend while buffer has room", async () => {
 		const consumer = makeMessageConsumer([]);
-		// Large HWM => push returns true (wantsMore=true) => no waitForRead().
 		const stream = await kafkaConsumeStream(
 			{ consumer, topics: "t" },
 			{ highWaterMark: 100 },
@@ -1778,12 +1597,6 @@ describe("@datastream/kafka", () => {
 				settled = true;
 			});
 
-		// Drain MICROTASKS only (no setImmediate / I/O turn). The stream's internal
-		// _read() — which would release a wrongly-parked waiter — is scheduled on a
-		// macrotask, so it has NOT run yet. With correct code (wantsMore=true => no
-		// waitForRead) eachMessage resolves purely via microtasks. With a mutant that
-		// always waits (`if (true)`) or inverts the guard, eachMessage is still parked
-		// here because only a macrotask _read could release it.
 		for (let i = 0; i < 20; i++) await Promise.resolve();
 		strictEqual(
 			settled,
@@ -1795,11 +1608,6 @@ describe("@datastream/kafka", () => {
 		await stream.stop();
 		stream.destroy();
 	});
-
-	// ---------------------------------------------------------------------------
-	// kafkaConsumeStream: stop() idempotency guard (if (stopped) return) prevents a
-	// second stream.push(null), which would emit ERR_STREAM_PUSH_AFTER_EOF.
-	// ---------------------------------------------------------------------------
 
 	test("kafkaConsumeStream: second stop() does not push null again / emit an error", async () => {
 		const consumer = makeMessageConsumer([]);
@@ -1814,8 +1622,6 @@ describe("@datastream/kafka", () => {
 		const endPromise = new Promise((resolve) => stream.once("end", resolve));
 		await stream.stop();
 		await endPromise;
-		// Second stop() must early-return; without the `if (stopped) return` guard it
-		// would call stream.push(null) again after EOF and emit an error event.
 		await stream.stop();
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		strictEqual(errored, null, "no error from a redundant second stop()");
@@ -1823,8 +1629,6 @@ describe("@datastream/kafka", () => {
 	});
 
 	test("kafkaConsumeStream: runPromise rejection is swallowed by stop()", async () => {
-		// Build a consumer whose run() promise rejects — exercises the
-		// runPromise.catch(() => {}) in stop(), which must swallow the error.
 		const consumer = {
 			connect: async () => {},
 			disconnect: async () => {},
@@ -1844,15 +1648,11 @@ describe("@datastream/kafka", () => {
 
 		const stream = await kafkaConsumeStream({ consumer, topics: "t" });
 		stream.resume();
-		// stop() must not throw even though runPromise rejects
 		await stream.stop();
 		strictEqual(consumer.stopCalled, 1);
 	});
 
 	test("kafkaConsumeStream: runPromise rejection before stop() errors the stream", async () => {
-		// run() rejecting on its own (not connected, already running) must surface
-		// as a stream error rather than an unhandled rejection on a stream that
-		// never ends.
 		const consumer = {
 			connect: async () => {},
 			disconnect: async () => {},
@@ -1869,11 +1669,6 @@ describe("@datastream/kafka", () => {
 		strictEqual(stream.destroyed, true);
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaCommitStream
-	// ---------------------------------------------------------------------------
-
-	/** Fake kafkajs consumer exposing commitOffsets + the GROUP_JOIN instrumentation event. */
 	const makeCommitConsumer = ({ commitOffsets = async () => {} } = {}) => {
 		const consumer = {
 			commits: [],
@@ -1991,7 +1786,6 @@ describe("@datastream/kafka", () => {
 		await pipeline([
 			createReadableStream([
 				msg("t", 0, "10"),
-				// redelivered / out-of-order: lower and equal offsets are ignored
 				msg("t", 0, "5"),
 				msg("t", 0, "10"),
 			]),
@@ -2080,20 +1874,11 @@ describe("@datastream/kafka", () => {
 		]);
 	});
 
-	// ---------------------------------------------------------------------------
-	// kafkaCommitStream / kafkaConsumeStream: kafkajs group lifecycle
-	// ---------------------------------------------------------------------------
-
 	const NOT_INITIALIZED =
 		"Consumer group was not initialized, consumer#run must be called first";
 	const kafkajsError = (message) =>
 		Object.assign(new Error(message), { name: "KafkaJSNonRetriableError" });
 
-	/**
-	 * Fake mirroring kafkajs src/consumer/index.js: run() creates the group
-	 * (GROUP_JOIN), stop() and a crash drop it (STOP), and commitOffsets throws
-	 * KafkaJSNonRetriableError while no group exists. `log` records the order.
-	 */
 	const makeKafkajsConsumer = () => {
 		const emitter = new EventEmitter();
 		const consumer = {
@@ -2150,8 +1935,6 @@ describe("@datastream/kafka", () => {
 		await consumer.run({});
 		const stream = await kafkaCommitStream({ consumer, batchSize: 1 });
 		await write(stream, msg("t", 0, "0"));
-		// kafkajs onCrash: disconnect() -> stop() emits STOP; a commit in the gap
-		// is refused as "not initialized" and must not error the stream.
 		consumer.leave();
 		await write(stream, msg("t", 0, "1"));
 		consumer.join();
@@ -2171,8 +1954,6 @@ describe("@datastream/kafka", () => {
 		const stream = await kafkaCommitStream({ consumer, batchSize: 2 });
 		await write(stream, msg("t", 0, "0"));
 		await write(stream, msg("t", 1, "0"));
-		// The group comes back without a GROUP_JOIN reset (e.g. a refused commit
-		// racing run()): the refused offsets are retried, not dropped.
 		consumer.group = true;
 		await write(stream, msg("t", 0, "1"));
 		await new Promise((resolve) => stream.end(resolve));
@@ -2199,8 +1980,6 @@ describe("@datastream/kafka", () => {
 		await consumer.run({});
 		const stream = await kafkaCommitStream({ consumer, batchSize: 1 });
 		await write(stream, msg("t", 0, "10"));
-		// Operator reset the group's offsets backwards; after the rejoin kafkajs
-		// redelivers from 5, and those commits must not be held at 11.
 		consumer.join();
 		await write(stream, msg("t", 0, "5"));
 		await write(stream, msg("t", 0, "6"));
@@ -2218,8 +1997,6 @@ describe("@datastream/kafka", () => {
 		const stream = await kafkaCommitStream({ consumer });
 		await write(stream, msg("t", 0, "0"));
 		await write(stream, msg("t", 1, "0"));
-		// The partitions may now belong to another member: committing them could
-		// move its offsets. Leave them uncommitted (redelivered, at-least-once).
 		consumer.join();
 		await write(stream, msg("t", 1, "1"));
 		await new Promise((resolve) => stream.end(resolve));
@@ -2259,7 +2036,6 @@ describe("@datastream/kafka", () => {
 		const source = await kafkaConsumeStream({ consumer, topics: "t" });
 		const sink = await kafkaCommitStream({ consumer, batchSize: 100 });
 		const done = pipeline([source, sink]);
-		// 50 messages, fewer than batchSize: only final() commits them.
 		for (let i = 0; i < 50; i++) await deliver(consumer, String(i));
 		await source.stop();
 		await done;
@@ -2330,8 +2106,6 @@ describe("@datastream/kafka", () => {
 		source.on("data", (chunk) => received.push(chunk.offset));
 		await deliver(consumer, "0");
 		const stopping = source.stop();
-		// Rejecting now would make kafkajs crash/restart the consumer mid-drain;
-		// resolving would mark it handled. Hold it until the group is left.
 		let settled = false;
 		const late = deliver(consumer, "1").finally(() => {
 			settled = true;
@@ -2373,7 +2147,6 @@ describe("@datastream/kafka", () => {
 		const source = await kafkaConsumeStream({ consumer, topics: "t" });
 		const sink = await kafkaCommitStream({ consumer });
 		await deliver(consumer, "0");
-		// Not read: the readable has not ended, so destroy() is a hard stop.
 		const stopping = source.stop();
 		const closed = new Promise((resolve) => source.once("close", resolve));
 		source.destroy();

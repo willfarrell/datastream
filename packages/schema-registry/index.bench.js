@@ -13,8 +13,6 @@ import {
 	glueUnframeStream,
 } from "@datastream/schema-registry";
 
-// -- Data generators --
-
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 
@@ -22,14 +20,12 @@ const schemaId = 42;
 const schemaVersionId = "12345678-1234-1234-1234-1234567890ab";
 const count = 10_000;
 
-// Generate N Uint8Array payloads of 64 bytes each
 const messages = Array.from({ length: count }, (_, i) => {
 	const buf = new Uint8Array(64);
 	for (let j = 0; j < 64; j++) buf[j] = (i + j) % 256;
 	return buf;
 });
 
-// Pre-frame messages for unframe benchmarks
 const confluentFramed = await streamToArray(
 	pipejoin([
 		createReadableStream(messages),
@@ -43,8 +39,6 @@ const glueFramed = await streamToArray(
 		glueFrameStream({ schemaVersionId }),
 	]),
 );
-
-// -- Tests --
 
 suite("confluentFrameStream", () => {
 	bench(`${count} messages`, options, async (b) => {

@@ -24,7 +24,6 @@ import {
 import { variant } from "../variant.js";
 
 describe(`@datastream/csv (${variant})`, () => {
-	// *** csvParseStream *** //
 	test(`csvParseStream should parse csv to string[]`, async (_t) => {
 		const streams = [
 			createReadableStream("1,2,3,4\r\n5,6,7,8\r\n"),
@@ -42,7 +41,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	test(`csvParseStream should decode multi-byte UTF-8 split across byte chunks`, async (_t) => {
 		const bytes = new TextEncoder().encode("a,é\r\nb,€\r\n");
 		const streams = [
-			// split inside "é" (2 bytes) and inside "€" (3 bytes)
 			createReadableStream([
 				bytes.subarray(0, 3),
 				bytes.subarray(3, 9),
@@ -60,7 +58,6 @@ describe(`@datastream/csv (${variant})`, () => {
 
 	test(`csvParseStream should flush an incomplete trailing UTF-8 sequence`, async (_t) => {
 		const streams = [
-			// "a," followed by the first byte of "é" only
 			createReadableStream([new Uint8Array([97, 44, 195])]),
 			csvParseStream(),
 		];
@@ -77,7 +74,6 @@ describe(`@datastream/csv (${variant})`, () => {
 				parse,
 			]),
 		);
-		// only the BOM at the very start of the stream is removed
 		deepStrictEqual(output, [
 			["a", "b"],
 			["\uFEFFc", "d"],
@@ -85,9 +81,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream does not re-parse an incomplete row on every chunk`, async (_t) => {
-		// A long row dripped in small chunks used to be re-parsed from its start
-		// on every chunk: O(n^2). It is now re-parsed only once the buffered text
-		// has doubled since the last attempt.
 		const chunks = Array.from({ length: 1_000 }, () => "abcdefgh");
 		chunks.push("\r\n");
 		let calls = 0;
@@ -114,7 +107,6 @@ describe(`@datastream/csv (${variant})`, () => {
 				csvParseStream({ parser }),
 			]),
 		);
-		// Parsed at buffer lengths 1, 2, 4, 8 (the tail doubles between attempts).
 		deepStrictEqual(texts, ["a", "ab", "abc\r", "abc\r\nd\r\n"]);
 		deepStrictEqual(output, [["abc"], ["d"]]);
 	});
@@ -128,7 +120,6 @@ describe(`@datastream/csv (${variant})`, () => {
 				csvParseStream(),
 			]),
 		);
-		// Same as string input: only the first BOM is removed.
 		deepStrictEqual(output, [["\uFEFFa"]]);
 	});
 
@@ -290,8 +281,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream should parse a blank row between rows`, async (_t) => {
-		// The blank row makes the parser's newline resync land exactly on the current
-		// position (nextNl === pos), exercising the row-terminator cache boundary.
 		const streams = [createReadableStream("a\r\n\r\nb\r\n"), csvParseStream()];
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
@@ -353,7 +342,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		let call = 0;
 		const customParser = (_text, _ctx, _isFlushing) => {
 			call += 1;
-			// Each call reports a SyntheticError on the same id with a different idx
 			return {
 				rows: [],
 				tail: "",
@@ -368,7 +356,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		];
 		const result = await pipeline(streams);
 
-		// All three call indices should appear, not just the last one
 		deepStrictEqual(result.csvErrors.Synthetic.idx, [1, 2, 3]);
 	});
 
@@ -417,7 +404,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	test(`csvParseStream caps recorded error rows at maxErrorRows and counts the rest`, async (_t) => {
 		const parse = csvParseStream({ maxErrorRows: 2 });
 		await pipeline([
-			// the first chunk alone holds more errors than the cap
 			createReadableStream([
 				'"a"x\r\n"b"x\r\n"c"x\r\n',
 				'"d"x\r\n1\r\n"e"x\r\n',
@@ -621,7 +607,6 @@ describe(`@datastream/csv (${variant})`, () => {
 			["a", "b"],
 			["c", "d"],
 		]);
-		// The closing quote is followed by the newline, not unexpected text.
 		deepStrictEqual(parse.result().value, {});
 	});
 
@@ -651,7 +636,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvInjectHeaderStream *** //
 	test(`csvInjectHeaderStream should inject header before first chunk`, async (_t) => {
 		const streams = [
 			createReadableStream([
@@ -681,7 +665,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, []);
 	});
 
-	// *** csvFormatStream *** //
 	test(`csvFormatStream should format csv from object[] using compose`, async (_t) => {
 		const headers = ["a", "b", "c", "d"];
 		const streams = [
@@ -782,8 +765,6 @@ describe(`@datastream/csv (${variant})`, () => {
 				csvFormatStream(),
 			]),
 		);
-		// A leading ' makes spreadsheets treat the cell as text; quoting alone does
-		// not (quoted formulas are still evaluated). \r still forces quoting.
 		strictEqual(
 			output,
 			`'=1+2,'@SUM(1),'+cmd,'-cmd\r\n'\tcmd,"'\rcmd",a=1,'=1\r\n`,
@@ -800,7 +781,6 @@ describe(`@datastream/csv (${variant})`, () => {
 				csvFormatStream(),
 			]),
 		);
-		// Numbers are left as-is (still quoted by the leading-sign rule).
 		strictEqual(
 			output,
 			`"+1","-12","-1.5","+2e10","-3.25E-7","-4"\r\n'-1.,'+.5,'-1e,'--1,'-1x,'-1-1\r\n`,
@@ -854,7 +834,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		}
 	});
 
-	// *** csvArrayToObjectStream / csvObjectToArrayStream *** //
 	test(`csvArrayToObjectStream should convert array to object`, async (_t) => {
 		const streams = [
 			createReadableStream([["1", "2", "3"]]),
@@ -877,7 +856,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [["1", "2", "3"]]);
 	});
 
-	// *** csvDetectDelimitersStream *** //
 	test(`csvDetectDelimitersStream should detect comma delimiter`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
 		const streams = [createReadableStream("a,b,c\n1,2,3\n"), detect];
@@ -1116,9 +1094,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream quote detection is linear in the input size`, async (_t) => {
-		// Every `"` opens a field but none closes one, so each opener used to
-		// rescan every later quote: O(n^2) indexOf calls (a 200KB line took ~40s).
-		// Count the String#indexOf calls made while detecting instead of timing.
 		const n = 5_000;
 		const input = `${',"a'.repeat(n)},'b'\n`;
 		const detect = csvDetectDelimitersStream();
@@ -1143,9 +1118,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream does not rescan the buffer per chunk before a newline`, async (_t) => {
-		// A first line dripped in small chunks used to re-run detection (and
-		// flatten the growing buffer) on every chunk: O(n^2). Detection now only
-		// runs once a newline has arrived. Count the String#match calls it makes.
 		const chunks = Array.from({ length: 1_000 }, () => "abcdefgh");
 		chunks.push(";\n");
 		const detect = csvDetectDelimitersStream();
@@ -1173,7 +1145,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		const bytes = new TextEncoder().encode("h1;é\r\nü;€\r\n");
 		const output = await streamToArray(
 			pipejoin([
-				// split inside "é" (before detection) and inside "€" (after detection)
 				createReadableStream([
 					bytes.subarray(0, 4),
 					bytes.subarray(4, 11),
@@ -1190,7 +1161,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		const detect = csvDetectDelimitersStream();
 		const output = await streamToArray(
 			pipejoin([
-				// "a\n" then "b" followed by the first byte of "é" only
 				createReadableStream([
 					new Uint8Array([97, 10]),
 					new Uint8Array([98, 195]),
@@ -1230,11 +1200,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [["é", "ü"]]);
 	});
 
-	// *** csvDetectHeaderStream *** //
 	test(`csvDetectHeaderStream does not rescan the buffer on every chunk`, async (_t) => {
-		// A header row dripped in small chunks used to re-scan (and flatten) the
-		// whole buffer on every chunk: O(n^2). It is now re-scanned only once the
-		// buffer has doubled. Count the String#indexOf calls made while buffering.
 		const chunks = Array.from({ length: 1_000 }, () => "abcdefgh");
 		chunks.push("\r\n1\r\n");
 		const detect = csvDetectHeaderStream();
@@ -1263,8 +1229,6 @@ describe(`@datastream/csv (${variant})`, () => {
 			pipejoin([createReadableStream([..."abc\r\nxyz\r\n"]), detect]),
 		);
 		deepStrictEqual(detect.result().value.header, ["abc"]);
-		// Attempts at buffer lengths 1, 2, 4, 8: the header row completes at 5 but
-		// is only found at 8, so "xyz" is emitted as one chunk.
 		deepStrictEqual(output, ["xyz", "\r", "\n"]);
 	});
 
@@ -1274,8 +1238,6 @@ describe(`@datastream/csv (${variant})`, () => {
 			pipejoin([createReadableStream(["abcdef", "\r\n12", "3"]), detect]),
 		);
 		deepStrictEqual(detect.result().value.header, ["abcdef"]);
-		// The failed attempt at 6 schedules the retry at min(12, 10 + 1) = 11, so
-		// the buffer of 10 is skipped and the header is found at 11.
 		deepStrictEqual(output, ["123"]);
 	});
 
@@ -1284,7 +1246,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		const bytes = new TextEncoder().encode("h1,é\r\nü,€\r\n");
 		const output = await streamToArray(
 			pipejoin([
-				// split inside "é" (before detection) and inside "€" (after detection)
 				createReadableStream([
 					bytes.subarray(0, 4),
 					bytes.subarray(4, 11),
@@ -1336,8 +1297,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream ends the header at a newline in text after a closing quote`, async (_t) => {
-		// Matches csvParseStream: a quote right after a closing quote is literal
-		// text, so it does not open a quoted field that could swallow the newline.
 		const detect = csvDetectHeaderStream({ escapeChar: "\\" });
 		const output = await streamToArray(
 			pipejoin([createReadableStream(['"a""b\r\nc",d\r\n']), detect]),
@@ -1500,7 +1459,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "val1,val2\n");
 	});
 
-	// *** csvRemoveMalformedRowsStream *** //
 	test(`csvRemoveMalformedRowsStream should drop rows with wrong column count`, async (_t) => {
 		const filter = csvRemoveMalformedRowsStream();
 		const streams = [
@@ -1690,7 +1648,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(error.count, 1_002);
 	});
 
-	// *** csvRemoveEmptyRowsStream *** //
 	test(`csvRemoveEmptyRowsStream should drop empty rows`, async (_t) => {
 		const filter = csvRemoveEmptyRowsStream();
 		const streams = [
@@ -1846,7 +1803,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(filter.result().value, {});
 	});
 
-	// *** csvCoerceValuesStream *** //
 	test(`csvCoerceValuesStream keeps a __proto__ column as an own key (auto)`, async (_t) => {
 		const streams = [
 			createReadableStream([['{"isAdmin":true}', "2"]]),
@@ -1907,7 +1863,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		];
 		const result = await pipeline(streams);
 
-		// csvCoerceValuesStream has no result (it only ever reported {}).
 		strictEqual(coerce.result, undefined);
 		deepStrictEqual(result, {});
 	});
@@ -2090,9 +2045,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvCoerceValuesStream coerces leading-zero strings to numbers`, async (_t) => {
-		// WARNING: leading-zero strings like zip codes are coerced to numbers,
-		// losing the leading zero. Use explicit column types to prevent this:
-		// csvCoerceValuesStream({ columns: { zip: "string" } })
 		const streams = [
 			createReadableStream([{ zip: "07001", phone: "0123456789" }]),
 			csvCoerceValuesStream(),
@@ -2137,7 +2089,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ val: null }]);
 	});
 
-	// *** csvUnquotedParser *** //
 	test(`csvUnquotedParser should parse simple unquoted CSV`, (_t) => {
 		const result = csvUnquotedParser("a,b,c\r\n1,2,3\r\n");
 		deepStrictEqual(result.rows, [
@@ -2168,7 +2119,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(result.numCols, 3);
 	});
 
-	// *** csvParseStream with custom parser *** //
 	test(`csvParseStream should work with custom parser (csvUnquotedParser)`, async (_t) => {
 		const streams = [
 			createReadableStream("a,b,c\r\n1,2,3\r\n4,5,6\r\n"),
@@ -2198,7 +2148,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvParseStream with multi-row input *** //
 	test(`csvParseStream should handle multi-row input`, async (_t) => {
 		const row = "a,b,c\r\n";
 		const input = [row.repeat(50), "x,y,z\r\n"];
@@ -2210,7 +2159,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output[output.length - 1], ["x", "y", "z"]);
 	});
 
-	// *** csvDetectDelimitersStream - pass through after detection in transform *** //
 	test(`csvDetectDelimitersStream should pass through in transform after detection`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
 		const streams = [
@@ -2224,7 +2172,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		ok(output.includes("4,5,6"));
 	});
 
-	// *** csvDetectDelimitersStream - detect returns false (no newline in header) *** //
 	test(`csvDetectDelimitersStream should buffer when no newline found`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
 		const streams = [createReadableStream(["abc", "d\n1\n"]), detect];
@@ -2234,7 +2181,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "abcd\n1\n");
 	});
 
-	// *** csvParseStream - unterminated quote with custom escape and fewer fields *** //
 	test(`csvParseStream should handle unterminated quote with custom escape and fewer fields than numCols`, async (_t) => {
 		const streams = [
 			createReadableStream('a,b\r\n"unterminated'),
@@ -2245,7 +2191,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.csvErrors.UnterminatedQuote.idx, [1]);
 	});
 
-	// *** csvParseStream - garbage after closing quote with custom escape *** //
 	test(`csvParseStream should handle content after closing quote with custom escape`, async (_t) => {
 		const streams = [
 			createReadableStream('"a"x,b\r\n'),
@@ -2258,7 +2203,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(streams[1].result().value.UnexpectedQuote.idx, [0]);
 	});
 
-	// *** csvParseStream with multiple input chunks to test join path *** //
 	test(`csvParseStream should join multiple input chunks`, async (_t) => {
 		const streams = [
 			createReadableStream(["1,2\r\n", "3,4\r\n"]),
@@ -2273,7 +2217,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvQuotedParser direct tests *** //
 	test(`csvQuotedParser should parse with default options`, (_t) => {
 		const result = csvQuotedParser("a,b\r\n1,2\r\n");
 		deepStrictEqual(result.rows, [
@@ -2284,8 +2227,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.errors, {});
 	});
 
-	// The quoted-field value is assembled during the closing-quote scan (one
-	// segment per "" pair) instead of a replaceAll pass.
 	test(`csvQuotedParser should unescape consecutive "" pairs in one field`, (_t) => {
 		const text = '"a""b""c",x';
 		const result = csvQuotedParser(`${text}\r\n`, {}, true);
@@ -2295,7 +2236,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(partial.tail, text);
 	});
 
-	// *** csvParseStream - unterminated quote with fewer fields than numCols (escapeIsQuote=true) *** //
 	test(`csvParseStream should handle unterminated quote with fewer fields than established numCols`, async (_t) => {
 		const streams = [
 			createReadableStream('a,b\r\n"unterminated'),
@@ -2306,7 +2246,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.csvErrors.UnterminatedQuote.idx, [1]);
 	});
 
-	// *** csvParseStream - 3+ char newline *** //
 	test(`csvParseStream should handle 3+ char custom newline`, async (_t) => {
 		const streams = [
 			createReadableStream('"a",b---c,d---'),
@@ -2321,7 +2260,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvParseStream - 3+ char newline with custom escape *** //
 	test(`csvParseStream should handle 3+ char custom newline with custom escape`, async (_t) => {
 		const streams = [
 			createReadableStream('"a",b---c,d---'),
@@ -2336,7 +2274,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvParseStream - quote after unquoted row boundary *** //
 	test(`csvParseStream should handle quoted field at start of subsequent row`, async (_t) => {
 		const streams = [
 			createReadableStream('a,b\r\n"c",d\r\n'),
@@ -2351,7 +2288,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvParseStream - delimiter at end of input *** //
 	test(`csvParseStream should handle delimiter at end of chunk followed by quote`, async (_t) => {
 		const streams = [
 			createReadableStream('a,"b"\r\nc,"d"\r\n'),
@@ -2366,7 +2302,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvParseStream - short row in flushing *** //
 	test(`csvParseStream should flush short row with fewer fields`, async (_t) => {
 		const streams = [createReadableStream("a,b,c\r\nd"), csvParseStream()];
 		const stream = pipejoin(streams);
@@ -2375,7 +2310,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [["a", "b", "c"], ["d"]]);
 	});
 
-	// *** csvParseStream - lastWasDelimiter at end on flush *** //
 	test(`csvParseStream should handle trailing delimiter on flush with established numCols`, async (_t) => {
 		const streams = [createReadableStream("a,b\r\nc,"), csvParseStream()];
 		const stream = pipejoin(streams);
@@ -2387,7 +2321,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvParseStream - malformed row in fast unquoted path *** //
 	test(`csvParseStream should handle malformed unquoted row with missing delimiter`, async (_t) => {
 		const streams = [
 			createReadableStream("a,b,c\r\nd\r\ne,f,g\r\n"),
@@ -2401,7 +2334,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output[2], ["e", "f", "g"]);
 	});
 
-	// *** csvParseStream - first row exactly fills input (pos >= len after first-row detection) *** //
 	test(`csvParseStream should handle single unquoted row exactly filling input`, async (_t) => {
 		const streams = [createReadableStream("a,b,c\r\n"), csvParseStream()];
 		const stream = pipejoin(streams);
@@ -2410,7 +2342,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [["a", "b", "c"]]);
 	});
 
-	// *** csvDetectHeaderStream - BOM-only input (parser returns no rows) *** //
 	test(`csvDetectHeaderStream should handle BOM-only input`, async (_t) => {
 		const headers = csvDetectHeaderStream();
 		const streams = [createReadableStream("\uFEFF"), headers];
@@ -2420,7 +2351,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(headers.result().value.header, []);
 	});
 
-	// *** csvDetectHeaderStream - input starting with newline (empty header chunk) *** //
 	test(`csvDetectHeaderStream should handle input starting with newline`, async (_t) => {
 		const headers = csvDetectHeaderStream({ newlineChar: "\n" });
 		const streams = [createReadableStream("\na,b\n"), headers];
@@ -2431,7 +2361,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		ok(output.includes("a,b"));
 	});
 
-	// *** csvParseStream - BOM stripping *** //
 	test(`csvDetectDelimitersStream should strip BOM`, async (_t) => {
 		const bom = "\uFEFF";
 		const detect = csvDetectDelimitersStream();
@@ -2441,7 +2370,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(detect.result().value.delimiterChar, ",");
 	});
 
-	// *** csvParseStream - quoted field followed by 3-char newline (escapeIsQuote=true) *** //
 	test(`csvParseStream should handle quoted field followed by 3+ char newline`, async (_t) => {
 		const streams = [
 			createReadableStream('"a"---"b"---'),
@@ -2453,7 +2381,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [["a"], ["b"]]);
 	});
 
-	// *** csvParseStream - quoted field followed by multi-char delimiter (escapeIsQuote=false) *** //
 	test(`csvParseStream should handle quoted field with multi-char delimiter and custom escape`, async (_t) => {
 		const streams = [
 			createReadableStream('"a"::"b"\r\n"c"::"d"\r\n'),
@@ -2468,7 +2395,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvParseStream - quoted field followed by 3-char newline (escapeIsQuote=false) *** //
 	test(`csvParseStream should handle quoted field with 3+ char newline and custom escape`, async (_t) => {
 		const streams = [
 			createReadableStream('"a"---"b"---'),
@@ -2480,7 +2406,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [["a"], ["b"]]);
 	});
 
-	// *** csvParseStream - short quoted row (fi < numCols) in escapeIsQuote=true *** //
 	test(`csvParseStream should handle short quoted row with fewer fields after newline`, async (_t) => {
 		const streams = [
 			createReadableStream('a,b,c\r\n"d"\r\n'),
@@ -2493,7 +2418,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output[1].length, 1);
 	});
 
-	// *** csvParseStream - short quoted row (fi < numCols) in escapeIsQuote=false *** //
 	test(`csvParseStream should handle short quoted row with custom escape after newline`, async (_t) => {
 		const streams = [
 			createReadableStream('a,b,c\r\n"d"\r\n'),
@@ -2506,7 +2430,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output[1].length, 1);
 	});
 
-	// *** csvParseStream - Buffer chunk with custom parser *** //
 	test(`csvParseStream should handle Buffer chunks with custom parser`, async (_t) => {
 		const streams = [
 			createReadableStream([Buffer.from("a,b\r\n1,2\r\n")]),
@@ -2521,7 +2444,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvParseStream - multiple chunks with custom parser (buffer concat) *** //
 	test(`csvParseStream should handle multiple chunks with custom parser and buffer`, async (_t) => {
 		const streams = [
 			createReadableStream(["a,b\r\n1,", "2\r\n"]),
@@ -2536,7 +2458,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** csvParseStream - custom parser with errors in streaming *** //
 	test(`csvParseStream should collect errors from custom parser during streaming`, async (_t) => {
 		const errorParser = (text, options, isFlushing) => {
 			const result = csvQuotedParser(text, options, isFlushing);
@@ -2556,7 +2477,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		ok(result.csvErrors.TestError);
 	});
 
-	// *** csvParseStream - custom parser with errors in flush *** //
 	test(`csvParseStream should collect errors from custom parser during flush`, async (_t) => {
 		const errorParser = (text, options, isFlushing) => {
 			const result = csvQuotedParser(text, options, isFlushing);
@@ -2576,7 +2496,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		ok(result.csvErrors.FlushError);
 	});
 
-	// *** csvParseStream - inline parser errors during streaming (unterminated quote in non-final chunk) *** //
 	test(`csvParseStream should collect inline parser errors during streaming`, async (_t) => {
 		const streams = [
 			createReadableStream(['"a,b\r\n', "1,2\r\n"]),
@@ -2587,7 +2506,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		ok(result.csvErrors.UnterminatedQuote);
 	});
 
-	// *** csvParseStream - multiple input chunks (join path) *** //
 	test(`csvParseStream should join multiple input chunks`, async (_t) => {
 		const streams = [
 			createReadableStream(["a,b\r\n", "1,2\r\n", "3,4\r\n"]),
@@ -2614,10 +2532,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ val: true, val2: false }]);
 	});
 
-	// *** FINDING: fast-path-too-many-columns-merged *** //
 	test(`csvParseStream should not merge extra columns in fast unquoted path`, async (_t) => {
-		// A row with MORE fields than the established numCols must keep all
-		// fields separate (not collapse the surplus into the last field).
 		const streams = [
 			createReadableStream("a,b,c\r\n1,2,3,4,5\r\n"),
 			csvParseStream(),
@@ -2632,8 +2547,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream fast and slow paths agree on over-long rows`, async (_t) => {
-		// Identical row data must parse identically whether or not a quote char
-		// appears elsewhere in the buffer (quote presence picks fast vs slow path).
 		const fastStreams = [
 			createReadableStream("a,b,c\r\n1,2,3,4,5\r\n"),
 			csvParseStream(),
@@ -2666,7 +2579,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(filter.result().value.MalformedRow.idx, [1]);
 	});
 
-	// *** FINDING: detect-quote-scans-whole-buffer *** //
 	test(`csvDetectDelimitersStream should not detect apostrophe in data as quote char`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
 		const streams = [
@@ -2704,7 +2616,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** FINDING: custom-escape-not-inverse-of-format *** //
 	test(`csvFormatStream/csvParseStream round-trip preserves escape char with custom escapeChar`, async (_t) => {
 		const value = 'a"b\\c';
 		const formatStreams = [
@@ -2722,10 +2633,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(parsed, [[value, "next"]]);
 	});
 
-	// *** FINDING: custom-escape-lookback-parity *** //
 	test(`csvParseStream should treat even run of escape chars as unescaped closing quote`, async (_t) => {
-		// "a\\" => field value is a\ (escaped backslash), then the closing quote
-		// is real, so the delimiter and following field are not swallowed.
 		const streams = [
 			createReadableStream('"a\\\\",b\r\nc,d\r\n'),
 			csvParseStream({ escapeChar: "\\" }),
@@ -2739,7 +2647,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// *** FINDING: detect-header-naive-newline-split *** //
 	test(`csvDetectHeaderStream should respect quoted newline in header field`, async (_t) => {
 		const headers = csvDetectHeaderStream({ newlineChar: "\n" });
 		const streams = [
@@ -2772,7 +2679,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "val1,val2\n");
 	});
 
-	// *** FINDING: autocoerce-invalid-date *** //
 	test(`csvCoerceValuesStream should keep invalid date string as string`, async (_t) => {
 		const streams = [
 			createReadableStream([{ d: "2024-13-99" }]),
@@ -2784,7 +2690,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ d: "2024-13-99" }]);
 	});
 
-	// *** FINDING: csvArrayToObjectStream-proto-header-drops-column *** //
 	test(`csvArrayToObjectStream should keep a __proto__ header as an own data property`, async (_t) => {
 		const streams = [
 			createReadableStream([["polluted", "ok"]]),
@@ -2795,18 +2700,12 @@ describe(`@datastream/csv (${variant})`, () => {
 
 		strictEqual(output.length, 1);
 		const row = output[0];
-		// The __proto__ column must be stored as an own data property, not lost.
 		ok(Object.hasOwn(row, "__proto__"));
 		// biome-ignore lint/suspicious/noProto: intentionally reading the own data property literally named "__proto__" to assert prototype-pollution safety.
 		strictEqual(row.__proto__, "polluted");
 		strictEqual(row.safe, "ok");
 	});
 
-	// ===================================================================
-	// Mutation-killing tests (added to raise mutation score)
-	// ===================================================================
-
-	// --- csvFormatStream: scanNeedsQuote first-char triggers ---
 	test(`csvFormatStream should quote field with leading space`, async (_t) => {
 		const streams = [
 			createReadableStream([[" lead", "ok"]]),
@@ -2846,7 +2745,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, '"a\rb",ok\r\n');
 	});
 
-	// --- csvFormatStream: multi-char delimiter scan path ---
 	test(`csvFormatStream should quote value containing multi-char delimiter`, async (_t) => {
 		const streams = [
 			createReadableStream([["a::b", "plain"]]),
@@ -2856,8 +2754,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, '"a::b"::plain\r\n');
 	});
 
-	// The containment scan is one regexp built from the delimiter, so a
-	// regexp-special delimiter must be escaped (an unescaped "." matches any char).
 	test(`csvFormatStream should quote value containing a regexp-special delimiter`, async (_t) => {
 		const streams = [
 			createReadableStream([["a.b", "plain"]]),
@@ -2885,9 +2781,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "plain::value\r\n");
 	});
 
-	// --- csvFormatStream: wrapQuote with custom escape ---
 	test(`csvFormatStream custom escape should escape escape char and quote char`, async (_t) => {
-		// escapeChar=\, value contains both \ and "; backslash doubled, quote -> \"
 		const streams = [
 			createReadableStream([['a"b\\c', "ok"]]),
 			csvFormatStream({ escapeChar: "\\" }),
@@ -2902,11 +2796,9 @@ describe(`@datastream/csv (${variant})`, () => {
 			csvFormatStream({ escapeChar: "\\" }),
 		];
 		const output = await streamToString(pipejoin(streams));
-		// contains delimiter so quoted; backslash doubled; no quote char present
 		strictEqual(output, '"a\\\\b,c",ok\r\n');
 	});
 
-	// --- csvFormatStream: Date and number/non-string formatting (formatRowSlow) ---
 	test(`csvFormatStream should format Date as ISO string`, async (_t) => {
 		const d = new Date("2024-01-15T10:30:00.000Z");
 		const streams = [createReadableStream([[d, "ok"]]), csvFormatStream()];
@@ -2930,20 +2822,17 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvFormatStream should format boolean via String in slow path`, async (_t) => {
-		// boolean true forces slow path (non-string); String(true) === "true"
 		const streams = [createReadableStream([[true, false]]), csvFormatStream()];
 		const output = await streamToString(pipejoin(streams));
 		strictEqual(output, "true,false\r\n");
 	});
 
 	test(`csvFormatStream should quote number-derived string needing quote`, async (_t) => {
-		// A negative number stringifies to "-42" which starts with '-', a quote trigger
 		const streams = [createReadableStream([[-42, "ok"]]), csvFormatStream()];
 		const output = await streamToString(pipejoin(streams));
 		strictEqual(output, '"-42",ok\r\n');
 	});
 
-	// --- csvFormatStream: batch boundary (>= 64 rows flushed mid-stream) ---
 	test(`csvFormatStream should emit batch at 64 rows then flush remainder`, async (_t) => {
 		const rows = [];
 		for (let i = 0; i < 70; i++) rows.push([String(i), "x"]);
@@ -2955,7 +2844,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(lines[69], "69,x");
 	});
 
-	// --- csvFormatStream: a value containing a custom newlineChar is quoted ---
 	test(`csvFormatStream should quote values containing a custom newlineChar`, async (_t) => {
 		const streams = [
 			createReadableStream([["a|b", "c"]]),
@@ -2965,7 +2853,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, '"a|b",c|');
 	});
 
-	// --- csvFormatStream: custom newlineChar separator ---
 	test(`csvFormatStream should use custom newlineChar`, async (_t) => {
 		const streams = [
 			createReadableStream([
@@ -2978,7 +2865,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "1,2\n3,4\n");
 	});
 
-	// --- csvFormatStream: custom quoteChar ---
 	test(`csvFormatStream should use custom quoteChar`, async (_t) => {
 		const streams = [
 			createReadableStream([["a,b", "ok"]]),
@@ -2988,7 +2874,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "'a,b',ok\r\n");
 	});
 
-	// --- csvFormatStream multi-char delimiter: trailing space / CR / LF triggers ---
 	test(`csvFormatStream multi-char delimiter should quote trailing space`, async (_t) => {
 		const streams = [
 			createReadableStream([["trail ", "ok"]]),
@@ -3022,7 +2907,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, '"a\nb",ok\r\n');
 	});
 
-	// --- csvCoerceValuesStream: number regex exponent shape ---
 	test(`csvCoerceValuesStream should coerce exponent with explicit sign and multi-digit exponent`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: "1e+10", b: "2e-05", c: "1.5E3" }]),
@@ -3068,7 +2952,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ d: new Date("2024-01-15T10:30:00+05:30") }]);
 	});
 
-	// --- csvCoerceValuesStream: boolean first-char/length gating in autoCoerce ---
 	test(`csvCoerceValuesStream should not treat 4-char non-true string as boolean`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: "trUE", b: "tree", c: "True" }]),
@@ -3123,7 +3006,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ a: "hello", b: "world" }]);
 	});
 
-	// --- coerceToType boolean: string vs non-string ---
 	test(`csvCoerceValuesStream explicit boolean should lowercase compare string`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: "TRUE", b: "no", c: "true" }]),
@@ -3144,7 +3026,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ a: true, b: false }]);
 	});
 
-	// --- coerceToType json with array ---
 	test(`csvCoerceValuesStream explicit json should parse array`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: "[1,2,3]" }]),
@@ -3154,7 +3035,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ a: [1, 2, 3] }]);
 	});
 
-	// --- coerceToType default (unknown type) passthrough ---
 	test(`csvCoerceValuesStream unknown column type should pass value unchanged`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: "raw" }]),
@@ -3164,7 +3044,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ a: "raw" }]);
 	});
 
-	// --- coerceToType number coerces hex-like and keeps decimals ---
 	test(`csvCoerceValuesStream explicit number coerces decimal and hex`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: "3.14", b: "0x1F" }]),
@@ -3174,12 +3053,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ a: 3.14, b: 31 }]);
 	});
 
-	// --- csvDetectDelimitersStream: quote bracketing precision ---
-	// A quote candidate must OPEN at a field start AND CLOSE at a field end to be
-	// recognised. The following exercise each isFieldStart / isFieldEnd branch.
-
 	test(`csvDetectDelimitersStream should detect quote opening at text start`, async (_t) => {
-		// "'a'" opens at i===0 and closes before a delimiter
 		const detect = csvDetectDelimitersStream();
 		const streams = [createReadableStream("'a',b\n1,2\n"), detect];
 		await pipeline(streams);
@@ -3187,7 +3061,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream should detect quote after delimiter and closing at line end`, async (_t) => {
-		// second field 'b' opens after a comma and closes before the newline (LF)
 		const detect = csvDetectDelimitersStream();
 		const streams = [createReadableStream("a,'b'\n1,2\n"), detect];
 		await pipeline(streams);
@@ -3195,7 +3068,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream should detect quote closing before CR`, async (_t) => {
-		// quoted field closes right before \r in a CRLF newline
 		const detect = csvDetectDelimitersStream();
 		const streams = [createReadableStream("'a',b\r\n1,2\r\n"), detect];
 		await pipeline(streams);
@@ -3204,7 +3076,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream should detect quote closing right before LF`, async (_t) => {
-		// The only properly-bracketed quote ends the header line, right before the LF
 		const detect = csvDetectDelimitersStream();
 		const streams = [createReadableStream("a,'b'\nc,d\n"), detect];
 		await pipeline(streams);
@@ -3212,9 +3083,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream should NOT detect quote that never closes at a field end`, async (_t) => {
-		// 'x is a field-start apostrophe with no closing quote at any field end.
-		// A later lone apostrophe sits mid-field (after a letter, not a boundary),
-		// so it neither opens nor closes a field -> default double-quote.
 		const detect = csvDetectDelimitersStream();
 		const streams = [
 			createReadableStream("name,note\n'x,it's fine\nhello,world\n"),
@@ -3233,7 +3101,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream should pick first delimiter by precedence (tab over comma)`, async (_t) => {
-		// Header contains BOTH a tab and a comma; detection order is [tab,pipe,semi,comma]
 		const detect = csvDetectDelimitersStream();
 		const streams = [createReadableStream("a\tb,c\n1\t2,3\n"), detect];
 		await pipeline(streams);
@@ -3268,7 +3135,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(detect.result().value.newlineChar, "\r");
 	});
 
-	// --- csvQuotedParser direct: numCols, escapes, tail, multi-char newline ---
 	test(`csvQuotedParser establishes numCols from first row`, (_t) => {
 		const result = csvQuotedParser("a,b,c\r\n1,2,3\r\n");
 		strictEqual(result.numCols, 3);
@@ -3298,7 +3164,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser handles short quoted row truncating to fi`, (_t) => {
-		// numCols established as 3, second row has a single quoted field -> length 1
 		const result = csvQuotedParser('a,b,c\r\n"d"\r\n');
 		deepStrictEqual(result.rows[0], ["a", "b", "c"]);
 		strictEqual(result.rows[1].length, 1);
@@ -3318,7 +3183,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser CRLF requires both chars (lone CR does not split)`, (_t) => {
-		// With CRLF newline, a lone \r mid-field must NOT terminate the row.
 		const result = csvQuotedParser(
 			'"a\rb",c\r\n',
 			{ newlineChar: "\r\n" },
@@ -3356,9 +3220,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.rows, [['a"b', "c"]]);
 	});
 
-	// --- field size limit ---
 	test(`csvParseStream should throw when quoted field exceeds maxFieldSize`, async (_t) => {
-		// field length 11 (> 10) but buffer (17) stays under the 2x safety limit (20)
 		const val = "x".repeat(11);
 		const streams = [
 			createReadableStream(`"${val}",y\r\n`),
@@ -3371,8 +3233,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream should throw when an unquoted field exceeds maxFieldSize`, async (_t) => {
-		// Delimiter-, newline- and end-of-input-terminated unquoted fields; each
-		// buffer stays under the 2x safety limit (20), so only the field check fires.
 		const val = "x".repeat(11);
 		for (const input of [`${val},y\r\n`, `y,${val}\r\n`, `y,${val}`]) {
 			await rejects(
@@ -3427,7 +3287,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream should throw on buffer exceeding safety limit`, async (_t) => {
-		// An unterminated quote that grows the buffer beyond maxFieldSize*2 throws.
 		const big = `"${"x".repeat(60)}`;
 		const streams = [
 			createReadableStream(big),
@@ -3441,7 +3300,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream maxFieldSize null disables the field and buffer limits`, async (_t) => {
-		// larger than the 16MiB default and its 2x buffer safety limit
 		const val = "x".repeat(33_554_433);
 		const output = await streamToArray(
 			pipejoin([
@@ -3467,7 +3325,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		);
 	});
 
-	// --- fast unquoted path: too-few columns (malformed) and surplus ---
 	test(`csvParseStream fast path keeps too-few-column row as-is`, async (_t) => {
 		const streams = [
 			createReadableStream("a,b,c\r\nd,e\r\nf,g,h\r\n"),
@@ -3508,7 +3365,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- multi-char newline (length 2 custom, not CRLF) ---
 	test(`csvParseStream supports 2-char custom newline`, async (_t) => {
 		const streams = [
 			createReadableStream("a,b~|1,2~|"),
@@ -3522,7 +3378,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream 2-char newline does not split on partial match`, async (_t) => {
-		// A lone '~' that is not followed by '|' must stay inside the field.
 		const streams = [
 			createReadableStream('"a~b",c~|d,e~|'),
 			csvParseStream({ newlineChar: "~|" }),
@@ -3534,7 +3389,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- unquoted parser numCols + multi-row ---
 	test(`csvUnquotedParser sets numCols and parses many rows`, (_t) => {
 		const result = csvUnquotedParser("a,b\r\n1,2\r\n3,4\r\n");
 		strictEqual(result.numCols, 2);
@@ -3556,7 +3410,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- csvDetectHeaderStream / findRowEnd quote & escape aware row scan ---
 	test(`csvDetectHeaderStream multi-char delimiter splits header`, async (_t) => {
 		const headers = csvDetectHeaderStream({
 			newlineChar: "\n",
@@ -3614,7 +3467,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "");
 	});
 
-	// --- csvRemoveMalformedRowsStream result key + default + idx ---
 	test(`csvRemoveMalformedRowsStream default resultKey and message`, async (_t) => {
 		const filter = csvRemoveMalformedRowsStream();
 		const streams = [createReadableStream([["a", "b"], ["c"]]), filter];
@@ -3642,7 +3494,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(filter.result().value.MalformedRow.idx, [2]);
 	});
 
-	// --- csvRemoveEmptyRowsStream default resultKey + message ---
 	test(`csvRemoveEmptyRowsStream default resultKey and message`, async (_t) => {
 		const filter = csvRemoveEmptyRowsStream();
 		const streams = [
@@ -3680,7 +3531,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(filter.result().value, {});
 	});
 
-	// --- csvInjectHeaderStream injects header exactly once ---
 	test(`csvInjectHeaderStream injects header exactly once`, async (_t) => {
 		const streams = [
 			createReadableStream([
@@ -3699,7 +3549,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- csvParseStream single/multi chunk paths ---
 	test(`csvParseStream single input chunk processes immediately`, async (_t) => {
 		const streams = [
 			createReadableStream(["a,b,c,d,e\r\n", "1,2,3,4,5\r\n"]),
@@ -3731,7 +3580,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.csvErrors, {});
 	});
 
-	// --- csvFormatStream multi-char delimiter: each first-char formula trigger ---
 	test(`csvFormatStream multi-char delimiter quotes leading equals`, async (_t) => {
 		const streams = [
 			createReadableStream([["=x", "ok"]]),
@@ -3816,7 +3664,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(b, '"a\rb"::ok\r\n');
 	});
 
-	// --- csvFormatStream single-char delimiter: each first-char formula trigger ---
 	test(`csvFormatStream single-char delimiter quotes leading at-sign`, async (_t) => {
 		const streams = [
 			createReadableStream([["@x", "ok"]]),
@@ -3955,7 +3802,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "'a,b',ok\r\n");
 	});
 
-	// --- Quoted-field post-quote newline dispatch: length 1 / 2 / >2 ---
 	test(`csvQuotedParser quoted field then LF newline (length 1)`, (_t) => {
 		const result = csvQuotedParser('"a"\n"b"\n', { newlineChar: "\n" }, true);
 		deepStrictEqual(result.rows, [["a"], ["b"]]);
@@ -4032,7 +3878,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.errors.UnexpectedQuote.idx, [0]);
 	});
 
-	// --- csvCoerceValuesStream: iso8601 regex shape ---
 	test(`csvCoerceValuesStream should coerce date with multi-digit fractional seconds`, async (_t) => {
 		const output = await streamToArray(
 			pipejoin([
@@ -4192,7 +4037,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ a: [1, 2, 3] }]);
 	});
 
-	// --- csvDetectDelimitersStream quote boundary precision ---
 	test(`csvDetectDelimitersStream detects quote closing at end of text`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
 		await pipeline([createReadableStream("x,'y'"), detect]);
@@ -4219,14 +4063,12 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream ignores a quote at index 1 that is not at a field start`, async (_t) => {
-		// "'" at index 1 follows "a", not a delimiter, so it cannot open a field.
 		const detect = csvDetectDelimitersStream();
 		await pipeline([createReadableStream("a'b',c\n1,2\n"), detect]);
 		strictEqual(detect.result().value.quoteChar, '"');
 	});
 
 	test(`csvDetectDelimitersStream ignores a quote at index 1 that does not close a field`, async (_t) => {
-		// "''a": the quote at index 1 is followed by "a", not a field end.
 		const detect = csvDetectDelimitersStream();
 		await pipeline([createReadableStream("''a,b\n1,2\n"), detect]);
 		strictEqual(detect.result().value.quoteChar, '"');
@@ -4278,18 +4120,13 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(detect.result().value.quoteChar, '"');
 	});
 
-	// --- csvFormatStream: formatRowSlow null and empty-string branches ---
 	test(`csvFormatStream should format null field alongside a number (formatRowSlow null branch)`, async (_t) => {
-		// null alongside a number forces isSimpleRow to return false (number is non-string),
-		// so formatRowSlow is called; the null field hits the val==null branch (parts[i]="")
 		const streams = [createReadableStream([[null, 42]]), csvFormatStream()];
 		const output = await streamToString(pipejoin(streams));
 		strictEqual(output, ",42\r\n");
 	});
 
 	test(`csvFormatStream should format empty-string field alongside a quoting-required value (formatRowSlow empty-string branch)`, async (_t) => {
-		// A field needing quoting makes isSimpleRow return false, so formatRowSlow is called;
-		// the empty-string field hits the val.length===0 branch (parts[i]="")
 		const streams = [
 			createReadableStream([["hello, world", ""]]),
 			csvFormatStream(),
@@ -4298,9 +4135,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, '"hello, world",\r\n');
 	});
 
-	// --- csvCoerceValuesStream: coerceToType date with invalid date string ---
 	test(`csvCoerceValuesStream explicit date type should return original string for invalid date`, async (_t) => {
-		// coerceToType(val, "date") path: Number.isNaN(d.getTime()) === true → return val
 		const streams = [
 			createReadableStream([{ val: "not-a-date" }]),
 			csvCoerceValuesStream({ columns: { val: "date" } }),
@@ -4310,24 +4145,15 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [{ val: "not-a-date" }]);
 	});
 
-	// --- csvFormatStream: custom escape wrapQuote with no escape char in value ---
 	test(`csvFormatStream custom escape should quote value with delimiter but no escape char`, async (_t) => {
-		// wrapQuote custom-escape path: value contains delimiter (needs quoting)
-		// but does NOT contain escapeChar → takes the "value" branch of the includes check
 		const streams = [
 			createReadableStream([["a,b", "ok"]]),
 			csvFormatStream({ escapeChar: "\\" }),
 		];
 		const output = await streamToString(pipejoin(streams));
-		// No backslash in "a,b", so no escapeChar escaping; only quoteChar wrapping
 		strictEqual(output, '"a,b",ok\r\n');
 	});
 
-	// =====================================================================
-	// Mutation-hardening tests (kill surviving Stryker mutants)
-	// =====================================================================
-
-	// --- csvQuotedParser: precise idx / numCols tracking ---
 	test(`csvQuotedParser reports idx equal to number of rows (default path)`, (_t) => {
 		const result = csvQuotedParser("a,b\r\nc,d\r\ne,f\r\n");
 		strictEqual(result.idx, 3);
@@ -4335,8 +4161,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser reports idx for quoted-field rows`, (_t) => {
-		// All rows have a leading quoted field so each row goes through the quoted
-		// branch idx++ (escapeIsQuote=true). idx must equal the row count.
 		const result = csvQuotedParser('"a",b\r\n"c",d\r\n"e",f\r\n');
 		strictEqual(result.idx, 3);
 		deepStrictEqual(result.rows, [
@@ -4360,7 +4184,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser flush short row truncates to fi (escapeIsQuote)`, (_t) => {
-		// numCols=3 from first row; second row quoted single field on flush -> length 1
 		const result = csvQuotedParser('a,b,c\r\n"d"', {}, true);
 		strictEqual(result.numCols, 3);
 		strictEqual(result.idx, 2);
@@ -4377,7 +4200,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser unterminated quote short row truncates to fi (escapeIsQuote)`, (_t) => {
-		// numCols=3; an unterminated quoted field on flush must produce exactly 1 field
 		const result = csvQuotedParser('a,b,c\r\n"unterminated', {}, true);
 		strictEqual(result.numCols, 3);
 		strictEqual(result.idx, 2);
@@ -4400,7 +4222,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser unterminated quote establishes numCols when first (escapeIsQuote)`, (_t) => {
-		// First (and only) row is an unterminated quote on flush: numCols becomes fi (1)
 		const result = csvQuotedParser('"unterminated', {}, true);
 		strictEqual(result.numCols, 1);
 		strictEqual(result.idx, 1);
@@ -4415,8 +4236,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser unterminated quote not flushing returns rowStart tail (escapeIsQuote)`, (_t) => {
-		// not flushing: ctx.tail must be text.substring(rowStart), preserving the whole
-		// unterminated row including its quote.
 		const result = csvQuotedParser('a,b\r\n"unterm', {}, false);
 		strictEqual(result.tail, '"unterm');
 		strictEqual(result.idx, 1);
@@ -4433,7 +4252,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser quoted first field establishes numCols (escapeIsQuote)`, (_t) => {
-		// First row begins with a quoted field then newline path establishes numCols.
 		const result = csvQuotedParser('"a","b"\r\nc,d\r\n');
 		strictEqual(result.numCols, 2);
 		strictEqual(result.idx, 2);
@@ -4454,15 +4272,12 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser quoted-field row after established numCols truncates surplus (escapeIsQuote)`, (_t) => {
-		// numCols=2; a later quoted-first row with 3 fields must be truncated? No —
-		// surplus is kept by indexOf path; assert exact when row has fewer fields.
 		const result = csvQuotedParser('"a","b"\r\n"c"\r\n');
 		strictEqual(result.rows[1].length, 1);
 		deepStrictEqual(result.rows[1], ["c"]);
 		strictEqual(result.idx, 2);
 	});
 
-	// --- csvQuotedParser: garbage-after-closing-quote keeps extra fields ---
 	test(`csvQuotedParser keeps garbage after closing quote in the same field (escapeIsQuote)`, (_t) => {
 		const result = csvQuotedParser('"a"x,b\r\n');
 		deepStrictEqual(result.rows, [["ax", "b"]]);
@@ -4487,7 +4302,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		});
 	});
 
-	// --- csvQuotedParser: quoted field at exact end of input (pos >= len) ---
 	test(`csvQuotedParser quoted field at exact end of input keeps field (escapeIsQuote)`, (_t) => {
 		const result = csvQuotedParser('a,"b"', {}, true);
 		deepStrictEqual(result.rows, [["a", "b"]]);
@@ -4500,9 +4314,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(result.idx, 1);
 	});
 
-	// --- csvQuotedParser: delimiter immediately after closing quote (lastWasDelimiter) ---
 	test(`csvQuotedParser quoted field then delimiter then trailing flush field (escapeIsQuote)`, (_t) => {
-		// "a", then delimiter sets lastWasDelimiter=true; flush must add a trailing "".
 		const result = csvQuotedParser('"a",', {}, true);
 		deepStrictEqual(result.rows, [["a", ""]]);
 		strictEqual(result.idx, 1);
@@ -4514,11 +4326,8 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(result.idx, 1);
 	});
 
-	// --- csvQuotedParser: newline-length boundary (CRLF needs second char) ---
 	test(`csvQuotedParser quoted field then CR without LF is garbage not newline (escapeIsQuote)`, (_t) => {
-		// nc===CR but pos+1 is end -> not a CRLF; CR treated as garbage, appended to the quoted value.
 		const result = csvQuotedParser('"a"\r', { newlineChar: "\r\n" }, true);
-		// "a" then lone CR (garbage after quote) at end of input
 		deepStrictEqual(result.rows, [["a\r"]]);
 		deepStrictEqual(result.errors.UnexpectedQuote.idx, [0]);
 	});
@@ -4533,9 +4342,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.errors.UnexpectedQuote.idx, [0]);
 	});
 
-	// --- csvParseInline numCols>0 fast path: idx, malformed, surplus ---
 	test(`csvQuotedParser fast unquoted path reports idx for many rows`, (_t) => {
-		// numCols established as 2 by first row, then fast path handles the rest.
 		const result = csvQuotedParser("a,b\r\n1,2\r\n3,4\r\n5,6\r\n7,8\r\n");
 		strictEqual(result.idx, 5);
 		strictEqual(result.numCols, 2);
@@ -4543,14 +4350,12 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser fast path malformed too-few columns split fallback`, (_t) => {
-		// numCols=3; a row with only 2 fields uses the split fallback, keeping 2 fields.
 		const result = csvQuotedParser("a,b,c\r\n1,2\r\n");
 		deepStrictEqual(result.rows[1], ["1", "2"]);
 		strictEqual(result.rows[1].length, 2);
 	});
 
 	test(`csvQuotedParser fast path surplus columns kept separate via split`, (_t) => {
-		// numCols=2; a row with 4 fields must keep all 4 (split fallback), not merge.
 		const result = csvQuotedParser("a,b\r\n1,2,3,4\r\n");
 		deepStrictEqual(result.rows[1], ["1", "2", "3", "4"]);
 		strictEqual(result.rows[1].length, 4);
@@ -4564,13 +4369,11 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvQuotedParser fast path partial last row without newline returns tail`, (_t) => {
-		// numCols=2; trailing partial row (no newline) must be returned as tail.
 		const result = csvQuotedParser("a,b\r\n1,2\r\n3,4", {}, false);
 		strictEqual(result.tail, "3,4");
 		strictEqual(result.idx, 2);
 	});
 
-	// --- csvUnquotedParser: idx / numCols ---
 	test(`csvUnquotedParser reports idx and numCols`, (_t) => {
 		const result = csvUnquotedParser("a,b\r\n1,2\r\n3,4\r\n");
 		strictEqual(result.idx, 3);
@@ -4595,14 +4398,12 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.rows, [["a", "b"]]);
 	});
 
-	// --- csvParseStream: idx-sensitive error reporting through the stream ---
 	test(`csvParseStream reports unterminated quote idx after several rows`, async (_t) => {
 		const streams = [
 			createReadableStream('a,b\r\nc,d\r\ne,f\r\n"unterminated'),
 			csvParseStream(),
 		];
 		const result = await pipeline(streams);
-		// 3 complete rows (idx 0,1,2) then unterminated at idx 3
 		deepStrictEqual(result.csvErrors.UnterminatedQuote.idx, [3]);
 	});
 
@@ -4615,11 +4416,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.csvErrors.UnterminatedQuote.idx, [3]);
 	});
 
-	// --- findRowEnd via csvDetectHeaderStream ---
 	test(`csvDetectHeaderStream handles quoted header with escaped quote and embedded newline`, async (_t) => {
-		// Header field is quoted, contains an escaped "" and a newline; findRowEnd must
-		// skip the in-quote newline and the escaped-quote pair, terminating at the real
-		// row-end newline so the header parses as two columns.
 		const hdr = csvDetectHeaderStream();
 		const streams = [
 			createReadableStream('"a""b\r\nc",second\r\n1,2\r\n'),
@@ -4633,8 +4430,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream custom-escape header skips escaped quote in quoted field`, async (_t) => {
-		// escapeChar='\\': inside the quoted header field, \" is an escaped quote, so the
-		// field stays open past it; findRowEnd's odd-run lookback must keep scanning.
 		const hdr = csvDetectHeaderStream({ escapeChar: "\\" });
 		const streams = [
 			createReadableStream('"a\\"b,c",second\r\n1,2\r\n'),
@@ -4648,8 +4443,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream custom-escape even run closes quote in findRowEnd`, async (_t) => {
-		// "\\\\" is an even run of escape chars => the quote IS a real closing quote,
-		// so the delimiter after it splits the header field.
 		const hdr = csvDetectHeaderStream({ escapeChar: "\\" });
 		const streams = [
 			createReadableStream('"a\\\\",b\r\n1,2\r\n'),
@@ -4663,9 +4456,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream delimiter inside header advances fieldStart`, async (_t) => {
-		// Ensures findRowEnd's delimiter branch (pos += delimiterLength; fieldStart=pos)
-		// is exercised: a quoted field appears after a delimiter so it must still be
-		// recognized as a field-start quote.
 		const hdr = csvDetectHeaderStream();
 		const streams = [
 			createReadableStream('x,"q,uoted"\r\n1,2\r\n'),
@@ -4691,9 +4481,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [["1", "2"]]);
 	});
 
-	// --- csvDetectDelimitersStream: detects on the first complete line ---
 	test(`csvDetectDelimitersStream detects on the first complete line`, async (_t) => {
-		// the first chunk holds a complete line, so detection runs there and the second chunk passes through.
 		const detect = csvDetectDelimitersStream();
 		const streams = [createReadableStream(["a;b\r\n", "c;d\r\n"]), detect];
 		const stream = pipejoin(streams);
@@ -4703,7 +4491,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream emits buffered content exactly once`, async (_t) => {
-		// Make sure buffer is cleared after detection so content is not duplicated.
 		const detect = csvDetectDelimitersStream();
 		const streams = [
 			createReadableStream(["a|b\r\n", "rest1\r\n", "rest2\r\n"]),
@@ -4723,12 +4510,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "a,b\r\nlater\r\n");
 	});
 
-	// --- unescapeCustom boundary (i + 1 < len) via custom-escape parse ---
 	test(`csvParseStream custom-escape unescapeCustom handles escaped escape and escaped quote`, async (_t) => {
-		// Content (between the outer quotes) is: \ \ x \ " y
-		//   - "\\\\" is an escaped escape  -> single backslash
-		//   - "\\\"" is an escaped quote   -> literal quote (does not close the field)
-		// The final unescaped quote closes the field. unescapeCustom must collapse both.
 		const streams = [
 			createReadableStream('"\\\\x\\"y",z\r\n'),
 			csvParseStream({ escapeChar: "\\" }),
@@ -4748,10 +4530,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(output, [['a"b"c', "d"]]);
 	});
 
-	// --- csvParseStream fast-path: text.indexOf(quoteChar) === -1 guard ---
 	test(`csvParseStream switches off fast path when a quote appears in later row`, async (_t) => {
-		// First row establishes numCols (no quotes); a later row contains a quoted field
-		// with an embedded delimiter, which must NOT be split.
 		const streams = [
 			createReadableStream('a,b\r\n"x,y",z\r\n'),
 			csvParseStream(),
@@ -4764,9 +4543,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- csvParseStream: first-row detection when numCols===0 and a quote exists later in row ---
 	test(`csvParseStream first row with quote does not use split detection`, async (_t) => {
-		// First row itself contains a quoted field with an embedded delimiter.
 		const streams = [
 			createReadableStream('"a,b",c\r\nd,e\r\n'),
 			csvParseStream(),
@@ -4780,10 +4557,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(streams[1].result().value, {});
 	});
 
-	// --- csvParseStream: regular indexOf path, nextNl < nextDelim and trailing-delim ---
 	test(`csvParseStream quoted first field then plain rows exercise regular path`, async (_t) => {
-		// A quoted first field forces fi!==0 entry so the regular indexOf path runs for
-		// the remaining fields/rows.
 		const streams = [
 			createReadableStream('"a",b,c\r\nd,e,f\r\n'),
 			csvParseStream(),
@@ -4796,9 +4570,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- csvSteamifyParser resolveOptions: delimiterCharSingle / newlineCharSingle ---
 	test(`csvParseStream multi-char delimiter is not treated as single`, async (_t) => {
-		// delimiterCharSingle=false path: post-quote dispatch must use startsWith.
 		const streams = [
 			createReadableStream('"a"::"b"::c\r\n'),
 			csvParseStream({ delimiterChar: "::" }),
@@ -4809,8 +4581,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream 2-char newline second-char check after quoted field`, async (_t) => {
-		// newlineCharSingle is the 2nd char of a 2-char newline; a quoted field then the
-		// 2-char newline must split rows, and a partial first char must not.
 		const streams = [
 			createReadableStream('"a",b\r\n"c",d\r\n'),
 			csvParseStream({ newlineChar: "\r\n" }),
@@ -4823,7 +4593,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- csvParseStream: typeof chunk string vs Buffer ---
 	test(`csvParseStream coerces Buffer chunk via toString`, async (_t) => {
 		const streams = [
 			createReadableStream([Buffer.from("a,b\r\nc,d\r\n")]),
@@ -4837,10 +4606,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- csvParseStream: buffer concat across chunks (buffer.length>0 ? buffer+str) ---
 	test(`csvParseStream concatenates buffered tail with next chunk`, async (_t) => {
-		// A row split across two chunks so the second chunk must be
-		// prefixed with the buffered partial row.
 		const streams = [
 			createReadableStream(["a,b\r\n1,", "2\r\n"]),
 			csvParseStream(),
@@ -4853,12 +4619,9 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- csvParseStream: safety limit boundary (text.length > maxFieldSize*2) ---
 	test(`csvParseStream accepts an incomplete row of exactly maxFieldSize*2`, async (_t) => {
-		// tail length === maxFieldSize*2 must NOT throw (strict greater-than); every
-		// field stays within maxFieldSize so only the safety limit is exercised.
 		const maxFieldSize = 8;
-		const text = `${"x".repeat(7)},${"y".repeat(8)}`; // 16, no newline
+		const text = `${"x".repeat(7)},${"y".repeat(8)}`;
 		const output = await streamToArray(
 			pipejoin([createReadableStream(text), csvParseStream({ maxFieldSize })]),
 		);
@@ -4866,7 +4629,7 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream rejects an incomplete row one past maxFieldSize*2`, async (_t) => {
-		const text = `${"x".repeat(8)},${"y".repeat(8)}`; // 17, no newline
+		const text = `${"x".repeat(8)},${"y".repeat(8)}`;
 		await rejects(
 			pipeline([
 				createReadableStream(text),
@@ -4881,7 +4644,7 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream accepts a chunk of many small rows larger than maxFieldSize*2`, async (_t) => {
-		const text = "ab,cd\r\n".repeat(10); // 70 chars in one chunk, fields of 2
+		const text = "ab,cd\r\n".repeat(10);
 		const output = await streamToArray(
 			pipejoin([
 				createReadableStream(text),
@@ -4894,9 +4657,8 @@ describe(`@datastream/csv (${variant})`, () => {
 		);
 	});
 
-	// --- csvParseStream single vs multi chunk ---
 	test(`csvParseStream single chunk processes without join`, async (_t) => {
-		const row = "a,b\r\n"; // length 5
+		const row = "a,b\r\n";
 		const streams = [createReadableStream([row]), csvParseStream()];
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
@@ -4916,7 +4678,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- csvRemoveEmptyRowsStream: zero-length row returns true immediately ---
 	test(`csvRemoveEmptyRowsStream treats zero-length array as empty (l===0 branch)`, async (_t) => {
 		const filter = csvRemoveEmptyRowsStream();
 		const streams = [createReadableStream([[], ["a"]]), filter];
@@ -4926,7 +4687,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(filter.result().value.EmptyRow.idx, [0]);
 	});
 
-	// --- csvArrayToObjectStream: defineProperty descriptor flags ---
 	test(`csvArrayToObjectStream __proto__ column is writable, enumerable, configurable`, async (_t) => {
 		const streams = [
 			createReadableStream([["v1", "v2"]]),
@@ -4941,7 +4701,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(desc.enumerable, true);
 		strictEqual(desc.writable, true);
 		strictEqual(desc.configurable, true);
-		// enumerable means it shows up in keys
 		deepStrictEqual(Object.keys(obj), ["__proto__", "b"]);
 	});
 
@@ -4959,7 +4718,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(desc.enumerable, true);
 	});
 
-	// --- csvCoerceValuesStream: autoCoerce boolean gating (len & first-char) ---
 	test(`csvCoerceValuesStream autoCoerce true requires length 4 and t/T`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: "true", b: "True", c: "trueX", d: "rue" }]),
@@ -4967,7 +4725,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		];
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
-		// "true"->true, "True"->true, "trueX" (len 5, not false) stays string, "rue" stays
 		strictEqual(output[0].a, true);
 		strictEqual(output[0].b, true);
 		strictEqual(output[0].c, "trueX");
@@ -5035,7 +4792,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output[0].a, "{not json");
 	});
 
-	// --- autoCoerce iso8601 anchoring (^ and $) ---
 	test(`csvCoerceValuesStream iso date requires full anchor (trailing junk stays string)`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: "2020-01-02xyz", b: "2020-01-02" }]),
@@ -5043,7 +4799,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		];
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
-		// trailing junk -> regex (anchored) fails, stays string
 		strictEqual(output[0].a, "2020-01-02xyz");
 		ok(output[0].b instanceof Date);
 	});
@@ -5062,14 +4817,9 @@ describe(`@datastream/csv (${variant})`, () => {
 		);
 	});
 
-	// --- csvFormatStream: delimiterSingle vs multi, scanNeedsQuote loops ---
 	test(`csvFormatStream single-char delimiter quotes interior delimiter only on actual delimiter`, async (_t) => {
-		const streams = [
-			createReadableStream([["a;b", "c,d"]]),
-			csvFormatStream(), // delimiter ","
-		];
+		const streams = [createReadableStream([["a;b", "c,d"]]), csvFormatStream()];
 		const output = await streamToString(pipejoin(streams));
-		// "a;b" has no comma -> not quoted; "c,d" has comma -> quoted
 		strictEqual(output, 'a;b,"c,d"\r\n');
 	});
 
@@ -5082,15 +4832,12 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, '"a::b"::plain\r\n');
 	});
 
-	// --- csvFormatStream: batch boundary at exactly 64 ---
 	test(`csvFormatStream emits when batch reaches exactly 64 rows`, async (_t) => {
 		const rows = [];
 		for (let i = 0; i < 64; i++) rows.push([`r${i}`, "x"]);
-		// Collect each enqueued chunk separately
 		const chunks = await streamToArray(
 			pipejoin([createReadableStream(rows), csvFormatStream()]),
 		);
-		// With exactly 64 rows, the transform emits one chunk of 64 rows and flush emits nothing.
 		strictEqual(chunks.length, 1);
 		const lines = chunks[0].split("\r\n").filter((l) => l.length > 0);
 		strictEqual(lines.length, 64);
@@ -5107,9 +4854,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(lines.length, 10);
 	});
 
-	// --- csvFormatStream: isSimpleRow non-string / needs-quote detection ---
 	test(`csvFormatStream isSimpleRow rejects rows with a quoting-needed string`, async (_t) => {
-		// A value needing a quote forces the slow path; assert correct quoting.
 		const streams = [
 			createReadableStream([["plain", "needs\nquote"]]),
 			csvFormatStream(),
@@ -5127,9 +4872,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, "a,b,c\r\n");
 	});
 
-	// --- csvParseStream streamOptions default highWaterMark preserved ---
 	test(`csvParseStream respects provided streamOptions override`, async (_t) => {
-		// Passing streamOptions should not break parsing (ObjectLiteral mutant guard).
 		const streams = [
 			createReadableStream("a,b\r\nc,d\r\n"),
 			csvParseStream({}, { highWaterMark: 1 }),
@@ -5142,11 +4885,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// =====================================================================
-	// Mutation-hardening tests, batch 2
-	// =====================================================================
-
-	// --- findRowEnd: a quote is only an opener at field-start ---
 	test(`csvDetectHeaderStream mid-field quote is not a quote opener`, async (_t) => {
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
@@ -5186,10 +4924,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["1", "2"]]);
 	});
 
-	// --- findRowEnd: custom-escape parity around a quoted newline ---
 	test(`csvDetectHeaderStream custom escape keeps escaped quote then newline inside the field`, async (_t) => {
-		// "x\"y\r\nz" — the \" is an escaped quote (odd run of escapeChar), so the
-		// field stays open and the \r\n belongs to the header field, not the row end.
 		const hdr = csvDetectHeaderStream({ escapeChar: "\\" });
 		const out = await streamToArray(
 			pipejoin([
@@ -5203,8 +4938,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream custom escape even run closes the quote before the newline`, async (_t) => {
-		// "a\\" — \\ is an escaped escape (even run), so the quote closes; the row
-		// ends at the very next newline.
 		const hdr = csvDetectHeaderStream({ escapeChar: "\\" });
 		const out = await streamToArray(
 			pipejoin([
@@ -5218,8 +4951,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream custom escape backslash before quote keeps newline in field`, async (_t) => {
-		// A lone escaped quote right before the newline must keep the field open so
-		// the embedded \r\n does not terminate the header row.
 		const hdr = csvDetectHeaderStream({ escapeChar: "\\" });
 		const out = await streamToArray(
 			pipejoin([
@@ -5232,7 +4963,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["d", "e"]]);
 	});
 
-	// --- csvDetectDelimitersStream: isFieldStart / isFieldEnd ---
 	test(`csvDetectDelimitersStream detects quote closing right before CR`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
 		await streamToArray(pipejoin([createReadableStream("'a'\r'b'\r"), detect]));
@@ -5256,7 +4986,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(detect.result().value.delimiterChar, ";");
 	});
 
-	// --- csvParseStream: 3-char newline dispatch after quoted field ---
 	test(`csvParseStream quoted field then 3-char newline splits rows (escapeIsQuote)`, async (_t) => {
 		const out = await streamToArray(
 			pipejoin([
@@ -5303,7 +5032,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["a##b"]]);
 	});
 
-	// --- CRLF after quoted field requires both chars ---
 	test(`csvParseStream quoted field then CRLF splits (escapeIsQuote)`, async (_t) => {
 		const out = await streamToArray(
 			pipejoin([
@@ -5330,7 +5058,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- LF-only (length 1) newline after quoted field ---
 	test(`csvParseStream quoted field then LF newline length 1 (escapeIsQuote)`, async (_t) => {
 		const out = await streamToArray(
 			pipejoin([
@@ -5357,7 +5084,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- field exactly maxFieldSize allowed (strict >) ---
 	test(`csvParseStream allows quoted field exactly maxFieldSize (escapeIsQuote)`, async (_t) => {
 		const val = "x".repeat(10);
 		const out = await streamToArray(
@@ -5380,7 +5106,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [[val, "y"]]);
 	});
 
-	// --- unterminated quote error message text ---
 	test(`csvParseStream unterminated quote message (escapeIsQuote)`, async (_t) => {
 		const parse = csvParseStream();
 		await pipeline([createReadableStream('"unterminated'), parse]);
@@ -5399,7 +5124,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		);
 	});
 
-	// --- not-flushing unterminated quote kept in tail across chunks ---
 	test(`csvParseStream buffers unterminated quoted field across chunks (escapeIsQuote)`, async (_t) => {
 		const out = await streamToArray(
 			pipejoin([createReadableStream(['"hel', 'lo",x\r\n']), csvParseStream()]),
@@ -5417,7 +5141,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["hello", "x"]]);
 	});
 
-	// --- csvUnquotedParser numCols from first row ---
 	test(`csvUnquotedParser numCols comes from first row not later rows`, (_t) => {
 		const result = csvUnquotedParser("a,b\r\n1,2,3\r\n");
 		strictEqual(result.numCols, 2);
@@ -5429,7 +5152,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.rows[1], ["1", "2", "3"]);
 	});
 
-	// --- csvFormatStream scanNeedsQuote triggers ---
 	test(`csvFormatStream quotes a field that only ends with a space`, async (_t) => {
 		const out = await streamToString(
 			pipejoin([createReadableStream([["ab ", "cd"]]), csvFormatStream()]),
@@ -5492,7 +5214,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(out, '"a::b"::x\r\n');
 	});
 
-	// --- batch flush boundary (>= 64) ---
 	test(`csvFormatStream does not flush at 63 rows`, async (_t) => {
 		const rows = [];
 		for (let i = 0; i < 63; i++) rows.push([String(i), "x"]);
@@ -5514,7 +5235,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(chunks[1].split("\r\n").filter((l) => l.length > 0).length, 1);
 	});
 
-	// --- null/empty/number/Date coercion in formatRow ---
 	test(`csvFormatStream formats null as empty field next to a quoted value`, async (_t) => {
 		const out = await streamToString(
 			pipejoin([createReadableStream([[null, "a,b"]]), csvFormatStream()]),
@@ -5544,11 +5264,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(out, "2020-01-02T03:04:05.000Z,x\r\n");
 	});
 
-	// --- iso8601 regex anchors and seconds group ---
 	test(`csvCoerceValuesStream iso date needs the ^ anchor`, async (_t) => {
-		// A leading space makes the anchored regex fail (stays a string), but a
-		// non-anchored regex would match the embedded date and `new Date(" 2020-01-02")`
-		// IS valid — so only the ^ anchor keeps this a string.
 		const out = await streamToArray(
 			pipejoin([
 				createReadableStream([{ a: " 2020-01-02" }]),
@@ -5589,7 +5305,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		ok(out[0].a instanceof Date);
 	});
 
-	// --- csvRemoveEmptyRowsStream l === 0 short-circuit ---
 	test(`csvRemoveEmptyRowsStream drops a zero-length row`, async (_t) => {
 		const filter = csvRemoveEmptyRowsStream();
 		const out = await streamToArray(
@@ -5599,7 +5314,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(filter.result().value.EmptyRow.idx, [0]);
 	});
 
-	// --- csvArrayToObjectStream constructor / normal key branches ---
 	test(`csvArrayToObjectStream stores a constructor column as an own data property`, async (_t) => {
 		const out = await streamToArray(
 			pipejoin([
@@ -5622,11 +5336,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out[0], { a: "v1", b: "v2" });
 	});
 
-	// =====================================================================
-	// Mutation-hardening tests, batch 3
-	// =====================================================================
-
-	// --- numCols reflects the FIRST row's field count, not later rows ---
 	test(`csvQuotedParser numCols is first row count even when later rows differ`, (_t) => {
 		const result = csvQuotedParser("a,b\r\n1,2,3\r\n");
 		strictEqual(result.numCols, 2);
@@ -5647,10 +5356,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(result.numCols, 2);
 	});
 
-	// --- autoCoerce JSON gate only applies to '{' or '[' ---
 	test(`csvCoerceValuesStream does not JSON-parse the bare word null`, async (_t) => {
-		// "null" is valid JSON but must NOT be parsed (would become the null value);
-		// it does not start with '{' or '[' so it stays a string.
 		const out = await streamToArray(
 			pipejoin([
 				createReadableStream([{ a: "null" }]),
@@ -5670,10 +5376,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(out[0].a, "hello");
 	});
 
-	// --- csvDetectDelimitersStream quote-bracketing scan ---
 	test(`csvDetectDelimitersStream requires a quote to start a field and close at a field end`, async (_t) => {
-		// Both apostrophes are mid-field; neither opens a field, so the quote char
-		// must default to ".
 		const detect = csvDetectDelimitersStream();
 		await streamToArray(
 			pipejoin([createReadableStream("ab'cd',ef\r\n"), detect]),
@@ -5701,10 +5404,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(detect.result().value.quoteChar, '"');
 	});
 
-	// --- csvDetectHeaderStream: header-only and rest emission ---
 	test(`csvDetectHeaderStream header-only input yields empty header value default and no rows`, async (_t) => {
-		// Empty input: processBuffer is never called (buffer length 0), so the result
-		// header stays its initial [].
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream(""), hdr, csvParseStream()]),
@@ -5714,8 +5414,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream header row with trailing newline and no data emits no data rows`, async (_t) => {
-		// rest is empty (header fills the buffer up to the trailing newline), so the
-		// rest.length > 0 guard must prevent emitting an empty chunk.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream("a,b,c\r\n"), hdr, csvParseStream()]),
@@ -5741,8 +5439,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream passes later chunks through unchanged once header detected`, async (_t) => {
-		// The header is detected on the first chunk; subsequent chunks
-		// must pass through (headerDetected branch), not be re-parsed as headers.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([
@@ -5758,7 +5454,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- csvParseStream chunk-type coercion (string vs Buffer) ---
 	test(`csvParseStream parses string chunks without toString coercion`, async (_t) => {
 		const out = await streamToArray(
 			pipejoin([createReadableStream("a,b\r\nc,d\r\n"), csvParseStream()]),
@@ -5769,10 +5464,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- numCols established on the quoted-field newline path ---
 	test(`csvQuotedParser numCols from first row ending in a quoted field (escapeIsQuote)`, (_t) => {
-		// First row ends with "b" then newline (the quoted-field newline branch sets
-		// numCols); it must be 2 even though the next row has 3 columns.
 		const result = csvQuotedParser('a,"b"\r\n1,2,3\r\n');
 		strictEqual(result.numCols, 2);
 	});
@@ -5782,7 +5474,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(result.numCols, 2);
 	});
 
-	// --- ctx.tail is "" when flushing an unterminated quote ---
 	test(`csvQuotedParser flushing an unterminated quote leaves no tail (escapeIsQuote)`, (_t) => {
 		const result = csvQuotedParser('"abc', {}, true);
 		strictEqual(result.tail, "");
@@ -5795,7 +5486,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.rows, [["x", "abc"]]);
 	});
 
-	// --- ctx.tail preserves the unterminated row when NOT flushing ---
 	test(`csvQuotedParser not flushing keeps the unterminated quoted row as tail (escapeIsQuote)`, (_t) => {
 		const result = csvQuotedParser('a,b\r\n"abc', {}, false);
 		strictEqual(result.tail, '"abc');
@@ -5812,10 +5502,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.rows, [["a", "b"]]);
 	});
 
-	// --- trailing delimiter after a quoted field on flush (lastWasDelimiter) ---
 	test(`csvQuotedParser quoted field then trailing delimiter adds an empty field on flush`, (_t) => {
-		// "a", then a delimiter sets lastWasDelimiter; flushing must append a trailing
-		// empty field for the dangling delimiter.
 		const result = csvQuotedParser('"a",', {}, true);
 		deepStrictEqual(result.rows, [["a", ""]]);
 	});
@@ -5827,7 +5514,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["a", "b", ""]]);
 	});
 
-	// --- csvArrayToObjectStream __proto__ must use defineProperty (not prototype set) ---
 	test(`csvArrayToObjectStream __proto__ column does not pollute the prototype`, async (_t) => {
 		const out = await streamToArray(
 			pipejoin([
@@ -5836,7 +5522,6 @@ describe(`@datastream/csv (${variant})`, () => {
 			]),
 		);
 		const obj = out[0];
-		// The column is an own enumerable data property, not a prototype assignment.
 		strictEqual(
 			Object.getOwnPropertyDescriptor(obj, "__proto__").value,
 			"payload",
@@ -5845,13 +5530,11 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(Object.keys(obj), ["__proto__", "b"]);
 	});
 
-	// --- csvDetectDelimitersStream empty input keeps the initialized value shape ---
 	test(`csvDetectDelimitersStream empty input yields all-undefined detection value`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream(""), detect]),
 		);
-		// Empty input must not emit an empty chunk.
 		deepStrictEqual(out, []);
 		deepStrictEqual(detect.result().value, {
 			delimiterChar: undefined,
@@ -5861,10 +5544,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		});
 	});
 
-	// --- numCols stays first-row count when later quoted-field rows differ ---
 	test(`csvQuotedParser numCols stays first row when later quoted row is shorter (escapeIsQuote)`, (_t) => {
-		// Row 0 ("a","b") sets numCols via the quoted-field newline path; row 1 ("c")
-		// also ends via the quoted-field newline path but must NOT reset numCols.
 		const result = csvQuotedParser('"a","b"\r\n"c"\r\n');
 		strictEqual(result.numCols, 2);
 		deepStrictEqual(result.rows, [["a", "b"], ["c"]]);
@@ -5876,29 +5556,19 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.rows, [["a", "b"], ["c"]]);
 	});
 
-	// --- numCols established in the end-of-input cleanup path ---
 	test(`csvQuotedParser numCols set in cleanup for a lone quoted field on flush`, (_t) => {
-		// A single quoted field with no newline, flushed: numCols is established in the
-		// final cleanup block from the field count.
 		const result = csvQuotedParser('"a"', {}, true);
 		strictEqual(result.numCols, 1);
 		deepStrictEqual(result.rows, [["a"]]);
 	});
 
-	// --- unescapeCustom: a trailing escape char at end-of-input is kept literally ---
 	test(`csvQuotedParser custom escape unterminated field ending in a lone escape char keeps it literally`, (_t) => {
-		// Content is "a\" (a then a single backslash) with no following char. The
-		// trailing escape must be preserved as-is, not consume an out-of-range char.
 		const result = csvQuotedParser('"a\\', { escapeChar: "\\" }, true);
 		deepStrictEqual(result.rows, [["a\\"]]);
 		ok(result.errors.UnterminatedQuote);
 	});
 
-	// --- delimiter/newline tie-break: a delimiter that is a prefix of the newline ---
 	test(`csvQuotedParser delimiter takes precedence when it is a prefix of the newline`, (_t) => {
-		// With delimiterChar "\r" and newlineChar "\r\n", a "\r\n" begins both a
-		// delimiter and a newline at the same index. The delimiter wins the tie, so
-		// "a\r\n" is the row ["a", "\n"] (the "\r" splits, the "\n" is the next field).
 		const result = csvQuotedParser(
 			"a\r\n",
 			{
@@ -5911,10 +5581,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream delimiter-prefix-of-newline tie consumes the CR as a delimiter`, async (_t) => {
-		// findRowEnd must apply the same tie-break: at each "\r\n" the "\r" delimiter
-		// is taken first, so no pure newline terminates the row — the whole buffer is
-		// the header and there are no data rows. (If the newline won the tie, the
-		// header would end at the first "\r".)
 		const hdr = csvDetectHeaderStream({
 			delimiterChar: "\r",
 			newlineChar: "\r\n",
@@ -5926,7 +5592,6 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, []);
 	});
 
-	// --- csvParseInline: a fully consumed flush leaves an empty tail ---
 	test(`csvQuotedParser flush of complete input leaves an empty tail`, (_t) => {
 		const result = csvQuotedParser("a,b\r\n1,2", {}, true);
 		strictEqual(result.tail, "");
@@ -5942,11 +5607,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.rows, [["a", "b"]]);
 	});
 
-	// --- findRowEnd: single-column header (no delimiter present) ---
 	test(`csvDetectHeaderStream single-column header has no delimiter`, async (_t) => {
-		// There is no delimiter in the buffer, so findRowEnd must still terminate the
-		// header at the first newline (the no-delimiter branch of the boundary check).
-		// The header newline sits at index 1, exercising the exact newline position.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([
@@ -5959,11 +5620,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["x"], ["y"]]);
 	});
 
-	// --- findRowEnd: a leading newline makes row 0 an empty header ---
 	test(`csvDetectHeaderStream leading newline yields an empty header row`, async (_t) => {
-		// The buffer starts with the newline (at index 0), so row 0 is empty and the
-		// data follows. The row-end at index 0 must be returned, not skipped past a
-		// later delimiter.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream("\r\na,b\r\n"), hdr, csvParseStream()]),
@@ -5972,11 +5629,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["a", "b"]]);
 	});
 
-	// --- findRowEnd: header newline precedes a later delimiter in the data ---
 	test(`csvDetectHeaderStream one-char header ends at its newline before a data delimiter`, async (_t) => {
-		// The header's newline is at index 1, before any delimiter (the delimiter only
-		// appears in the data row). findRowEnd must terminate the header at that
-		// newline rather than skipping ahead to the data delimiter.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream("a\r\nb,c\r\n"), hdr, csvParseStream()]),
@@ -5985,10 +5638,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["b", "c"]]);
 	});
 
-	// --- findRowEnd: an unterminated quote in the header means no complete row ---
 	test(`csvDetectHeaderStream unterminated quote in header treats whole buffer as header`, async (_t) => {
-		// The opening quote is never closed in the buffer, so findRowEnd returns -1 and
-		// the entire input is parsed as the header with no data rows.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([
@@ -6003,12 +5653,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, []);
 	});
 
-	// --- findRowEnd: the escape-run lookback must NOT count the opening quote ---
 	test(`csvDetectHeaderStream leading doubled-quote header field keeps embedded newline`, async (_t) => {
-		// Header field content is ""a\r\nb : the leading "" is an escaped quote, then
-		// a\r\nb stays inside the field. The escape-run lookback must stop just after
-		// the opening quote — counting the opening quote would flip the parity and end
-		// the row at the embedded newline.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([
@@ -6021,11 +5666,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["1", "2"]]);
 	});
 
-	// --- findRowEnd: escaped quote at the very start of a quoted header field ---
 	test(`csvDetectHeaderStream custom escape escaped quote at start of header field keeps embedded newline`, async (_t) => {
-		// Header field content begins with \" (an escaped quote at the first content
-		// position); the run-length lookback must include that leading escape so the
-		// field stays open across the embedded \r\n and the row ends at the real one.
 		const hdr = csvDetectHeaderStream({ escapeChar: "\\" });
 		const out = await streamToArray(
 			pipejoin([
@@ -6038,19 +5679,12 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["1", "2"]]);
 	});
 
-	// --- custom escape: an escaped quote at the very start of the field content ---
 	test(`csvQuotedParser custom escape escaped quote at start of content`, (_t) => {
-		// Content is \"X : the leading \" is an escaped quote (the run-length lookback
-		// must include the escape char sitting at the first content position), so the
-		// field is "X and the closing quote is the final one.
 		const result = csvQuotedParser('"\\"X",b\r\n', { escapeChar: "\\" });
 		deepStrictEqual(result.rows, [['"X', "b"]]);
 	});
 
-	// --- csvParseInline: a quote only opens a field at a field-start position ---
 	test(`csvQuotedParser treats a mid-field quote as a literal character`, (_t) => {
-		// The " in a"b is not at a field start, so the field is the unquoted text a"b,
-		// not the start of a quoted field.
 		const result = csvQuotedParser('a"b,c\r\nd,e\r\n');
 		deepStrictEqual(result.rows, [
 			['a"b', "c"],
@@ -6066,11 +5700,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		]);
 	});
 
-	// --- findRowEnd: delimiter handling opens the following quoted field ---
 	test(`csvDetectHeaderStream delimiter before a quoted field with an embedded newline`, async (_t) => {
-		// After the delimiter, fieldStart advances so the following quoted field opens;
-		// its embedded \r\n must stay inside the field and NOT end the header row. If
-		// the delimiter were not honored, the embedded newline would split the header.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([
@@ -6096,10 +5726,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(out, [["1", "2"]]);
 	});
 
-	// --- csvDetectDelimitersStream quote scan: closing quote search starts after opener ---
 	test(`csvDetectDelimitersStream detects a quoted single-char field bracketed by quotes`, async (_t) => {
-		// The opener is at index 0 and the closer at index 2; the closing-quote search
-		// must begin after the opener and the run must terminate at the field end.
 		const detect = csvDetectDelimitersStream();
 		await streamToArray(
 			pipejoin([createReadableStream("'a',b,c\r\n"), detect]),
@@ -6114,26 +5741,18 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectDelimitersStream does not detect a single opening quote with no closer`, async (_t) => {
-		// ' opens at the very start but the next char is a delimiter (a field end), so
-		// it never brackets a field; the closing-quote search must start AFTER the
-		// opener, leaving the quote char at the default ".
 		const detect = csvDetectDelimitersStream();
 		await streamToArray(pipejoin([createReadableStream("',b\r\n"), detect]));
 		strictEqual(detect.result().value.quoteChar, '"');
 	});
 
 	test(`csvDetectDelimitersStream detects an empty quoted first field`, async (_t) => {
-		// '' is an empty quoted field bracketed at indices 0 and 1; the closer at
-		// index 1 must be considered (the close-search loop must accept index 0/1).
 		const detect = csvDetectDelimitersStream();
 		await streamToArray(pipejoin([createReadableStream("'',b\r\n"), detect]));
 		strictEqual(detect.result().value.quoteChar, "'");
 	});
 
-	// --- detect streams: input with no newline is emitted via flush (not lost) ---
 	test(`csvDetectDelimitersStream emits a no-newline input via flush`, async (_t) => {
-		// No newline means detect() never succeeds in transform; flush must still emit
-		// the buffered data so nothing is dropped.
 		const detect = csvDetectDelimitersStream();
 		const out = await streamToString(
 			pipejoin([createReadableStream("a,b,c"), detect]),
@@ -6142,8 +5761,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream emits a no-newline input as header via flush`, async (_t) => {
-		// The entire (newline-less) input is the header; flush processes it and emits
-		// no data rows.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream("a,b,c"), hdr]),
@@ -6152,10 +5769,7 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(hdr.result().value.header, ["a", "b", "c"]);
 	});
 
-	// --- detect streams: emission chunking observed directly (no downstream parser) ---
 	test(`csvDetectDelimitersStream emits each chunk as it detects, not coalesced`, async (_t) => {
-		// Once the first chunk completes a line, detection fires in transform and the
-		// chunk is emitted; the next chunk passes straight through as its own chunk.
 		const detect = csvDetectDelimitersStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream(["a;b\r\n", "c;d\r\n"]), detect]),
@@ -6165,8 +5779,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream emits the rest in transform, then later chunks separately`, async (_t) => {
-		// First chunk completes the header row → header detected in transform, the
-		// data remainder emitted, and the subsequent chunk passes through on its own.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream(["a,b\r\n1,2\r\n", "3,4\r\n"]), hdr]),
@@ -6176,7 +5788,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream header-only with trailing newline emits nothing (direct)`, async (_t) => {
-		// rest is empty, so the rest.length > 0 guard must suppress an empty emission.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream("a,b,c\r\n"), hdr]),
@@ -6186,8 +5797,6 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvDetectHeaderStream buffers a header split across chunks until the row completes`, async (_t) => {
-		// The header row is split across two chunks; processing must wait until the
-		// full first row is present, then emit the data remainder as one chunk.
 		const hdr = csvDetectHeaderStream();
 		const out = await streamToArray(
 			pipejoin([createReadableStream(["a,", "b\r\n1,2\r\n"]), hdr]),

@@ -15,7 +15,6 @@ import {
 import { variant } from "../variant.js";
 
 describe(`@datastream/json (${variant})`, () => {
-	// *** ndjsonParseStream *** //
 	test(`ndjsonParseStream should parse single NDJSON line`, async (_t) => {
 		const streams = [createReadableStream('{"a":1}\n'), ndjsonParseStream()];
 		const stream = pipejoin(streams);
@@ -108,7 +107,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [{ a: 1 }, { b: 2 }]);
 	});
 
-	// *** ndjsonFormatStream *** //
 	test(`ndjsonFormatStream should format objects as NDJSON`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: 1 }, { b: 2 }]),
@@ -134,7 +132,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, input);
 	});
 
-	// *** jsonParseStream *** //
 	test(`jsonParseStream should parse JSON array into objects`, async (_t) => {
 		const streams = [
 			createReadableStream('[{"a":1},{"b":2}]'),
@@ -268,7 +265,6 @@ describe(`@datastream/json (${variant})`, () => {
 		let error;
 		try {
 			await pipeline([
-				// Unterminated element: it stays pending in the buffer.
 				createReadableStream(`[{"a":"${"x".repeat(200)}`),
 				jsonParseStream({ maxBufferSize: 100 }),
 			]);
@@ -278,7 +274,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(error?.message?.includes("maxBufferSize"), true);
 	});
 
-	// *** jsonFormatStream *** //
 	test(`jsonFormatStream should format objects as JSON array`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: 1 }, { b: 2 }]),
@@ -312,11 +307,8 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(combined, '[{\n  "a": 1\n}\n]');
 	});
 
-	// *** maxValueSize raw check *** //
 	test(`jsonParseStream should enforce maxValueSize on raw value including whitespace`, async (_t) => {
 		const { ok, strictEqual } = await import("node:assert");
-		// Raw value with padding: "  123  " = 7 chars, trimmed "123" = 3 chars
-		// maxValueSize: 5 — raw exceeds, trimmed does not
 		const padded = `[  ${"1".repeat(4)}  ]`;
 		const streams = [
 			createReadableStream(padded),
@@ -344,23 +336,17 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, input);
 	});
 
-	// *** Additional tests to improve mutation score *** //
-
-	// --- ndjsonParseStream: error deduplication (trackError guard) ---
 	test(`ndjsonParseStream should accumulate idx list for repeated ParseError`, async (_t) => {
 		const parse = ndjsonParseStream();
 		const streams = [createReadableStream("bad1\nbad2\nbad3\n"), parse];
 		await streamToArray(pipejoin(streams));
 		const { value } = parse.result();
-		// All three errors under same ParseError key - idx has 3 entries
 		deepStrictEqual(value.ParseError.id, "ParseError");
 		deepStrictEqual(value.ParseError.message, "Invalid JSON");
 		deepStrictEqual(value.ParseError.idx, [0, 1, 2]);
 	});
 
-	// --- ndjsonParseStream: maxBufferSize boundary (> not >=) ---
 	test(`ndjsonParseStream should not throw at exactly maxBufferSize`, async (_t) => {
-		// buffer.length + chunk.length > maxBufferSize: equal should NOT throw
 		const maxBufferSize = 10;
 		let error;
 		try {
@@ -375,7 +361,6 @@ describe(`@datastream/json (${variant})`, () => {
 	});
 
 	test(`ndjsonParseStream should throw one byte over maxBufferSize`, async (_t) => {
-		// Two chunks: first 10 chars (no newline → stays in buffer), then 1 more → 11 > 10
 		let error;
 		try {
 			await pipeline([
@@ -388,7 +373,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(error?.message?.includes("maxBufferSize"), true);
 	});
 
-	// --- ndjsonParseStream: error message uses addition (not subtraction) ---
 	test(`ndjsonParseStream error message contains combined length and limit`, async (_t) => {
 		let error;
 		try {
@@ -399,20 +383,16 @@ describe(`@datastream/json (${variant})`, () => {
 		} catch (e) {
 			error = e;
 		}
-		// buffer.length (10) + chunk.length (5) = 15; limit = 12
 		deepStrictEqual(error?.message?.includes("15"), true);
 		deepStrictEqual(error?.message?.includes("12"), true);
 	});
 
-	// --- ndjsonParseStream: trimEnd (not trimStart) for lines ---
 	test(`ndjsonParseStream flush trims trailing whitespace (\\r) on last line`, async (_t) => {
-		// No trailing newline; line ends with \r. trimEnd removes it, trimStart would not.
 		const streams = [createReadableStream('{"a":1}\r'), ndjsonParseStream()];
 		const output = await streamToArray(pipejoin(streams));
 		deepStrictEqual(output, [{ a: 1 }]);
 	});
 
-	// --- ndjsonParseStream: flush catch block (not empty) ---
 	test(`ndjsonParseStream flush should track error for invalid JSON without trailing newline`, async (_t) => {
 		const parse = ndjsonParseStream();
 		const streams = [createReadableStream("not-json"), parse];
@@ -424,9 +404,7 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError?.idx, [0]);
 	});
 
-	// --- ndjsonParseStream: flush idx++ (not --) ---
 	test(`ndjsonParseStream flush should use correct idx for flushed error`, async (_t) => {
-		// One valid transform line, one invalid flush line → error at idx 1
 		const parse = ndjsonParseStream();
 		const streams = [createReadableStream('{"a":1}\nbad'), parse];
 		const output = await streamToArray(pipejoin(streams));
@@ -435,7 +413,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError.idx, [1]);
 	});
 
-	// --- ndjsonParseStream: resultKey ---
 	test(`ndjsonParseStream should use custom resultKey`, async (_t) => {
 		const parse = ndjsonParseStream({ resultKey: "myErrors" });
 		const streams = [createReadableStream('{"a":1}\n'), parse];
@@ -444,7 +421,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(key, "myErrors");
 	});
 
-	// --- ndjsonFormatStream: batching >= 64 ---
 	test(`ndjsonFormatStream should flush eagerly after exactly 64 items`, async (_t) => {
 		const items = Array.from({ length: 64 }, (_, i) => ({ i }));
 		const streams = [createReadableStream(items), ndjsonFormatStream()];
@@ -464,7 +440,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(JSON.parse(lines[64]), { i: 64 });
 	});
 
-	// --- ndjsonFormatStream: newline separator (not empty string) ---
 	test(`ndjsonFormatStream items joined with newline separator`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: 1 }, { b: 2 }]),
@@ -478,7 +453,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(lines[1], '{"b":2}');
 	});
 
-	// --- ndjsonFormatStream: flush only when batch.length > 0 ---
 	test(`ndjsonFormatStream should not emit anything when no items`, async (_t) => {
 		const streams = [createReadableStream([]), ndjsonFormatStream()];
 		const output = await streamToArray(pipejoin(streams));
@@ -491,7 +465,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(combined, '{"x":42}\n');
 	});
 
-	// --- ndjsonFormatStream: no space option (one record per line) ---
 	test(`ndjsonFormatStream ignores space and keeps one record per line`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: 1 }, { b: [2] }]),
@@ -501,7 +474,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(combined, '{"a":1}\n{"b":[2]}\n');
 	});
 
-	// --- jsonParseStream: trackError deduplication ---
 	test(`jsonParseStream should accumulate idx list for repeated ParseError`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream("[bad1,bad2,bad3]"), parse];
@@ -512,9 +484,7 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError.idx, [0, 1, 2]);
 	});
 
-	// --- jsonParseStream: maxValueSize boundary (> not >=) ---
 	test(`jsonParseStream should not throw at exactly maxValueSize`, async (_t) => {
-		// element "12345" is 5 chars, not > 5, should parse fine
 		const streams = [
 			createReadableStream("[12345]"),
 			jsonParseStream({ maxValueSize: 5 }),
@@ -524,7 +494,6 @@ describe(`@datastream/json (${variant})`, () => {
 	});
 
 	test(`jsonParseStream should throw when element exceeds maxValueSize`, async (_t) => {
-		// "[ 123456 ]" → raw element " 123456 " = 8 chars > 5
 		let error;
 		try {
 			await pipeline([
@@ -537,15 +506,12 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(error?.message?.includes("maxValueSize"), true);
 	});
 
-	// --- jsonParseStream: emitElement trims text before parse ---
 	test(`jsonParseStream should skip whitespace-only elements without error`, async (_t) => {
-		// Exercises trimmed.length === 0 early return in emitElement
 		const streams = [createReadableStream("[   ]"), jsonParseStream()];
 		const output = await streamToArray(pipejoin(streams));
 		deepStrictEqual(output, []);
 	});
 
-	// --- jsonParseStream: escaped char handling ---
 	test(`jsonParseStream should handle escaped quote in string`, async (_t) => {
 		const streams = [
 			createReadableStream('[{"a":"x\\"y"}]'),
@@ -561,7 +527,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [{ a: "\\" }]);
 	});
 
-	// --- jsonParseStream: inString prevents depth changes for brackets in strings ---
 	test(`jsonParseStream should not count brackets inside strings as depth`, async (_t) => {
 		const streams = [
 			createReadableStream('[{"a":"[{nested}]"}]'),
@@ -571,7 +536,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [{ a: "[{nested}]" }]);
 	});
 
-	// --- jsonParseStream: string as top-level element (opens inString) ---
 	test(`jsonParseStream should parse string elements at top level`, async (_t) => {
 		const streams = [
 			createReadableStream('["hello","world"]'),
@@ -581,7 +545,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, ["hello", "world"]);
 	});
 
-	// --- jsonParseStream: whitespace chars (tab 0x09, LF 0x0a, CR 0x0d) ---
 	test(`jsonParseStream should treat tab as whitespace before elements`, async (_t) => {
 		const streams = [createReadableStream("[1,\t2,\t3]"), jsonParseStream()];
 		const output = await streamToArray(pipejoin(streams));
@@ -594,7 +557,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [1, 2, 3]);
 	});
 
-	// --- jsonParseStream: buffer trimming (trimFrom) ---
 	test(`jsonParseStream should work correctly with many small chunks`, async (_t) => {
 		const chunks = ["[", '{"a":', "1}", ",", '{"b":', "2}", "]"];
 		const streams = [createReadableStream(chunks), jsonParseStream()];
@@ -609,14 +571,12 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [{ a: 1 }, { b: 2 }, { c: 3 }]);
 	});
 
-	// --- jsonParseStream: flush ']' guard ---
 	test(`jsonParseStream flush should not emit lone closing bracket as element`, async (_t) => {
 		const streams = [createReadableStream("[1,2]"), jsonParseStream()];
 		const output = await streamToArray(pipejoin(streams));
 		deepStrictEqual(output, [1, 2]);
 	});
 
-	// --- jsonParseStream: sawNonWhitespace for NoArrayStart ---
 	test(`jsonParseStream whitespace-only input should not flag NoArrayStart`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream("   \n\t  "), parse];
@@ -637,7 +597,6 @@ describe(`@datastream/json (${variant})`, () => {
 		);
 	});
 
-	// --- jsonParseStream: maxBufferSize error message uses addition ---
 	test(`jsonParseStream maxBufferSize error message contains combined length`, async (_t) => {
 		let error;
 		try {
@@ -648,21 +607,18 @@ describe(`@datastream/json (${variant})`, () => {
 		} catch (e) {
 			error = e;
 		}
-		// The pending element `{"a":"xxxxxxxxxx` is 16 chars.
 		deepStrictEqual(
 			error?.message,
 			"jsonParseStream buffer (16) exceeds maxBufferSize (15)",
 		);
 	});
 
-	// --- jsonParseStream: flush handles no elementStart gracefully ---
 	test(`jsonParseStream flush with no elementStart does not crash`, async (_t) => {
 		const streams = [createReadableStream('[{"a":1}]'), jsonParseStream()];
 		const output = await streamToArray(pipejoin(streams));
 		deepStrictEqual(output, [{ a: 1 }]);
 	});
 
-	// --- jsonParseStream: depth tracking ---
 	test(`jsonParseStream should parse deeply nested objects`, async (_t) => {
 		const streams = [
 			createReadableStream('[{"a":{"b":{"c":1}}}]'),
@@ -672,7 +628,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [{ a: { b: { c: 1 } } }]);
 	});
 
-	// --- jsonParseStream: error idx ordering ---
 	test(`jsonParseStream error idx should reflect insertion order`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [
@@ -685,7 +640,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError.idx, [1, 3]);
 	});
 
-	// --- jsonParseStream: resultKey ---
 	test(`jsonParseStream should use custom resultKey`, async (_t) => {
 		const parse = jsonParseStream({ resultKey: "myErrors" });
 		const streams = [createReadableStream('[{"a":1}]'), parse];
@@ -694,7 +648,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(key, "myErrors");
 	});
 
-	// --- jsonFormatStream: first/non-first item separator ---
 	test(`jsonFormatStream first element uses [ prefix; rest use comma-newline`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: 1 }, { b: 2 }, { c: 3 }]),
@@ -706,7 +659,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output[2], ',\n{"c":3}');
 	});
 
-	// --- jsonFormatStream: flush emits \n] for non-empty ---
 	test(`jsonFormatStream flush emits newline-bracket for non-empty stream`, async (_t) => {
 		const streams = [createReadableStream([{ a: 1 }]), jsonFormatStream()];
 		const output = await streamToArray(pipejoin(streams));
@@ -719,7 +671,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(combined, "[42\n]");
 	});
 
-	// --- jsonParseStream: mixed object and string elements ---
 	test(`jsonParseStream should parse mixed object and string elements`, async (_t) => {
 		const streams = [
 			createReadableStream('[{"a":1},"hello"]'),
@@ -729,24 +680,16 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [{ a: 1 }, "hello"]);
 	});
 
-	// --- jsonParseStream: flush emitElement with ']' trimmed ---
 	test(`jsonParseStream flush should emit incomplete element at end of stream`, async (_t) => {
-		// Input split across chunks where last chunk has no closing bracket scanned
-		// to exercise flush emitElement path
 		const streams = [
 			createReadableStream(['[{"a":1},', '{"b":2']),
 			jsonParseStream(),
 		];
 		const output = await streamToArray(pipejoin(streams));
-		// {"b":2 is incomplete JSON but flush emits it, parse fails → tracked as error
 		deepStrictEqual(output, [{ a: 1 }]);
-		// The incomplete element causes a ParseError
 	});
 
-	// --- ndjsonParseStream: transform empty line skip guard ---
 	test(`ndjsonParseStream should count idx correctly when skipping empty lines`, async (_t) => {
-		// Two valid lines with empty lines in between
-		// Empty lines don't increment idx, so second parse error should be at idx 1
 		const parse = ndjsonParseStream();
 		const streams = [createReadableStream('{"a":1}\n\nbad\n{"c":3}\n'), parse];
 		const output = await streamToArray(pipejoin(streams));
@@ -755,24 +698,15 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError.idx, [1]);
 	});
 
-	// --- jsonParseStream: flush element with actual content ---
 	test(`jsonParseStream flush emits element for incomplete array without closing bracket`, async (_t) => {
-		// Array missing closing ] - flush should emit what it has
 		const parse = jsonParseStream();
 		const streams = [createReadableStream('[{"a":1},{"b":2}'), parse];
 		const output = await streamToArray(pipejoin(streams));
-		// {"a":1} is emitted during scan; {"b":2} has no closing } so it stays in buffer
-		// flush tries to emit the remaining element
 		deepStrictEqual(output.length >= 1, true);
 		deepStrictEqual(output[0], { a: 1 });
 	});
 
-	// *** Second-round targeted tests for remaining survivors *** //
-
-	// --- ndjsonFormatStream: chunk count distinguishes >= 64 from > 64 ---
 	test(`ndjsonFormatStream 65 items should produce 2 output chunks`, async (_t) => {
-		// Real (>= 64): at item 64, eager flush -> 64-item chunk; flush() -> 1-item chunk -> 2 chunks
-		// Mutant (> 64): at item 65, eager flush -> 65-item chunk; flush() nothing -> 1 chunk
 		const items = Array.from({ length: 65 }, (_, i) => ({ i }));
 		const streams = [createReadableStream(items), ndjsonFormatStream()];
 		const output = await streamToArray(pipejoin(streams));
@@ -784,7 +718,6 @@ describe(`@datastream/json (${variant})`, () => {
 	});
 
 	test(`ndjsonFormatStream 2 items should produce 1 output chunk not 2`, async (_t) => {
-		// if(true) mutant: emits 1 item per chunk -> 2 chunks; real >= 64: via flush -> 1 chunk
 		const items = [{ a: 1 }, { b: 2 }];
 		const streams = [createReadableStream(items), ndjsonFormatStream()];
 		const output = await streamToArray(pipejoin(streams));
@@ -793,7 +726,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(lines.length, 2);
 	});
 
-	// --- ndjsonParseStream: flush idx increments after multiple valid lines ---
 	test(`ndjsonParseStream flush idx is 3 after 3 valid transform lines`, async (_t) => {
 		const parse = ndjsonParseStream();
 		const streams = [
@@ -806,7 +738,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError.idx, [3]);
 	});
 
-	// --- jsonParseStream: initial buffer must be empty ---
 	test(`jsonParseStream initial buffer must be empty string`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream("[1]"), parse];
@@ -816,7 +747,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.NoArrayStart, undefined);
 	});
 
-	// --- jsonParseStream: inString=true when quote encountered ---
 	test(`jsonParseStream handles string split across chunks`, async (_t) => {
 		const streams = [
 			createReadableStream(['["hel', 'lo"]']),
@@ -832,9 +762,7 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, ["a{b}c"]);
 	});
 
-	// --- jsonParseStream: maxBufferSize counts the pending element across chunks ---
 	test(`jsonParseStream maxBufferSize error reports the pending element length`, async (_t) => {
-		// "[1234" leaves "1234" pending; "5678" grows it to 8 chars > 6.
 		let error;
 		try {
 			await pipeline([
@@ -850,10 +778,8 @@ describe(`@datastream/json (${variant})`, () => {
 		);
 	});
 
-	// --- jsonParseStream: maxBufferSize boundary (> not >=) ---
 	test(`jsonParseStream does not throw at exactly maxBufferSize`, async (_t) => {
 		const streams = [
-			// "12" stays pending after the first chunk: exactly the limit.
 			createReadableStream(["[12", "]"]),
 			jsonParseStream({ maxBufferSize: 2 }),
 		];
@@ -879,7 +805,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(error?.message?.includes("maxBufferSize"), true);
 	});
 
-	// --- jsonParseStream flush: does not emit when elementStart === -1 ---
 	test(`jsonParseStream flush does not double-emit completed elements`, async (_t) => {
 		const streams = [createReadableStream("[1,2]"), jsonParseStream()];
 		const output = await streamToArray(pipejoin(streams));
@@ -887,7 +812,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output.length, 2);
 	});
 
-	// --- jsonParseStream flush: emits when elementStart !== -1 and buffer non-empty ---
 	test(`jsonParseStream flush emits in-progress element`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream("[42"), parse];
@@ -902,7 +826,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [42]);
 	});
 
-	// --- jsonParseStream flush: trimmed !== "]" ---
 	test(`jsonParseStream flush does not emit lone closing bracket`, async (_t) => {
 		const streams = [createReadableStream("[1]"), jsonParseStream()];
 		const output = await streamToArray(pipejoin(streams));
@@ -910,7 +833,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output.length, 1);
 	});
 
-	// --- jsonParseStream flush: buffer reset to empty ---
 	test(`jsonParseStream flush resets buffer to empty string`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream("[1,2,3]"), parse];
@@ -921,7 +843,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError, undefined);
 	});
 
-	// --- jsonParseStream: single-char chunking exercises trimFrom ---
 	test(`jsonParseStream handles single-char chunking`, async (_t) => {
 		const jsonStr = "[1,2,3,4,5]";
 		const chunks = jsonStr.split("");
@@ -930,20 +851,12 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [1, 2, 3, 4, 5]);
 	});
 
-	// --- jsonParseStream: element with surrounding whitespace (trim in emitElement) ---
 	test(`jsonParseStream correctly parses element with surrounding spaces`, async (_t) => {
 		const streams = [createReadableStream("[ 42 ]"), jsonParseStream()];
 		const output = await streamToArray(pipejoin(streams));
 		deepStrictEqual(output, [42]);
 	});
 
-	// *** Third-round targeted tests (after scanner refactor) *** //
-
-	// --- scanner: a nested element is emitted when its closing brace returns depth
-	// to 0. Adjacent objects with NO comma between them can ONLY be split by the
-	// closing-brace emit; if that emit is skipped/disabled, the scanner would later
-	// try to parse the merged "{...}{...}" as one element and fail. Pins the
-	// `if (depth === 0)` emit (kills its `false`/block-removal/operator mutants). ---
 	test(`jsonParseStream splits adjacent objects with no comma between them`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream('[{"a":1}{"b":2}]'), parse];
@@ -965,12 +878,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError, undefined);
 	});
 
-	// --- scanner whitespace skip: leading whitespace before a value must NOT be
-	// included in the element's raw text (elementStart must point at the first
-	// non-whitespace char). With maxValueSize tuned just above the trimmed value
-	// but below the padded value, treating a whitespace char as content would push
-	// the raw length over maxValueSize and throw. One test per whitespace kind
-	// pins each `ch !== <code>` guard (space/tab/LF/CR). ---
 	const whitespaceLeadCases = {
 		space: "[    123]",
 		tab: "[\t\t\t\t123]",
@@ -979,7 +886,6 @@ describe(`@datastream/json (${variant})`, () => {
 	};
 	for (const [name, input] of Object.entries(whitespaceLeadCases)) {
 		test(`jsonParseStream skips leading ${name} so raw value stays within maxValueSize`, async (_t) => {
-			// trimmed "123" = 3 chars (<= 5); padded "    123" = 7 chars (> 5).
 			const streams = [
 				createReadableStream(input),
 				jsonParseStream({ maxValueSize: 5 }),
@@ -989,11 +895,6 @@ describe(`@datastream/json (${variant})`, () => {
 		});
 	}
 
-	// --- scanner buffer trim: after each fully-consumed element the processed
-	// portion must be trimmed from the buffer so it does not grow unbounded. With a
-	// small maxBufferSize, 50+ tiny elements split across chunks only fit if the
-	// buffer is trimmed (kills the `trimFrom` ternary and the unconditional trim
-	// being skipped). ---
 	test(`jsonParseStream trims consumed buffer so many chunks fit a small maxBufferSize`, async (_t) => {
 		const chunks = ["["];
 		for (let i = 0; i < 50; i++) chunks.push("1,");
@@ -1008,9 +909,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError, undefined);
 	});
 
-	// --- scanner trim: an in-progress element must NOT be trimmed away. When the
-	// buffer ends mid-element across a chunk boundary, trimFrom must be elementStart
-	// (not scanPos), so the partial element is preserved for the next chunk. ---
 	test(`jsonParseStream preserves an in-progress element across a chunk boundary`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream(['[{"abc":', "123}]"]), parse];
@@ -1020,11 +918,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError, undefined);
 	});
 
-	// --- scanner trim: after a chunk ends exactly on a comma (no element in
-	// progress, buffer fully consumed), the next chunk's leading whitespace must
-	// still be skipped. If the trim incorrectly left elementStart pointing at 0,
-	// the next element's raw text would absorb that leading whitespace and overflow
-	// maxValueSize. Pins the `if (elementStart !== -1)` trim-reset guard. ---
 	test(`jsonParseStream keeps elementStart unset across a comma-aligned chunk boundary`, async (_t) => {
 		const streams = [
 			createReadableStream(["[1,", "   123]"]),
@@ -1034,13 +927,7 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [1, 123]);
 	});
 
-	// --- flush: a lone closing bracket left in the buffer must NOT be emitted as an
-	// element (kills `trimmed !== "]"` -> `!== ""`). Construct a stream where the
-	// final buffer is exactly "]". ---
 	test(`jsonParseStream flush ignores a trailing lone closing bracket`, async (_t) => {
-		// "[1" is scanned (element 1 in progress -> emitted at flush); a separate
-		// trailing "]" chunk arrives but, with the array still "open" at depth 0 and
-		// element 1 already pending, exercises the flush `]` guard.
 		const parse = jsonParseStream();
 		const streams = [createReadableStream(["[", "1", "]"]), parse];
 		const output = await streamToArray(pipejoin(streams));
@@ -1049,11 +936,8 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(value.ParseError, undefined);
 	});
 
-	// --- audit: `buffer += chunk` decoded each byte chunk on its own, so a
-	// multibyte char split across Buffer/Uint8Array chunks became "\ufffd\ufffd". ---
 	const splitBytes = (text, char) => {
 		const bytes = new TextEncoder().encode(text);
-		// Split one byte into the 2-byte "é" sequence.
 		const at = new TextEncoder().encode(text.split(char)[0]).length + 1;
 		return [bytes.subarray(0, at), bytes.subarray(at)];
 	};
@@ -1067,8 +951,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(output, [{ a: "é" }, { b: 1 }]);
 	});
 
-	// A truncated trailing sequence is flushed as U+FFFD (invalid JSON), never
-	// silently dropped to leave a plausible-looking value.
 	test(`ndjsonParseStream flags a truncated trailing multibyte sequence`, async (_t) => {
 		const parse = ndjsonParseStream();
 		const streams = [
@@ -1100,8 +982,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(parse.result().value.ParseError?.idx, [0]);
 	});
 
-	// sawNonWhitespace must test the decoded text: a coerced byte chunk
-	// ("32,10") always looks non-whitespace.
 	test(`jsonParseStream does not flag NoArrayStart for whitespace-only bytes`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [
@@ -1112,9 +992,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(parse.result().value, {});
 	});
 
-	// --- audit: before the array starts, the scanner skipped everything up to
-	// the first `[`, so a top-level object's nested array leaked its elements
-	// and no NoArrayStart was recorded. Only whitespace may precede the `[`. ---
 	test(`jsonParseStream rejects input whose first non-whitespace char is not [`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream(' {"a":[1,2]}'), parse];
@@ -1130,8 +1007,6 @@ describe(`@datastream/json (${variant})`, () => {
 		});
 	});
 
-	// Once rejected, later chunks are ignored, not buffered: a `[` arriving
-	// afterwards neither starts the array nor counts towards maxBufferSize.
 	test(`jsonParseStream ignores chunks after rejecting a non-array start`, async (_t) => {
 		const parse = jsonParseStream({ maxBufferSize: 2 });
 		const streams = [createReadableStream(["x", "[1]"]), parse];
@@ -1139,8 +1014,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(parse.result().value.NoArrayStart?.idx, [0]);
 	});
 
-	// Decoder-flushed bytes are scanned too: a lone truncated sequence is not
-	// an array start (NoArrayStart), not a ParseError'd element.
 	test(`jsonParseStream rejects a lone truncated multibyte sequence as NoArrayStart`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream([new Uint8Array([0xc3])]), parse];
@@ -1148,9 +1021,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(Object.keys(parse.result().value), ["NoArrayStart"]);
 	});
 
-	// A leading byte-order mark is stripped once, from the first non-empty
-	// text. TextDecoder already drops it from byte input; string input keeps it,
-	// and a BOM before `[` was rejected as NoArrayStart.
 	for (const [name, parse] of [
 		["jsonParseStream", () => jsonParseStream()],
 		["ndjsonParseStream", () => ndjsonParseStream()],
@@ -1177,8 +1047,6 @@ describe(`@datastream/json (${variant})`, () => {
 		});
 	}
 
-	// Only the first text is BOM-stripped: a U+FEFF that starts a later chunk
-	// is data (here, inside a string value) and must survive.
 	test(`jsonParseStream keeps a U+FEFF at the start of a later chunk`, async (_t) => {
 		const streams = [
 			createReadableStream(['["a', '\uFEFFb"]']),
@@ -1195,7 +1063,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(await streamToArray(pipejoin(streams)), ["a\uFEFFb"]);
 	});
 
-	// *** Major-version limits *** //
 	test(`json parsers exceed limits with a RangeError`, async (_t) => {
 		const cases = [
 			[
@@ -1244,8 +1111,6 @@ describe(`@datastream/json (${variant})`, () => {
 		);
 	});
 
-	// Error maps keep at most maxErrorRows idx entries per id (default 1000,
-	// null = unlimited) while `count` records the true total (csv parity).
 	for (const [name, factory, wrap] of [
 		["ndjsonParseStream", ndjsonParseStream, (rows) => `${rows.join("\n")}\n`],
 		["jsonParseStream", jsonParseStream, (rows) => `[${rows.join(",")}]`],
@@ -1275,7 +1140,6 @@ describe(`@datastream/json (${variant})`, () => {
 		});
 	}
 
-	// *** maxBufferSize bounds only the incomplete line/element *** //
 	test(`ndjsonParseStream accepts one large chunk of many short lines`, async (_t) => {
 		const input = '{"a":1}\n'.repeat(50);
 		const output = await streamToArray(
@@ -1288,7 +1152,6 @@ describe(`@datastream/json (${variant})`, () => {
 	});
 
 	test(`ndjsonParseStream maxBufferSize counts only the trailing partial line`, async (_t) => {
-		// 20 complete chars then an 11-char partial line: only 11 counts.
 		await rejects(
 			pipeline([
 				createReadableStream(`${"1".repeat(19)}\n${"2".repeat(11)}`),
@@ -1322,7 +1185,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(Object.keys(trailing.result().value), ["TrailingData"]);
 	});
 
-	// *** jsonParseStream: end of the top-level array *** //
 	test(`jsonParseStream flags content after the top-level array`, async (_t) => {
 		const parse = jsonParseStream();
 		const output = await streamToArray(
@@ -1409,7 +1271,6 @@ describe(`@datastream/json (${variant})`, () => {
 		}
 	});
 
-	// *** Formatters: values JSON.stringify maps to undefined *** //
 	test(`ndjsonFormatStream writes null for values with no JSON form`, async (_t) => {
 		const combined = (
 			await streamToArray(
@@ -1437,7 +1298,6 @@ describe(`@datastream/json (${variant})`, () => {
 		}
 	});
 	test(`jsonParseStream drops consumed input once the top-level array closes`, async (_t) => {
-		// Trailing whitespace after "]" must not accumulate toward maxBufferSize.
 		const parse = jsonParseStream({ maxBufferSize: 10 });
 		const output = await streamToArray(
 			pipejoin([
@@ -1449,9 +1309,6 @@ describe(`@datastream/json (${variant})`, () => {
 		deepStrictEqual(parse.result().value, {});
 	});
 
-	// The string scanner consumes content in an inner loop; a chunk ending right
-	// before a closing quote (or after a backslash) must not skip the next
-	// chunk's first char.
 	test(`jsonParseStream should handle a chunk boundary right before a closing quote`, async (_t) => {
 		const parse = jsonParseStream();
 		const streams = [createReadableStream(['[{"a":"x', '"}]']), parse];

@@ -12,16 +12,11 @@ import {
 import { variant } from "../variant.js";
 
 describe(`@datastream/encrypt (${variant})`, () => {
-	// Sync validation throws and node:crypto specifics; the browser build is async
-	// WebCrypto and is exercised by the "web" tests below.
 	const nodeTest = variant === "node" ? test : test.skip;
-	// Errors are consumed through the async iterator below; a no-op onError stops
-	// the node build's pipejoin from also re-throwing them on nextTick.
 	const join = (streams) => pipejoin(streams, () => {});
 
 	const key = randomBytes(32);
 
-	// *** generateEncryptionKey *** //
 	test(`generateEncryptionKey should generate 32-byte key by default`, (_t) => {
 		const k = generateEncryptionKey();
 		strictEqual(k.byteLength, 32);
@@ -32,7 +27,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(k.byteLength, 16);
 	});
 
-	// *** AES-256-GCM (default) *** //
 	test(`encryptStream should encrypt and decrypt with AES-256-GCM`, async (_t) => {
 		const input = "hello, world!";
 		const enc = await encryptStream({ key });
@@ -49,7 +43,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	test(`encryptStream roundtrip with AES-256-GCM`, async (_t) => {
 		const input = "secret data to encrypt";
 
-		// Encrypt
 		const enc = await encryptStream({ key });
 		const encStreams = [createReadableStream(input), enc];
 		const encryptedChunks = [];
@@ -59,7 +52,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		}
 		const { iv, authTag } = enc.result().value;
 
-		// Decrypt
 		const dec = await decryptStream({ key, iv, authTag });
 		const decStream = join([createReadableStream(encryptedChunks), dec]);
 		const decryptedChunks = [];
@@ -83,7 +75,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	test(`encryptStream should support AAD`, async (_t) => {
 		const aad = Buffer.from("metadata");
 
-		// Encrypt with AAD
 		const enc = await encryptStream({ key, aad });
 		const encStreams = [createReadableStream("aad test"), enc];
 		const encryptedChunks = [];
@@ -93,7 +84,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		}
 		const { iv, authTag } = enc.result().value;
 
-		// Decrypt with matching AAD
 		const dec = await decryptStream({ key, iv, authTag, aad });
 		const decStream = join([createReadableStream(encryptedChunks), dec]);
 		const decryptedChunks = [];
@@ -113,7 +103,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(result.encrypt.algorithm, "AES-256-GCM");
 	});
 
-	// *** AES-256-CTR *** //
 	test(`encryptStream roundtrip with AES-256-CTR`, async (_t) => {
 		const input = "ctr mode test data";
 
@@ -137,7 +126,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(decrypted, input);
 	});
 
-	// *** CHACHA20-POLY1305 *** //
 	test(`encryptStream roundtrip with CHACHA20-POLY1305`, async (_t) => {
 		const input = "chacha20 test data";
 
@@ -166,7 +154,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(decrypted, input);
 	});
 
-	// *** Error cases *** //
 	test(`encryptStream should throw for unsupported algorithm`, async (_t) => {
 		await rejects(
 			() => encryptStream({ key, algorithm: "INVALID" }),
@@ -195,7 +182,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream(encryptedChunks), dec]);
 			for await (const _chunk of decStream) {
-				// should fail
 			}
 			throw new Error("Expected decryption to fail");
 		} catch (e) {
@@ -203,10 +189,7 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		}
 	});
 
-	// *** AEAD: no unauthenticated plaintext released on tamper *** //
 	const tamperedAeadEmitsNothing = async (algorithm) => {
-		// Large enough that a streaming Decipher would emit plaintext mid-stream
-		// before final() ever checks the auth tag.
 		const input = "a".repeat(64 * 1024);
 		const enc = await encryptStream({ key, algorithm });
 		const encryptedChunks = [];
@@ -216,12 +199,10 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		}
 		const { iv, authTag } = enc.result().value;
 
-		// Tamper: flip the last byte of the ciphertext.
 		const ciphertext = Buffer.concat(
 			encryptedChunks.map((c) => Buffer.from(c)),
 		);
 		ciphertext[ciphertext.length - 1] ^= 0xff;
-		// Re-chunk so a streaming decipher would have multiple transform calls.
 		const tamperedChunks = [];
 		for (let i = 0; i < ciphertext.length; i += 4096) {
 			tamperedChunks.push(ciphertext.subarray(i, i + 4096));
@@ -238,7 +219,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		} catch (_e) {
 			threw = true;
 		}
-		// Must error AND must NOT have released any plaintext before verification.
 		strictEqual(threw, true);
 		strictEqual(
 			emitted.reduce((n, c) => n + c.length, 0),
@@ -276,7 +256,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream(chunked), dec]);
 			for await (const _chunk of decStream) {
-				// should fail
 			}
 		} catch (e) {
 			threw = true;
@@ -301,7 +280,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream(encryptedChunks), dec]);
 			for await (const _chunk of decStream) {
-				// should fail
 			}
 		} catch (e) {
 			threw = true;
@@ -330,7 +308,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream(encryptedChunks), dec]);
 			for await (const _chunk of decStream) {
-				// should fail
 			}
 			throw new Error("Expected maxOutputSize error");
 		} catch (e) {
@@ -338,7 +315,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		}
 	});
 
-	// *** Chunked input *** //
 	test(`encryptStream should handle chunked input`, async (_t) => {
 		const chunks = ["hello, ", "world", "!"];
 
@@ -360,7 +336,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(decrypted, "hello, world!");
 	});
 
-	// *** Empty input *** //
 	test(`encryptStream should handle empty input`, async (_t) => {
 		const enc = await encryptStream({ key });
 		const encryptedChunks = [];
@@ -380,7 +355,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(decrypted, "");
 	});
 
-	// *** maxInputSize *** //
 	test(`encryptStream AES-256-GCM should enforce maxInputSize`, async (_t) => {
 		const input = "a".repeat(200);
 		const enc = await encryptStream({ key, maxInputSize: 100 });
@@ -393,8 +367,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		}
 	});
 
-	// maxInputSize counts bytes, not UTF-16 code units: "🙂🙂" is 4 code units but
-	// 8 UTF-8 bytes, so it must exceed a 4-byte limit.
 	test(`encryptStream should count string chunks in bytes for maxInputSize`, async (_t) => {
 		const enc = await encryptStream({ key, maxInputSize: 4 });
 		await rejects(pipeline([createReadableStream("🙂🙂"), enc]), (e) =>
@@ -402,7 +374,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		);
 	});
 
-	// The byte count honours the write encoding: 8 hex chars are 4 bytes.
 	nodeTest(
 		`encryptStream should count string chunks in their write encoding`,
 		async (_t) => {
@@ -432,12 +403,10 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		}
 	});
 
-	// *** generateEncryptionKey error cases *** //
 	test(`generateEncryptionKey should throw for unsupported bits`, (_t) => {
 		throws(() => generateEncryptionKey({ bits: 512 }), /Unsupported key size/);
 	});
 
-	// *** validation error cases *** //
 	test(`encryptStream should throw for invalid key length`, async (_t) => {
 		await rejects(() => encryptStream({ key: randomBytes(16) }), /32 bytes/);
 		await rejects(() => encryptStream({}), /32 bytes/);
@@ -496,7 +465,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		);
 	});
 
-	// *** within-limit paths *** //
 	test(`encryptStream maxInputSize within limit should succeed`, async (_t) => {
 		const input = "a".repeat(50);
 		const enc = await encryptStream({ key, maxInputSize: 100 });
@@ -528,9 +496,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(Buffer.concat(decryptedChunks).toString("utf8"), input);
 	});
 
-	// *** Browser implementation *** //
-	// Under the browser run `@datastream/encrypt` is the built browser bundle; the
-	// node run imports the source directly so WebCrypto paths are pinned there too.
 	const importWeb = () =>
 		variant === "browser"
 			? import("@datastream/encrypt")
@@ -543,8 +508,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		const input = "the web implementation must round-trip correctly";
 		const enc = await web.encryptStream({ key, algorithm, aad });
 		const encryptedChunks = [];
-		// Mixed byte/string chunks in, and an empty string chunk among the
-		// ciphertext bytes out: both builds accept either chunk type on both sides.
 		const encStream = join([
 			createReadableStream([
 				new TextEncoder().encode(input.slice(0, 7)),
@@ -657,7 +620,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const stream = join([createReadableStream("a".repeat(200)), enc]);
 			for await (const _chunk of stream) {
-				// should fail
 			}
 		} catch (e) {
 			threw = true;
@@ -697,7 +659,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream(encryptedChunks), dec]);
 			for await (const _chunk of decStream) {
-				// should fail
 			}
 		} catch (e) {
 			threw = true;
@@ -721,8 +682,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 
 	test(`web AES-256-CTR multi-chunk roundtrip advances counter`, async (_t) => {
 		const web = await importWeb();
-		// Many chunks larger than one AES block so blockOffset advances and the
-		// incrementCounter carry path runs.
 		const chunks = Array.from({ length: 8 }, (_, i) => "z".repeat(64) + i);
 		const enc = await web.encryptStream({ key, algorithm: "AES-256-CTR" });
 		const encryptedChunks = [];
@@ -786,7 +745,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 			encryptedChunks.push(chunk);
 		}
 		const { iv, authTag } = enc.result().value;
-		// Re-chunk so the input-size cap can trip mid-stream during transform.
 		const ciphertext = Buffer.concat(
 			encryptedChunks.map((c) => Buffer.from(c)),
 		);
@@ -806,7 +764,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream(chunked), dec]);
 			for await (const _chunk of decStream) {
-				// should fail before any plaintext
 			}
 		} catch (e) {
 			threw = true;
@@ -848,7 +805,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream(chunked), dec]);
 			for await (const _chunk of decStream) {
-				// should fail
 			}
 		} catch (e) {
 			threw = true;
@@ -912,15 +868,8 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		);
 	});
 
-	// *** AES-256-CTR counter-wrap determinism & node/web parity *** //
-	// IV whose low 64 bits are set so the per-block counter wraps across the
-	// 2^64 boundary within a few blocks. With length:64 the web build wraps only
-	// the low half while incrementCounter advances the full 128-bit IV, so
-	// (a) one-chunk vs split-chunk web ciphertext diverges past the wrap and
-	// (b) node and web ciphertext diverge. length:128 fixes both.
 	const ctrWrapIv = () => {
 		const iv = new Uint8Array(16);
-		// high 64 bits = 0, low 64 bits = 0xFFFFFFFFFFFFFFFE
 		for (let i = 8; i < 16; i++) {
 			iv[i] = 0xff;
 		}
@@ -941,7 +890,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	test(`web AES-256-CTR one-chunk == split-chunk across counter wrap`, async (_t) => {
 		const web = await importWeb();
 		const iv = ctrWrapIv();
-		// 4 blocks of data so the counter advances across the 2^64 low-half wrap.
 		const plaintext = Buffer.alloc(64, 0x41);
 		const oneChunk = await ctrEncryptChunks(web, new Uint8Array(iv), [
 			plaintext,
@@ -961,7 +909,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		const ciphertext = await ctrEncryptChunks(web, new Uint8Array(iv), [
 			plaintext,
 		]);
-		// Re-chunk the ciphertext differently from how it was produced.
 		const rechunked = [];
 		for (let i = 0; i < ciphertext.length; i += 16) {
 			rechunked.push(ciphertext.subarray(i, i + 16));
@@ -994,7 +941,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		deepStrictEqual(webCipher, nodeCipher);
 	});
 
-	// *** Web AES-256-CTR encrypt maxInputSize parity *** //
 	test(`web AES-256-CTR encrypt honors explicit maxInputSize`, async (_t) => {
 		const web = await importWeb();
 		const enc = await web.encryptStream({
@@ -1008,7 +954,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const stream = join([createReadableStream("a".repeat(200)), enc]);
 			for await (const _chunk of stream) {
-				// should fail
 			}
 		} catch (e) {
 			threw = true;
@@ -1018,8 +963,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(message.includes("maxInputSize"), true);
 	});
 
-	// Node parity: CTR has no default input limit (only AEAD modes default to
-	// 64MB), so one byte past 64MB must encrypt when maxInputSize is unset.
 	test(`web AES-256-CTR encrypt has no default maxInputSize`, async (_t) => {
 		const web = await importWeb();
 		const enc = await web.encryptStream({ key, algorithm: "AES-256-CTR" });
@@ -1034,8 +977,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(outputSize, 64 * 1024 * 1024 + 1);
 	});
 
-	// maxInputSize is a plain number: Infinity means "no limit" and fractional
-	// limits compare numerically (BigInt() throws on both).
 	test(`encryptStream accepts maxInputSize: Infinity`, async (_t) => {
 		const enc = await encryptStream({ key, maxInputSize: Infinity });
 		let outputSize = 0;
@@ -1053,7 +994,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		);
 	});
 
-	// *** resultKey honored in result() (node + web, all encrypt modes) *** //
 	const resultKeyHonored = async (mod, algorithm) => {
 		const enc = await mod.encryptStream({
 			key,
@@ -1062,7 +1002,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		});
 		const encStream = join([createReadableStream("resultKey payload"), enc]);
 		for await (const _chunk of encStream) {
-			// drain
 		}
 		const { key: resultKey, value } = enc.result();
 		strictEqual(resultKey, "cipher");
@@ -1102,7 +1041,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(enc.result().key, "encrypt");
 	});
 
-	// *** generateEncryptionKey({bits:128}) must produce a usable key *** //
 	const key128Usable = async (mod, algorithm) => {
 		const k = mod.generateEncryptionKey({ bits: 128 });
 		strictEqual(k.byteLength, 16);
@@ -1147,7 +1085,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		await key128Usable(web, "AES-128-CTR");
 	});
 
-	// *** Mutation-kill: exact validation error messages *** //
 	test(`validateKey emits exact bits/got in 256-bit message`, async (_t) => {
 		await rejects(
 			() => encryptStream({ key: randomBytes(16) }),
@@ -1163,7 +1100,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	});
 
 	test(`validateKey reports "got 0" (not undefined) for missing key`, async (_t) => {
-		// Kills `key?.length ?? 0` -> `key?.length && 0` (would yield "got undefined").
 		await rejects(
 			() => encryptStream({}),
 			/Encryption key must be 32 bytes \(256 bits\), got 0/,
@@ -1171,8 +1107,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	});
 
 	test(`validateAuthTag rejects 15-byte authTag with exact message`, async (_t) => {
-		// Kills `authTag.length !== 16` -> `false`; a non-falsy wrong-length tag
-		// must still be rejected with the validation message (not a deeper error).
 		await rejects(
 			() =>
 				decryptStream({ key, iv: randomBytes(12), authTag: randomBytes(15) }),
@@ -1180,10 +1114,7 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		);
 	});
 
-	// *** Mutation-kill: encrypt maxInputSize message + boundary *** //
 	test(`encrypt maxInputSize message reports the explicit limit`, async (_t) => {
-		// Kills `maxInputSize ?? DEFAULT` -> `maxInputSize && DEFAULT` (reportedLimit
-		// would become 67108864 instead of 100).
 		const enc = await encryptStream({ key, maxInputSize: 100 });
 		let message = "";
 		try {
@@ -1195,7 +1126,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	});
 
 	test(`encrypt maxInputSize boundary: exactly the limit succeeds`, async (_t) => {
-		// Kills `inputSize > limit` -> `inputSize >= limit` on the encrypt path.
 		const enc = await encryptStream({ key, maxInputSize: 100 });
 		await pipeline([createReadableStream("a".repeat(100)), enc]);
 		strictEqual(enc.result().value.algorithm, "AES-256-GCM");
@@ -1212,14 +1142,8 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(threw, true);
 	});
 
-	// *** Mutation-kill: encrypt default ceilings (CTR huge vs AEAD 64MB) *** //
-	// AES-CTR with no maxInputSize uses the keystream-reuse ceiling (2^68), so a
-	// >64MB stream succeeds; AEAD modes default to the 64MB DoS guard, so >64MB is
-	// rejected with the maxInputSize message. 65MB distinguishes the two ceilings.
-	// Drain without retaining ciphertext to keep peak memory bounded.
 	const drain = async (stream) => {
 		for await (const _chunk of stream) {
-			// discard
 		}
 	};
 	const big65 = () => Buffer.alloc(65 * 1024 * 1024, 0x41);
@@ -1227,8 +1151,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	nodeTest(
 		`AES-256-CTR encrypt allows >64MB with no maxInputSize`,
 		async (_t) => {
-			// Kills ctrAlgorithms mutations and `usingCtrDefaultCeiling = false`: any of
-			// those drops AES-256-CTR back to the 64MB default and would reject this.
 			const enc = await encryptStream({ key, algorithm: "AES-256-CTR" });
 			await drain(join([createReadableStream([big65()]), enc]));
 			strictEqual(enc.result().value.algorithm, "AES-256-CTR");
@@ -1238,7 +1160,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	nodeTest(
 		`AES-128-CTR encrypt allows >64MB with no maxInputSize`,
 		async (_t) => {
-			// Kills the "AES-128-CTR" element of ctrAlgorithms (empty/blanked array).
 			const k16 = randomBytes(16);
 			const enc = await encryptStream({ key: k16, algorithm: "AES-128-CTR" });
 			await drain(join([createReadableStream([big65()]), enc]));
@@ -1247,8 +1168,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	);
 
 	test(`AES-256-GCM encrypt rejects >64MB at the 64MB default`, async (_t) => {
-		// Kills `if (maxInputSize != null) -> true`, `else if (...) -> true`, removal
-		// of the DEFAULT_MAX_INPUT_SIZE assignment: each would let >64MB AEAD pass.
 		const enc = await encryptStream({ key });
 		let threw = false;
 		let message = "";
@@ -1263,7 +1182,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(message.includes("67108864"), true);
 	});
 
-	// *** Mutation-kill: AEAD decrypt maxInputSize / maxOutputSize boundaries *** //
 	const gcmCiphertext = async (input) => {
 		const enc = await encryptStream({ key });
 		const chunks = [];
@@ -1276,7 +1194,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	};
 
 	test(`AEAD decrypt maxInputSize boundary: exactly the limit succeeds`, async (_t) => {
-		// Kills `inputSize > maxInputSize` -> `>=` in aeadDecryptStream.
 		const { ciphertext, iv, authTag } = await gcmCiphertext("boundary in");
 		const dec = await decryptStream({
 			key,
@@ -1304,7 +1221,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream([ciphertext]), dec]);
 			for await (const _chunk of decStream) {
-				// should fail
 			}
 		} catch (_e) {
 			threw = true;
@@ -1313,8 +1229,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	});
 
 	test(`AEAD decrypt within maxOutputSize succeeds (no false error)`, async (_t) => {
-		// Kills `maxOutputSize != null && X` -> `|| X` and `&& true`: those would
-		// reject a plaintext that is within the configured limit.
 		const input = "exact output";
 		const { ciphertext, iv, authTag } = await gcmCiphertext(input);
 		const dec = await decryptStream({
@@ -1332,7 +1246,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	});
 
 	test(`AEAD decrypt maxOutputSize boundary: one under the limit fails`, async (_t) => {
-		// Kills `plaintext.length > maxOutputSize` -> `>=` in aeadDecryptStream.
 		const input = "exact output";
 		const { ciphertext, iv, authTag } = await gcmCiphertext(input);
 		const dec = await decryptStream({
@@ -1346,7 +1259,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream([ciphertext]), dec]);
 			for await (const _chunk of decStream) {
-				// should fail
 			}
 		} catch (e) {
 			threw = true;
@@ -1356,7 +1268,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(message.includes("maxOutputSize"), true);
 	});
 
-	// *** Mutation-kill: AES-256-CTR decrypt maxOutputSize push override *** //
 	const ctrCiphertext = async (input) => {
 		const enc = await encryptStream({ key, algorithm: "AES-256-CTR" });
 		const chunks = [];
@@ -1369,9 +1280,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	};
 
 	test(`CTR decrypt maxOutputSize over-limit fails with message`, async (_t) => {
-		// Kills `if (chunk !== null) -> false`, `if (maxOutputSize != null) -> false`,
-		// `outputSize += -> -=`, and `outputSize > maxOutputSize -> false`: each would
-		// suppress the over-limit error.
 		const { chunks, iv } = await ctrCiphertext("a".repeat(500));
 		const dec = await decryptStream({
 			key,
@@ -1398,8 +1306,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	});
 
 	test(`CTR decrypt maxOutputSize boundary: exactly the limit succeeds`, async (_t) => {
-		// Kills `outputSize > maxOutputSize` -> `>=` on the CTR decrypt path:
-		// output length equal to the limit must NOT error.
 		const input = "a".repeat(100);
 		const { chunks, iv } = await ctrCiphertext(input);
 		const dec = await decryptStream({
@@ -1416,11 +1322,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(Buffer.concat(out).toString("utf8"), input);
 	});
 
-	// *** Mutation-kill: createCipheriv options object forwards streamOptions ***
-	// The 4th argument `{ ...streamOptions, authTagLength }` is the cipher's
-	// Transform options. Replacing it with `{}` (ObjectLiteral mutant) would drop
-	// the forwarded highWaterMark, so the returned cipher stream would fall back to
-	// the default highWaterMark instead of the caller-supplied one.
 	nodeTest(
 		`encryptStream forwards streamOptions.highWaterMark to the cipher stream`,
 		async (_t) => {
@@ -1435,15 +1336,10 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	);
 
 	test(`encryptStream cipher uses the default highWaterMark when none supplied`, async (_t) => {
-		// Guards the above: the 7 above is genuinely from streamOptions, not a default.
 		const enc = await encryptStream({ key });
 		strictEqual(enc.readableHighWaterMark !== 7, true);
 	});
 
-	// *** Mutation-kill: maxOutputSize == null means NO ceiling (explicit null) ***
-	// `maxOutputSize != null && ...` must short-circuit to false when null. The
-	// `true && ...` mutant degrades to `length > null` (=> length > 0) and would
-	// wrongly reject any non-empty plaintext.
 	test(`AEAD decrypt with maxOutputSize: null imposes no output ceiling`, async (_t) => {
 		const input = "no ceiling please";
 		const { ciphertext, iv, authTag } = await gcmCiphertext(input);
@@ -1457,9 +1353,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	});
 
 	test(`CTR decrypt with maxOutputSize: null imposes no output ceiling`, async (_t) => {
-		// Kills `if (maxOutputSize != null) -> if (true)` on the CTR push override:
-		// with null and the mutant, `outputSize > null` (=> > 0) would destroy the
-		// stream on the first non-empty chunk.
 		const input = "a".repeat(500);
 		const { chunks, iv } = await ctrCiphertext(input);
 		const dec = await decryptStream({
@@ -1477,8 +1370,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 	});
 
 	test(`CTR decrypt maxOutputSize accumulates across chunks`, async (_t) => {
-		// Reinforces the `outputSize += chunk.length` accumulation (kills `-=`):
-		// many small chunks whose sum exceeds the limit must error.
 		const { chunks, iv } = await ctrCiphertext("a".repeat(64));
 		const rechunked = [];
 		const ct = Buffer.concat(chunks);
@@ -1495,7 +1386,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		try {
 			const decStream = join([createReadableStream(rechunked), dec]);
 			for await (const _chunk of decStream) {
-				// should fail once cumulative output passes 32
 			}
 		} catch (_e) {
 			threw = true;
@@ -1523,7 +1413,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		);
 	});
 
-	// *** browser build: defaults, AAD binding, messages, boundaries, counters *** //
 	const collect = async (streams) => {
 		const chunks = [];
 		for await (const chunk of join(streams)) chunks.push(chunk);
@@ -1571,7 +1460,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 				).toString(),
 				"bound",
 			);
-			// Dropping the AAD must fail authentication.
 			const bad = await web.decryptStream({ key: k, iv, authTag, algorithm });
 			await rejects(collect([createReadableStream(chunks), bad]));
 		}
@@ -1644,7 +1532,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 				collect([createReadableStream(chunks), dec7]),
 				/maxOutputSize \(7 bytes\)/,
 			);
-			// AEAD decryption buffers the ciphertext, so its input bound is exact too.
 			if (algorithm !== "AES-256-CTR") {
 				const inputBytes = chunks.reduce((n, c) => n + c.byteLength, 0);
 				const in8 = await web.decryptStream({
@@ -1677,8 +1564,8 @@ describe(`@datastream/encrypt (${variant})`, () => {
 
 	test(`web AES-256-CTR ciphertext matches node:crypto across a counter wrap`, async () => {
 		const web = await importWeb();
-		const iv = new Uint8Array(16).fill(0xff); // the very next block wraps the counter
-		const input = ["abcdefghij", "klmnopqrstuvwxyz0123", "456789"]; // 36 bytes, 3 blocks
+		const iv = new Uint8Array(16).fill(0xff);
+		const input = ["abcdefghij", "klmnopqrstuvwxyz0123", "456789"];
 		const enc = await web.encryptStream({ key, algorithm: "AES-256-CTR", iv });
 		const chunks = await collect([createReadableStream(input), enc]);
 		const cipher = createCipheriv("aes-256-ctr", key, iv);
@@ -1688,8 +1575,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		]);
 		deepStrictEqual(Buffer.concat(chunks), expected);
 	});
-	// *** Keys must be bytes: a 32-char string has length 32 but is not a raw
-	// 256-bit key (node used to accept it; the browser build never did). *** //
 	test(`encryptStream rejects a 32-character string key`, async (_t) => {
 		await rejects(async () => encryptStream({ key: "k".repeat(32) }), {
 			message: "Encryption key must be 32 bytes (256 bits), got 0",
@@ -1708,7 +1593,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		);
 	});
 
-	// *** Inherited Object.prototype names are not algorithms *** //
 	for (const algorithm of ["toString", "__proto__"]) {
 		test(`encryptStream rejects inherited name ${algorithm} as an algorithm`, async (_t) => {
 			await rejects(async () => encryptStream({ key, algorithm }), {
@@ -1724,7 +1608,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		});
 	}
 
-	// *** The limit error must not steer users to unauthenticated CTR *** //
 	for (const algorithm of ["AES-256-GCM", "AES-256-CTR", "CHACHA20-POLY1305"]) {
 		test(`${algorithm} maxInputSize error suggests raising the limit or chunking`, async (_t) => {
 			const enc = await encryptStream({ key, algorithm, maxInputSize: 2 });
@@ -1734,7 +1617,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 			});
 		});
 	}
-	// *** aad: null means "no aad", exactly like omitting it *** //
 	test(`aad: null round-trips like no aad`, async (_t) => {
 		const enc = await encryptStream({ key, aad: null });
 		const ciphertext = [];
@@ -1766,7 +1648,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		strictEqual(typeof dec, "object");
 	});
 
-	// *** Major: both builds return a Promise; validation rejects, never throws *** //
 	test(`encryptStream and decryptStream return a Promise`, async (_t) => {
 		const enc = encryptStream({ key });
 		strictEqual(enc instanceof Promise, true);
@@ -1789,7 +1670,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		});
 	});
 
-	// *** Major: named exports only *** //
 	test(`module has only named exports`, async (_t) => {
 		const mod = await import("@datastream/encrypt");
 		deepStrictEqual(Object.keys(mod).sort(), [
@@ -1799,7 +1679,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		]);
 	});
 
-	// *** Major: limit errors are RangeError *** //
 	const isRangeError = (message) => (e) =>
 		e instanceof RangeError && e.message === message;
 
@@ -1864,7 +1743,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		);
 	});
 
-	// *** Major: maxInputSize null means unlimited (undefined keeps the 64MB default) *** //
 	test(`AES-256-GCM encrypt maxInputSize: null lifts the 64MB default`, async (_t) => {
 		const enc = await encryptStream({ key, maxInputSize: null });
 		let outputSize = 0;
@@ -1876,8 +1754,6 @@ describe(`@datastream/encrypt (${variant})`, () => {
 
 	for (const algorithm of ["AES-256-GCM", "CHACHA20-POLY1305"]) {
 		test(`${algorithm} decrypt maxInputSize: null lifts the 64MB default`, async (_t) => {
-			// A wrong authTag reaches verification (not the input limit) only when
-			// the whole 65MB was buffered.
 			const dec = await decryptStream({
 				key,
 				algorithm,
@@ -1892,14 +1768,12 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		});
 	}
 
-	// *** IVs must be bytes in both builds (node used to accept a string IV) *** //
 	test(`encryptStream rejects a 12-character string IV`, async (_t) => {
 		await rejects(encryptStream({ key, iv: "i".repeat(12) }), {
 			message: "IV for AES-256-GCM must be 12 bytes, got 0",
 		});
 	});
 
-	// ArrayBuffer has the right byteLength but is not a Uint8Array.
 	test(`encryptStream rejects an ArrayBuffer key and IV`, async (_t) => {
 		await rejects(encryptStream({ key: new ArrayBuffer(32) }), {
 			message: "Encryption key must be 32 bytes (256 bits), got 32",

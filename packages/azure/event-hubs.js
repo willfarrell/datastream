@@ -47,14 +47,11 @@ export const azureEventHubsReceiveEventsStream = async (
 			},
 		};
 		const onAbort = () => handlers.processError(signal.reason);
-		// No `once`: abort fires at most once and the finally below removes it.
 		signal.addEventListener("abort", onAbort);
 		const subscription =
 			partitionId === undefined
 				? client.subscribe(handlers, subscribeOptions)
 				: client.subscribe(partitionId, handlers, subscribeOptions);
-		// No already-aborted check: the generator only starts on the first read,
-		// and an aborted streamOptions.signal has destroyed the stream by then.
 		try {
 			while (true) {
 				if (queue.length) {
@@ -81,7 +78,6 @@ export const azureEventHubsReceiveEventsStream = async (
 	return azureReadableStream(command, streamOptions);
 };
 
-// client = EventHubProducerClient; partitionKey/partitionId go to createBatch.
 export const azureEventHubsSendEventsStream = (options, streamOptions = {}) => {
 	const { client, ...batchOptions } = options;
 	return azureBatchStream(

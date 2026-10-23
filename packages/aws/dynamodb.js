@@ -16,8 +16,8 @@ import {
 	awsUnsentOnDestroy,
 } from "./client.js";
 
-// Created on first use, so importing the module (or always passing a per-call
-// client) never constructs an unused SDK client.
+const DYNAMODB_MAX_BATCH_WRITE_ITEMS = 25;
+
 let defaultClient;
 const getDefaultClient = () =>
 	(defaultClient ??= new DynamoDBClient(awsClientDefaults));
@@ -102,9 +102,6 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 			`awsDynamoDBGetItemStream Keys.length (${options.Keys.length}) exceeds BatchGetItem limit of 100`,
 		);
 	}
-	// Only KeysAndAttributes fields go in the per-table entry (on the first
-	// request and on every retry); anything else that is not a stream option
-	// (ReturnConsumedCapacity) is a request-level BatchGetItem field.
 	const {
 		client,
 		TableName,
@@ -125,7 +122,6 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 	async function* command(signal) {
 		let keys = Keys;
 		let retryCount = 0;
-		// null = retry without limit
 		const maxCount = retryMaxCount ?? Number.POSITIVE_INFINITY;
 		while (true) {
 			const response = await (client ?? getDefaultClient()).send(
@@ -146,8 +142,6 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 			}
 
 			if (retryCount >= maxCount) {
-				// Non-data fields only: Keys values may be PII and must not leak
-				// into logged error causes.
 				throw new Error("awsDynamoDBBatchGetItem has UnprocessedKeys", {
 					cause: {
 						TableName,
@@ -164,10 +158,6 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 	return awsReadableStream(command, streamOptions);
 };
 
-// BatchWriteItem takes <=25 requests. The buffer holds the caller's chunks
-// (wrapped only when sent) so a teardown can hand them back as failedMessages;
-// it is cleared before each send, so a failed request is never reported as
-// unsent.
 const dynamodbBatchWriteStream = (
 	toRequest,
 	destroyMessage,
@@ -181,7 +171,7 @@ const dynamodbBatchWriteStream = (
 		return dynamodbBatchWrite(options, requests, streamOptions);
 	};
 	const write = async (chunk) => {
-		if (batch.length === 25) {
+		if (batch.length === DYNAMODB_MAX_BATCH_WRITE_ITEMS) {
 			await send();
 		}
 		batch.push(chunk);
@@ -217,10 +207,6 @@ const dynamodbBatchWrite = async (
 	retryCount = 0,
 ) => {
 	const { client, ...writeOptions } = options;
-	// Anything that is not a stream option (ReturnConsumedCapacity,
-	// ReturnItemCollectionMetrics) is a request-level BatchWriteItem field, sent
-	// on the first request and on every retry.
-	// undefined = default (10); null = retry without limit
 	const { TableName, retryMaxCount = 10, ...requestOptions } = writeOptions;
 	const maxCount = retryMaxCount ?? Number.POSITIVE_INFINITY;
 	const { UnprocessedItems } = await (client ?? getDefaultClient()).send(

@@ -17,8 +17,6 @@ import {
 	csvRemoveMalformedRowsStream,
 } from "@datastream/csv";
 
-// -- Data generators --
-
 const generateCsvString = (rows, cols, newline = "\r\n") => {
 	const header = Array.from({ length: cols }, (_, i) => `col${i}`).join(",");
 	const dataRows = Array.from({ length: rows }, (_, r) =>
@@ -49,8 +47,6 @@ const generateRowArrays = (rows, cols) =>
 		Array.from({ length: cols }, (_, c) => `val_${r}_${c}`),
 	);
 
-// -- Benchmark config --
-
 const ROWS = 1_000_000;
 const COLS = 10;
 const OPS = 1;
@@ -60,8 +56,6 @@ const csvSimple = generateCsvString(ROWS, COLS);
 const csvQuoted = generateCsvStringQuoted(ROWS, COLS);
 const objects = generateObjectArray(ROWS, COLS);
 const arrays = generateRowArrays(ROWS, COLS);
-
-// -- Tests --
 
 suite("csvParseStream", () => {
 	bench(`${ROWS} rows, ${COLS} cols, simple`, options, async (b) => {

@@ -7,8 +7,6 @@ import {
 	streamToString,
 } from "@datastream/core";
 
-// -- Data generators --
-
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 
@@ -22,10 +20,8 @@ const generateString = (size) => {
 	return result;
 };
 
-const smallString = generateString(1_024); // 1KB
-const bigString = generateString(1_024 * 1_024); // 1MB
-
-// -- Tests --
+const smallString = generateString(1_024);
+const bigString = generateString(1_024 * 1_024);
 
 suite("base64EncodeStream", () => {
 	bench("1KB string", options, async (b) => {

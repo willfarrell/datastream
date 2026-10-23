@@ -33,7 +33,6 @@ const catchError = (input, e) => {
 	throw e;
 };
 
-// *** avroEncodeStream + avroDecodeStream round-trip *** //
 test("fuzz encode→decode round-trip with random records", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -76,7 +75,6 @@ test("fuzz encode→decode round-trip with random records", async () => {
 	);
 });
 
-// *** avroEncodeStream with arbitrary values *** //
 test("fuzz avroEncodeStream with arbitrary values", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -98,7 +96,6 @@ test("fuzz avroEncodeStream with arbitrary values", async () => {
 	);
 });
 
-// *** avroDecodeStream with random bytes *** //
 test("fuzz avroDecodeStream with random byte inputs", async () => {
 	await fc.assert(
 		fc.asyncProperty(

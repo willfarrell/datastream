@@ -59,7 +59,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		deepStrictEqual(result, {});
 	});
 
-	// *** Failed entries (data loss) *** //
 	test(`awsSNSPublishMessageStream should retry failed entries`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
@@ -120,9 +119,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		});
 	});
 
-	// SenderFault: true marks a permanent (caller-side) failure: it is set aside
-	// (never retried) while retryable failures in the same batch keep backing
-	// off, then the stream throws with every entry that did not get through.
 	test(`awsSNSPublishMessageStream retries retryable failures alongside a SenderFault entry, then throws`, async (_t) => {
 		const permanent = { Id: "1", Code: "InvalidParameter", SenderFault: true };
 		const sent = [];
@@ -156,7 +152,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 				return true;
 			},
 		);
-		// Only the retryable entry is re-sent; the SenderFault entry is not.
 		deepStrictEqual(sent, [
 			[
 				{ Id: "0", Message: "a" },
@@ -231,8 +226,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 
 		client.on(PublishBatchCommand).resolves({ Successful: [], Failed: [] });
 
-		// 5 messages of ~100KB each => 500KB total, well under count of 10
-		// but over the 256KB byte limit, forcing multiple flushes.
 		const body = "x".repeat(100 * 1024);
 		const input = Array.from({ length: 5 }, (_v, i) => ({
 			Id: `${i}`,
@@ -282,14 +275,11 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		];
 		const consuming = pipeline(stream);
 
-		// Let the first send + partial-failure path schedule the backoff timer.
 		await new Promise((resolve) => setImmediate(resolve));
-		// At 1ms the retry must NOT have fired (old behavior was 3**0 == 1ms).
 		t.mock.timers.tick(1);
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 1);
 
-		// Advancing to the 50ms floor lets the retry proceed.
 		t.mock.timers.tick(49);
 		await consuming;
 		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 2);
@@ -300,9 +290,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		awsSNSSetClient(client);
 		client.on(PublishBatchCommand).resolves({ Successful: [], Failed: [] });
 
-		// A single message whose serialized size already exceeds the 256KB batch
-		// limit must be rejected with a descriptive error instead of being sent and
-		// having SNS reject the whole batch.
 		const tooBig = "x".repeat(256 * 1024 + 1);
 		const input = [{ Id: "0", Message: tooBig }];
 		const options = {
@@ -317,7 +304,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 			name: "RangeError",
 			message: "awsSNSPublishBatch entry exceeds 256KiB limit",
 		});
-		// The oversize entry must NOT have been sent to SNS.
 		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 0);
 	});
 
@@ -341,7 +327,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		deepStrictEqual(options, optionsCopy);
 	});
 
-	// *** Error cause carries the Failed subset *** //
 	test(`awsSNSPublishMessageStream error cause is the Failed entries array`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
@@ -365,7 +350,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		);
 	});
 
-	// *** Oversize entry: error cause shape and chunk?.Id *** //
 	test(`awsSNSPublishMessageStream oversize error cause carries Id, bytes and limit`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
@@ -396,7 +380,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		);
 	});
 
-	// *** Per-entry boundary: exactly 256KiB is allowed (strict `>`) *** //
 	test(`awsSNSPublishMessageStream allows an entry whose message size is exactly 256KiB`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
@@ -409,17 +392,14 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 			awsSNSPublishMessageStream({ TopicArn: "t" }),
 		]);
 
-		// Exactly at the limit is allowed (strict `>`), so it is sent.
 		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 1);
 	});
 
-	// *** Count cap split at exactly 10 entries *** //
 	test(`awsSNSPublishMessageStream flushes at exactly 10 entries`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
 		client.on(PublishBatchCommand).resolves({ Successful: [], Failed: [] });
 
-		// 11 tiny entries: the count cap (10) forces a flush of 10, then 1.
 		const input = Array.from({ length: 11 }, (_v, i) => ({
 			Id: `${i}`,
 			Message: "x",
@@ -441,7 +421,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		);
 	});
 
-	// *** retryMaxCount is an inclusive ceiling on the number of retries *** //
 	test(`awsSNSPublishMessageStream retries exactly retryMaxCount times then throws`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
@@ -458,7 +437,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 				]),
 			{ message: "awsSNSPublishBatch has failed entries" },
 		);
-		// initial attempt + 2 retries == 3 calls (kills `>=`->`>` and `++`->`--`).
 		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 3);
 	});
 
@@ -481,8 +459,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 2);
 	});
 
-	// *** batch byte-cap is exclusive: two entries summing to exactly 256KiB stay
-	// together in a single batch (strict `>`) *** //
 	test(`awsSNSPublishMessageStream keeps two entries summing to exactly 256KiB in one batch`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
@@ -497,8 +473,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 			awsSNSPublishMessageStream({ TopicArn: "t" }),
 		]);
 
-		// Sum is exactly at the cap: `> cap` is false, both go in ONE batch. A
-		// `>= cap` mutant would split them.
 		const calls = client.commandCalls(PublishBatchCommand);
 		deepStrictEqual(calls.length, 1);
 		deepStrictEqual(
@@ -507,7 +481,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		);
 	});
 
-	// *** setClient swaps the active client *** //
 	test(`awsSNSSetClient routes subsequent sends to the new client`, async (_t) => {
 		const first = mockClient(SNSClient);
 		awsSNSSetClient(first);
@@ -547,8 +520,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		deepStrictEqual(calls, 1);
 	});
 
-	// A per-call `client` option must route that call's sends to it (not the
-	// module client) and must not be forwarded into the command input.
 	test(`awsSNSPublishMessageStream uses the per-call client option and does not forward it`, async (_t) => {
 		awsSNSSetClient({
 			send: async () => {
@@ -576,7 +547,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		]);
 	});
 
-	// *** AbortSignal forwarding *** //
 	test(`awsSNSPublishMessageStream forwards abortSignal to client.send`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
@@ -595,15 +565,11 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
 	});
 
-	// *** Backoff honours the abort signal: aborting mid-backoff rejects instead
-	// of completing the delay and retrying (kills the backoff timeout-options
-	// ObjectLiteral mutant that would drop `signal`). *** //
 	test(`awsSNSPublishMessageStream aborts a pending retry backoff via signal`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
 
-		// Persistent partial failure so the stream stays in the retry/backoff loop.
 		let sends = 0;
 		client.on(PublishBatchCommand).callsFake(() => {
 			sends++;
@@ -622,8 +588,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 			),
 		]);
 
-		// Let the first send + partial-failure path schedule the backoff timer, then
-		// abort while it is pending.
 		await new Promise((resolve) => setImmediate(resolve));
 		controller.abort();
 
@@ -631,24 +595,15 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 			return error.cause?.code === "AbortError" || /Abort/i.test(error.message);
 		});
 
-		// The backoff timeout was given `{ signal }`, so the abort rejects the pending
-		// backoff immediately and NO retry PublishBatch is issued. A `{}` mutant
-		// (dropping the signal) leaves the backoff timer pending, so advancing the
-		// mocked clock past it wakes it and retries -> more than one send.
 		t.mock.timers.tick(60_000);
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(sends, 1);
 	});
 
-	// Named exports are canonical; a default export must not come back.
 	test(`sns has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
 	});
 
-	// --- buffered entries on destroy / abort ---
-	// final() never runs on destroy() or an abort, so entries still buffered
-	// below the batch limit are handed to the teardown error as failedMessages
-	// (the kafkaProduceStream contract) and nothing is sent.
 	const writeEach = async (stream, chunks) => {
 		for (const chunk of chunks) {
 			await new Promise((resolve, reject) =>
@@ -656,7 +611,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 			);
 		}
 	};
-	// Resolves stream.errored once closed (null when no error was raised).
 	const destroyedWith = async (stream, error) => {
 		const closed = new Promise((resolve) => stream.once("close", resolve));
 		stream.once("error", () => {});
@@ -754,8 +708,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 0);
 	});
 
-	// An oversize entry fails the write; the entries buffered before it were
-	// never sent, so they ride on that error.
 	test(`awsSNSPublishMessageStream attaches buffered entries to an oversize error`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
@@ -779,9 +731,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 0);
 	});
 
-	// --- message size: what SNS counts ---
-	// SNS counts the UTF-8 bytes of the body plus each message attribute's
-	// name, data type and value; Id and JSON escaping do not count.
 	const sizeOf = async (chunks) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
@@ -798,7 +747,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 	};
 
 	test(`awsSNSPublishMessageStream does not count JSON escaping toward the limit`, async (_t) => {
-		// 200KiB of quotes is 200KiB of UTF-8, though JSON.stringify doubles it.
 		deepStrictEqual(
 			await sizeOf([{ Id: "0", Message: '"'.repeat(200 * 1024) }]),
 			[["0"]],
@@ -832,7 +780,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 	});
 
 	test(`awsSNSPublishMessageStream counts attribute names, types and string values`, async (_t) => {
-		// "k" + "String" + "v" = 8 bytes.
 		const MessageAttributes = { k: { DataType: "String", StringValue: "v" } };
 		deepStrictEqual(
 			await sizeOf([
@@ -860,7 +807,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 	});
 
 	test(`awsSNSPublishMessageStream counts binary attribute values`, async (_t) => {
-		// "k" + "Binary" + 3 bytes = 10 bytes.
 		const MessageAttributes = {
 			k: { DataType: "Binary", BinaryValue: new Uint8Array(3) },
 		};
@@ -884,7 +830,6 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 	});
 
 	test(`awsSNSPublishMessageStream counts an attribute without a value by name and type`, async (_t) => {
-		// "kk" + "Number" = 8 bytes; no StringValue / BinaryValue.
 		const MessageAttributes = { kk: { DataType: "Number" } };
 		await rejects(
 			() =>

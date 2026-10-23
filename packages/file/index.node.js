@@ -21,8 +21,7 @@ import {
 import { enforceType } from "./shared.js";
 
 // fs streams are byte streams: datastream's objectMode/chunkSize options make
-// fs throw uncatchably on string chunks, so strip only those and forward the
-// rest (flags, encoding, start, mode, ...) untouched.
+// fs throw uncatchably on string chunks.
 const fsOptions = ({
 	objectMode,
 	readableObjectMode,
@@ -43,7 +42,6 @@ export const fileReadStream = async (
 		try {
 			return createReadStream(null, { ...fsOptions(streamOptions), fd });
 		} catch (e) {
-			// Don't leak the descriptor when the stream never took ownership of it.
 			closeSync(fd);
 			throw e;
 		}
@@ -62,7 +60,6 @@ export const fileWriteStream = async (
 		// they are applied to the O_NOFOLLOW open here instead.
 		const { flags, mode, ...options } = fsOptions(streamOptions);
 		const append = flags?.includes("a");
-		// "r+"/"rs+" update an existing file in place: no create, no truncate.
 		const update = flags?.startsWith("r");
 		const fd = openSync(
 			path,
@@ -75,12 +72,9 @@ export const fileWriteStream = async (
 		);
 		try {
 			const stream = createWriteStream(null, { ...options, fd });
-			// Truncate only once the stream exists (rather than O_TRUNC on open) so
-			// an invalid-options throw above leaves the existing file intact.
 			if (!append && !update) ftruncateSync(fd);
 			return stream;
 		} catch (e) {
-			// Don't leak the descriptor when the stream never took ownership of it.
 			closeSync(fd);
 			throw e;
 		}
@@ -88,7 +82,6 @@ export const fileWriteStream = async (
 	return createWriteStream(path, fsOptions(streamOptions));
 };
 
-// `..cache` is a valid name inside basePath; only a whole `..` segment escapes.
 // isAbsolute covers Windows, where relative() across drives is absolute.
 const escapes = (rel) =>
 	rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
@@ -113,11 +106,6 @@ const enforcePath = (path, basePath) => {
 		if (stat?.isSymbolicLink()) {
 			throw new Error("Symbolic links are not allowed");
 		}
-		// The checks above are lexical and only look at the final component, so a
-		// symlinked directory (basePath/link -> /elsewhere) would still escape.
-		// Compare the real parent directory against the real basePath.
-		// Limit: a local attacker swapping a parent directory between this check
-		// and the open (TOCTOU) is out of scope; O_NOFOLLOW only guards the leaf.
 		let realRel;
 		try {
 			realRel = relative(

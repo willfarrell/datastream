@@ -71,7 +71,6 @@ test("fuzz stringCountStream w/ substr", async () => {
 	);
 });
 
-// *** stringSkipConsecutiveDuplicatesStream *** //
 test("fuzz stringSkipConsecutiveDuplicatesStream w/ input", async () => {
 	await fc.assert(
 		fc.asyncProperty(fc.array(fc.string()), async (input) => {
@@ -109,7 +108,6 @@ test("fuzz stringReplaceStream w/ pattern and replacement", async () => {
 					];
 					const stream = pipejoin(streams);
 					const output = await streamToArray(stream);
-					// a string match always fits the held-back window
 					strictEqual(
 						output.join(""),
 						input.join("").replaceAll(pattern, replacement),
@@ -154,7 +152,6 @@ test("fuzz stringSplitStream w/ separator", async () => {
 	);
 });
 
-// *** stringMinimumFirstChunkSizeStream *** //
 test("fuzz stringMinimumFirstChunkSizeStream w/ chunkSize", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -181,7 +178,6 @@ test("fuzz stringMinimumFirstChunkSizeStream w/ chunkSize", async () => {
 	);
 });
 
-// *** stringMinimumChunkSizeStream *** //
 test("fuzz stringMinimumChunkSizeStream w/ chunkSize", async () => {
 	await fc.assert(
 		fc.asyncProperty(

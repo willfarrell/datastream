@@ -3,7 +3,6 @@
 import { createWritableStream, timeout } from "@datastream/core";
 import { azureBatchStream, azureReadableStream } from "./client.js";
 
-// client = ServiceBusReceiver (peekLock or receiveAndDelete)
 export const azureServiceBusReceiveMessagesStream = async (
 	options,
 	streamOptions = {},
@@ -34,7 +33,6 @@ export const azureServiceBusReceiveMessagesStream = async (
 	return azureReadableStream(command, streamOptions);
 };
 
-// client = ServiceBusSender
 export const azureServiceBusSendMessagesStream = (
 	options,
 	streamOptions = {},
@@ -59,7 +57,6 @@ export const azureServiceBusSendMessagesStream = (
 	);
 };
 
-// client = ServiceBusReceiver (peekLock); chunk = a received message
 export const azureServiceBusCompleteMessageStream = (
 	options,
 	streamOptions = {},
@@ -69,8 +66,6 @@ export const azureServiceBusCompleteMessageStream = (
 	return createWritableStream(write, streamOptions);
 };
 
-// client = ServiceBusReceiver (peekLock); chunk = a received message. Releases
-// the lock so the message is redelivered (its delivery count increments).
 export const azureServiceBusAbandonMessageStream = (
 	options,
 	streamOptions = {},
@@ -80,9 +75,6 @@ export const azureServiceBusAbandonMessageStream = (
 	return createWritableStream(write, streamOptions);
 };
 
-// client = ServiceBusReceiver (peekLock); chunk = a received message.
-// deadLetterReason / deadLetterErrorDescription (and any other properties to
-// modify) are passed through to deadLetterMessage.
 export const azureServiceBusDeadLetterMessageStream = (
 	options,
 	streamOptions = {},

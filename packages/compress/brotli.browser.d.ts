@@ -1,7 +1,5 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-// Web build types (no @types/node). The option types are shared with
-// brotli.d.ts so both builds accept the same options.
 import type {
 	DatastreamTransform,
 	StreamOptions,

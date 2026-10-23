@@ -54,10 +54,6 @@ const validate = (message) => {
 	}
 };
 
-// ---------------------------------------------------------------------------
-// fuzz: gcpPubSubPublishStream message shapes
-// ---------------------------------------------------------------------------
-
 test("fuzz gcpPubSubPublishStream w/ random message shapes", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -99,7 +95,6 @@ test("fuzz gcpPubSubPublishStream w/ random message shapes", async () => {
 						createReadableStream(chunks),
 						gcpPubSubPublishStream({ topic }),
 					]);
-					// Every chunk published, string data as its UTF-8 bytes.
 					strictEqual(published.length, chunks.length);
 					for (let i = 0; i < chunks.length; i++) {
 						const { data } = chunks[i];
@@ -118,14 +113,6 @@ test("fuzz gcpPubSubPublishStream w/ random message shapes", async () => {
 	);
 });
 
-// ---------------------------------------------------------------------------
-// fuzz: gcpPubSubPublishStream in-flight accounting
-// ---------------------------------------------------------------------------
-
-// Under random publish delays / failures and a random destroy or abort, every
-// written message is exactly one of: confirmed, in err.failedMessages, or
-// rejected by the stream before it was published. A failed publish is never
-// lost: it is always reported in failedMessages.
 test("fuzz gcpPubSubPublishStream w/ random delays, failures and destroys", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -201,7 +188,6 @@ test("fuzz gcpPubSubPublishStream w/ random delays, failures and destroys", asyn
 				const failedMessages = error?.failedMessages ?? [];
 				const reported = new Set(failedMessages);
 				const isPublished = new Set(published);
-				// No duplicates, in write order, only published messages.
 				strictEqual(reported.size, failedMessages.length);
 				deepStrictEqual(
 					failedMessages,
@@ -210,9 +196,7 @@ test("fuzz gcpPubSubPublishStream w/ random delays, failures and destroys", asyn
 				for (const chunk of failedMessages) {
 					strictEqual(isPublished.has(chunk), true);
 				}
-				// Never silently lost.
 				for (const chunk of failed) strictEqual(reported.has(chunk), true);
-				// Published at most once each.
 				strictEqual(isPublished.size, published.length);
 				const confirmedOnly = [...confirmed].filter((c) => !reported.has(c));
 				const rejected = written.filter((chunk) => !isPublished.has(chunk));
@@ -228,10 +212,6 @@ test("fuzz gcpPubSubPublishStream w/ random delays, failures and destroys", asyn
 		{ numRuns: 500, verbose: 2, timeout: 2_000 },
 	);
 });
-
-// ---------------------------------------------------------------------------
-// fuzz: gcpPubSubSubscribeStream event sequences
-// ---------------------------------------------------------------------------
 
 class FakeSubscription extends EventEmitter {
 	isOpen = false;
@@ -251,9 +231,6 @@ class FakeSubscription extends EventEmitter {
 	}
 }
 
-// Whatever the SDK emits and however the stream is torn down, nothing
-// throws, every message is delivered at most once and never both acked and
-// nacked, nothing is acked after an abort, and every listener is removed.
 test("fuzz gcpPubSubSubscribeStream w/ random event sequences", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -307,7 +284,6 @@ test("fuzz gcpPubSubSubscribeStream w/ random event sequences", async () => {
 				for (const event of events) {
 					if (event === "message") subscription.emit("message", message(id++));
 					if (event === "tick") await tick();
-					// The SDK only emits while open, never unhandled.
 					if (event === "error" && subscription.listenerCount("error")) {
 						subscription.emit("error", new Error("stream failed"));
 					}

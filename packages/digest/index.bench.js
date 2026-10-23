@@ -2,8 +2,6 @@ import { bench, suite } from "node:bench";
 import { createReadableStream, pipeline } from "@datastream/core";
 import { digestStream } from "@datastream/digest";
 
-// -- Data generators --
-
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 
@@ -17,9 +15,7 @@ const generateString = (size) => {
 	return result;
 };
 
-const bigString = generateString(1_024 * 1_024); // 1MB
-
-// -- Tests --
+const bigString = generateString(1_024 * 1_024);
 
 suite("digestStream SHA256", () => {
 	bench("1MB string", options, async (b) => {

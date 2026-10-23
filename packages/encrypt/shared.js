@@ -1,8 +1,7 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-// Shared by the node and browser builds so both validate identically.
 
-export const DEFAULT_MAX_INPUT_SIZE = 64 * 1024 * 1024; // 64MB
+export const DEFAULT_MAX_INPUT_SIZE = 64 * 1024 * 1024;
 
 const algorithms = {
 	"AES-128-GCM": { ivSize: 12, keySize: 16 },
@@ -19,15 +18,12 @@ export const authAlgorithms = [
 ];
 
 export const getAlgorithm = (algorithm) => {
-	// hasOwn: inherited names like "toString" must not resolve to a config.
 	if (!Object.hasOwn(algorithms, algorithm)) {
 		throw new Error(`Unsupported algorithm: ${algorithm}`);
 	}
 	return algorithms[algorithm];
 };
 
-// Keys must be bytes (Buffer is a Uint8Array). Checking only `.length` let a
-// 32-character string through as a raw key.
 export const validateKey = (key, keySize) => {
 	if (!(key instanceof Uint8Array) || key.byteLength !== keySize) {
 		throw new Error(
@@ -54,12 +50,9 @@ export const validateAuthTag = (authTag, algorithm) => {
 
 export const validateAad = (aad, algorithm) => {
 	if ((aad ?? null) === null) return;
-	// Buffer is a Uint8Array; ArrayBuffer is not accepted by either build.
 	if (!(aad instanceof Uint8Array)) {
 		throw new Error("aad must be a Uint8Array");
 	}
-	// AAD only has meaning for authenticated modes. Silently dropping it for
-	// AES-*-CTR would give the caller a false sense of integrity binding.
 	if (!authAlgorithms.includes(algorithm)) {
 		throw new Error(
 			`aad is not supported for ${algorithm} (not authenticated)`,
@@ -67,7 +60,6 @@ export const validateAad = (aad, algorithm) => {
 	}
 };
 
-// undefined → the documented 64MB default; null → unlimited.
 export const bufferedInputLimit = (maxInputSize = DEFAULT_MAX_INPUT_SIZE) =>
 	maxInputSize ?? Number.POSITIVE_INFINITY;
 
@@ -80,9 +72,6 @@ export const decryptInputError = (max) =>
 export const decryptOutputError = (max) =>
 	new RangeError(`Decryption output exceeds maxOutputSize (${max} bytes)`);
 
-// Running byte counter that throws `error(max)` once the total passes max.
-// Plain numbers (exact to 2^53 bytes) so Infinity and fractional limits work;
-// BigInt() throws on both.
 export const byteLimit = (max, error) => {
 	let size = 0;
 	return (byteLength) => {

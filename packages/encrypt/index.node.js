@@ -39,16 +39,9 @@ export const encryptStream = async (
 		...streamOptions,
 		authTagLength: aead ? 16 : undefined,
 	});
-	// validateAad already rejected aad for the non-AEAD modes.
 	if ((aad ?? null) !== null) {
 		stream.setAAD(aad);
 	}
-	// Input-size guard:
-	//  - AEAD modes default to 64MB (DoS guard; the browser build buffers the
-	//    whole message, so parity is important). null lifts it.
-	//  - AES-*-CTR streams without buffering, so there is no default: only an
-	//    explicit maxInputSize is enforced. OpenSSL wraps its 128-bit counter at
-	//    2^128 blocks, far beyond any practical workload.
 	const guard = byteLimit(
 		aead
 			? bufferedInputLimit(maxInputSize)
@@ -81,8 +74,7 @@ export const encryptStream = async (
 // final() verifies the auth tag. Node's Decipher is a streaming Transform that
 // emits decrypted plaintext incrementally and checks the tag only at final();
 // using it directly would release UNAUTHENTICATED plaintext to downstream
-// consumers before the tag is ever verified. Buffering-then-verifying matches
-// the browser implementation's authenticated-before-release guarantee.
+// consumers before the tag is ever verified.
 const aeadDecryptStream = (
 	{ algorithm, key, iv, authTag, aad, maxInputSize, maxOutputSize },
 	streamOptions,
@@ -96,8 +88,6 @@ const aeadDecryptStream = (
 	if ((aad ?? null) !== null) {
 		decipher.setAAD(aad);
 	}
-	// Bound memory before buffering/verification: we must buffer the whole
-	// ciphertext to verify the tag before releasing plaintext, so cap input.
 	const guard = byteLimit(bufferedInputLimit(maxInputSize), decryptInputError);
 	const chunks = [];
 	const transform = (chunk) => {
@@ -144,11 +134,7 @@ export const decryptStream = async (
 			streamOptions,
 		);
 	}
-	// AES-*-CTR: unauthenticated, safe to stream incrementally.
 	const stream = createDecipheriv(algorithm, key, iv, streamOptions);
-	// Only intercept push when an output ceiling is configured; with no ceiling
-	// the decipher is returned untouched (no per-chunk accounting overhead and no
-	// override to leak).
 	if ((maxOutputSize ?? null) !== null) {
 		const guard = byteLimit(maxOutputSize, decryptOutputError);
 		const originalPush = stream.push.bind(stream);
@@ -158,9 +144,6 @@ export const decryptStream = async (
 			try {
 				guard(chunk.length);
 			} catch (error) {
-				// Tear the stream down with the limit error and withhold this chunk.
-				// The push() return value is irrelevant here: a destroyed stream emits
-				// nothing further.
 				stream.destroy(error);
 				return;
 			}

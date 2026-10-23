@@ -4,8 +4,6 @@ import { streamToArray } from "@datastream/core";
 import { gcpReadableStream } from "./client.js";
 
 describe("gcp client helpers", () => {
-	// destroy() after a natural end must not abort the signal the command saw:
-	// it may be shared with (or forwarded to) work that outlives the stream.
 	test(`gcpReadableStream does not abort the command signal after a natural end`, async () => {
 		let seen;
 		const stream = gcpReadableStream(async function* (signal) {

@@ -50,8 +50,6 @@ export const gcpStorageWriteStream = (options, streamOptions = {}) => {
 		...streamOptions,
 		abort: () => upload.destroy(),
 	});
-	// Errors the SDK raises on its own (e.g. creating the resumable session)
-	// while the wrapper is idle.
 	upload.on("error", (error) => stream.destroy(error));
 	return stream;
 };

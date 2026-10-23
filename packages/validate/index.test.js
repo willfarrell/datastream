@@ -13,7 +13,6 @@ import { variant } from "../variant.js";
 const ajv = new Ajv();
 
 describe(`@datastream/validate (${variant})`, () => {
-	// *** validateStream *** //
 	test(`validateStream should validate using json schema`, async (_t) => {
 		const input = [{ a: "1" }, { a: "2" }, { a: "3" }];
 		const schema = {
@@ -266,10 +265,8 @@ describe(`@datastream/validate (${variant})`, () => {
 		const streams = [createReadableStream(input), validateStream({ schema })];
 		const result = await pipeline(streams);
 
-		// Should have error with instancePath set (nested/value)
 		deepStrictEqual(typeof result.validate, "object");
 		strictEqual(Object.keys(result.validate).length >= 1, true);
-		// Check that instancePath was used (keys contains "nested/value")
 		const errorKey = Object.keys(result.validate)[0];
 		strictEqual(result.validate[errorKey].keys.includes("nested/value"), true);
 	});
@@ -288,13 +285,10 @@ describe(`@datastream/validate (${variant})`, () => {
 		const streams = [createReadableStream(input), validateStream({ schema })];
 		const result = await pipeline(streams);
 
-		// Should have multiple error types
 		strictEqual(Object.keys(result.validate).length >= 1, true);
 	});
 
 	test(`validateStream should handle error without message property`, async (_t) => {
-		// This tests the `error.message || ""` branch
-		// We need a schema that produces an error with empty/no message
 		const input = [{ a: 1 }];
 		const schema = {
 			type: "object",
@@ -306,7 +300,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		const streams = [createReadableStream(input), validateStream({ schema })];
 		const result = await pipeline(streams);
 
-		// Should have maximum error
 		strictEqual(Object.keys(result.validate).length >= 1, true);
 	});
 
@@ -342,7 +335,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		const result = await pipeline(streams);
 
 		strictEqual(Object.keys(result.validate).length >= 1, true);
-		// The error should have keys populated
 		strictEqual(
 			result.validate[Object.keys(result.validate)[0]].keys.length >= 1,
 			true,
@@ -357,7 +349,6 @@ describe(`@datastream/validate (${variant})`, () => {
 
 		ok(Object.keys(result.validate).length > 0);
 		const errorKey = Object.keys(result.validate)[0];
-		// root-level errors produce an empty makeKeys result; empty keys are filtered out
 		deepStrictEqual(result.validate[errorKey].keys, []);
 	});
 
@@ -415,7 +406,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		strictEqual(result.validate[errorKey].message, "");
 	});
 
-	// *** maxErrorRows *** //
 	test(`validateStream should cap error indices with maxErrorRows`, async (_t) => {
 		const input = Array.from({ length: 100 }, (_, i) => ({ a: `bad${i}` }));
 		const schema = {
@@ -435,9 +425,7 @@ describe(`@datastream/validate (${variant})`, () => {
 		ok(result.validate[errorKey].idx.length <= 10);
 	});
 
-	// *** maxErrorKeys *** //
 	test(`validateStream should cap distinct error ids with maxErrorKeys`, async (_t) => {
-		// Feed 500 rows, each with a unique extra property name → would produce 500 distinct ids
 		const schema = {
 			type: "object",
 			additionalProperties: false,
@@ -453,12 +441,10 @@ describe(`@datastream/validate (${variant})`, () => {
 		];
 		const result = await pipeline(streams);
 
-		// Should never exceed maxErrorKeys distinct entries
 		ok(Object.keys(result.validate).length <= 50);
 	});
 
 	test(`validateStream should default maxErrorKeys to 1000`, async (_t) => {
-		// 1500 rows each with a unique extra property → default cap of 1000 should kick in
 		const schema = {
 			type: "object",
 			additionalProperties: false,
@@ -474,26 +460,22 @@ describe(`@datastream/validate (${variant})`, () => {
 		ok(Object.keys(result.validate).length <= 1000);
 	});
 
-	// *** allowCoerceTypes:false with non-cloneable chunks *** //
 	test(`validateStream should not throw when allowCoerceTypes:false and chunk contains non-cloneable value`, async (_t) => {
 		const schema = {
 			type: "object",
 			properties: { a: { type: "number" } },
 			required: ["a"],
 		};
-		// Chunk with a function (not structuredClone-able)
 		const input = [{ a: 1, fn: () => {} }];
 
 		const streams = [
 			createReadableStream(input),
 			validateStream({ schema, allowCoerceTypes: false }),
 		];
-		// Should not throw — should fall back to original chunk
 		const result = await pipeline(streams);
 		ok(result, "pipeline should complete without error");
 	});
 
-	// *** root-level errors: no trailing-slash id, no empty-string key *** //
 	test(`validateStream root-level error should not have trailing-slash id or empty-string key`, async (_t) => {
 		const schema = { type: "object" };
 		const input = ["not-an-object"];
@@ -502,9 +484,7 @@ describe(`@datastream/validate (${variant})`, () => {
 
 		ok(Object.keys(result.validate).length > 0);
 		for (const [id, entry] of Object.entries(result.validate)) {
-			// id must not end with '/'
 			strictEqual(id.endsWith("/"), false, `id '${id}' must not end with '/'`);
-			// keys must not include ''
 			strictEqual(
 				entry.keys.includes(""),
 				false,
@@ -513,9 +493,7 @@ describe(`@datastream/validate (${variant})`, () => {
 		}
 	});
 
-	// *** default path should not mutate caller's input *** //
 	test(`validateStream should emit a clone so caller input is not mutated`, async (_t) => {
-		// coerceTypes:true would mutate {a:'1'} → {a:1} on the original object
 		const original = { a: "1" };
 		const input = [original];
 		const schema = {
@@ -527,9 +505,7 @@ describe(`@datastream/validate (${variant})`, () => {
 		const streams = [createReadableStream(input), validateStream({ schema })];
 		const output = await streamToArray(pipejoin(streams));
 
-		// The emitted chunk should be coerced
 		strictEqual(output[0].a, 1);
-		// But the original reference must NOT be mutated
 		strictEqual(
 			original.a,
 			"1",
@@ -537,7 +513,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		);
 	});
 
-	// *** no-schema branded error *** //
 	test(`validateStream should throw a branded error when schema is missing`, (_t) => {
 		try {
 			validateStream({});
@@ -551,13 +526,11 @@ describe(`@datastream/validate (${variant})`, () => {
 		}
 	});
 
-	// *** Major-version API *** //
 	test(`exports no default`, async (_t) => {
 		const mod = await import("@datastream/validate");
 		strictEqual(mod.default, undefined);
 	});
 
-	// Limits: undefined -> default (1000), null -> unlimited.
 	const numberSchema = {
 		type: "object",
 		properties: { a: { type: "number" } },
@@ -599,16 +572,13 @@ describe(`@datastream/validate (${variant})`, () => {
 		strictEqual(Object.keys(result.validate).length, 1001);
 	});
 
-	// *** transpileSchema strict:true mode *** //
 	test(`transpileSchema should use strict:true by default and reject schemas with unknown keywords`, (_t) => {
-		// In strict mode, AJV throws on unknown keywords in schemas
 		let threw = false;
 		try {
 			transpileSchema({ type: "object", unknownKeyword: true });
 		} catch {
 			threw = true;
 		}
-		// strict:false would silently accept unknown keywords; strict:true throws
 		strictEqual(
 			threw,
 			true,
@@ -616,9 +586,7 @@ describe(`@datastream/validate (${variant})`, () => {
 		);
 	});
 
-	// *** transpileSchema useDefaults:"empty" *** //
 	test(`transpileSchema should apply default values for empty strings (useDefaults:"empty")`, async (_t) => {
-		// useDefaults:"empty" fills defaults even when value is an empty string
 		const schema = {
 			type: "object",
 			properties: {
@@ -628,11 +596,9 @@ describe(`@datastream/validate (${variant})`, () => {
 		const input = [{ name: "" }];
 		const streams = [createReadableStream(input), validateStream({ schema })];
 		const output = await streamToArray(pipejoin(streams));
-		// useDefaults:"empty" should replace empty string with the default
 		deepStrictEqual(output[0].name, "fallback");
 	});
 
-	// *** catch block fallback: non-cloneable in allowCoerceTypes:false path *** //
 	test(`validateStream allowCoerceTypes:false with non-cloneable chunk emits original chunk`, async (_t) => {
 		const schema = {
 			type: "object",
@@ -645,7 +611,6 @@ describe(`@datastream/validate (${variant})`, () => {
 			validateStream({ schema, allowCoerceTypes: false }),
 		];
 		const output = await streamToArray(pipejoin(streams));
-		// Should emit the original object reference (the chunk itself, not a clone)
 		strictEqual(
 			output[0],
 			original,
@@ -654,7 +619,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		strictEqual(output[0].a, "hello");
 	});
 
-	// *** catch block fallback: non-cloneable in default (coerce) path *** //
 	test(`validateStream default coerce path with non-cloneable chunk still emits chunk`, async (_t) => {
 		const schema = {
 			type: "object",
@@ -664,13 +628,10 @@ describe(`@datastream/validate (${variant})`, () => {
 		const input = [original];
 		const streams = [createReadableStream(input), validateStream({ schema })];
 		const output = await streamToArray(pipejoin(streams));
-		// Should emit something (the original chunk when clone fails)
 		strictEqual(output[0].a, "hello");
 	});
 
-	// *** if (!value[id]) guard: same error should accumulate idx, not reset *** //
 	test(`validateStream should accumulate idx for repeated same-key errors`, async (_t) => {
-		// Multiple rows with same type error → same id → idx should accumulate
 		const input = [{ a: "bad" }, { a: "bad" }, { a: "bad" }];
 		const schema = {
 			type: "object",
@@ -679,11 +640,9 @@ describe(`@datastream/validate (${variant})`, () => {
 		const streams = [createReadableStream(input), validateStream({ schema })];
 		const result = await pipeline(streams);
 		const errorKey = Object.keys(result.validate)[0];
-		// All three rows should appear in idx
 		deepStrictEqual(result.validate[errorKey].idx, [0, 1, 2]);
 	});
 
-	// *** if (chunkValid || onErrorEnqueue): invalid items NOT enqueued by default *** //
 	test(`validateStream should not enqueue invalid items when onErrorEnqueue is not set`, async (_t) => {
 		const input = [
 			{ a: "valid_number_string" },
@@ -696,12 +655,9 @@ describe(`@datastream/validate (${variant})`, () => {
 		const streams = [createReadableStream(input), validateStream({ schema })];
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
-		// Only valid (coerced) items should be emitted — "definitely-not-a-number" can't coerce
-		// "valid_number_string" also can't coerce; both invalid → output empty
 		deepStrictEqual(output.length, 0);
 	});
 
-	// *** errorMessage keyword: branch must populate keys from sub-errors *** //
 	test(`validateStream errorMessage should collect keys from sub-errors`, async (_t) => {
 		const schema = {
 			type: "object",
@@ -722,7 +678,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		ok(Object.keys(result.validate).length > 0);
 		const errorEntry = result.validate["#/errorMessage"];
 		ok(errorEntry, "errorMessage error entry should exist");
-		// Keys should be populated from the sub-error (age)
 		ok(
 			errorEntry.keys.includes("age"),
 			`keys should include 'age', got: ${JSON.stringify(errorEntry.keys)}`,
@@ -730,10 +685,7 @@ describe(`@datastream/validate (${variant})`, () => {
 		strictEqual(errorEntry.message, "Age must be a number");
 	});
 
-	// *** errorMessage keys sorted and deduped *** //
 	test(`validateStream errorMessage should sort keys alphabetically (z_field before a_field in required → sorted as a_field|z_field)`, async (_t) => {
-		// Required array has z_field FIRST so AJV returns sub-errors as [z_field, a_field].
-		// The sort() must reorder them to [a_field, z_field] for the id to be correct.
 		const schema = {
 			type: "object",
 			properties: {
@@ -750,8 +702,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		const result = await pipeline(streams);
 
 		ok(Object.keys(result.validate).length > 0);
-		// Without sort: id would be "#/errorMessage/z_field|a_field"
-		// With sort: id must be "#/errorMessage/a_field|z_field"
 		const errorEntry = result.validate["#/errorMessage/a_field|z_field"];
 		ok(
 			errorEntry,
@@ -761,7 +711,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		strictEqual(errorEntry.message, "Both fields are required");
 	});
 
-	// *** errorMessage: falsy makeKeys values should NOT be pushed into keys *** //
 	test(`validateStream errorMessage sub-errors with empty instancePath produce no empty string keys`, async (_t) => {
 		const schema = {
 			type: "object",
@@ -781,10 +730,7 @@ describe(`@datastream/validate (${variant})`, () => {
 		}
 	});
 
-	// *** id suffix: multiple keys joined with "|" not "" *** //
 	test(`validateStream error id should join multiple keys with pipe separator`, async (_t) => {
-		// Use required errorMessage with two required fields. Both missing → two sub-errors
-		// → keys = ["a_field", "b_field"] → id = "#/errorMessage/a_field|b_field"
 		const schema = {
 			type: "object",
 			properties: {
@@ -800,7 +746,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		const streams = [createReadableStream(input), validateStream({ schema })];
 		const result = await pipeline(streams);
 
-		// The entry id MUST be "#/errorMessage/a_field|b_field" — pipe not empty-string join
 		const errorEntry = result.validate["#/errorMessage/a_field|b_field"];
 		ok(
 			errorEntry,
@@ -810,7 +755,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		strictEqual(errorEntry.message, "Fields a_field and b_field are required");
 	});
 
-	// *** transpileSchema plugins registered by ajv-cmd/compile *** //
 	test(`transpileSchema should use the JSON Schema 2020-12 dialect`, (_t) => {
 		// prefixItems is 2020-12 only; the draft-07 Ajv class rejects it in strict mode
 		const validate = transpileSchema({
@@ -820,7 +764,6 @@ describe(`@datastream/validate (${variant})`, () => {
 			minItems: 1,
 		});
 		strictEqual(validate(["a"]), true);
-		// (coerceTypes would turn a number into a string; an object can't be)
 		strictEqual(validate([{}]), false);
 		strictEqual(validate.errors[0].keyword, "type");
 		strictEqual(validate.errors[0].instancePath, "/0");
@@ -862,9 +805,7 @@ describe(`@datastream/validate (${variant})`, () => {
 			{ allErrors: false },
 		);
 		strictEqual(validate({}), false);
-		// allErrors:false stops at the first error
 		strictEqual(validate.errors.length, 1);
-		// and errorMessage is then an unknown keyword (strict mode)
 		let message;
 		try {
 			transpileSchema(
@@ -877,7 +818,6 @@ describe(`@datastream/validate (${variant})`, () => {
 		strictEqual(message, 'strict mode: unknown keyword: "errorMessage"');
 	});
 
-	// *** clone (plain-object copy, structuredClone fallback) *** //
 	const numberA = { type: "object", properties: { a: { type: "number" } } };
 	const validateOne = async (row, schema = numberA) =>
 		(

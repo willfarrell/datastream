@@ -14,8 +14,6 @@ import {
 } from "@datastream/core";
 import { awsClientDefaults, awsReadableStream } from "./client.js";
 
-// Created on first use, so importing the module (or always passing a per-call
-// client) never constructs an unused SDK client.
 let defaultClient;
 const getDefaultClient = () =>
 	(defaultClient ??= new S3Client(awsClientDefaults));
@@ -30,8 +28,6 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 		{ abortSignal: streamOptions.signal },
 	);
 	if (!Body) {
-		// Only Bucket/Key: other params (e.g. SSECustomerKey) are secrets that
-		// must not leak into logged error causes.
 		throw new Error("S3.GetObject not found", {
 			cause: { Bucket: params.Bucket, Key: params.Key },
 		});
@@ -60,8 +56,6 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 			teardownBody();
 		} else {
 			signal.addEventListener("abort", teardownBody, { once: true });
-			// Drop the listener once the stream is done so a long-lived signal shared
-			// across many reads does not accumulate listeners (each pinning a Body).
 			stream.once("close", () =>
 				signal.removeEventListener("abort", teardownBody),
 			);
@@ -70,8 +64,6 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 	return stream;
 };
 
-// Yields each object entry (ListObjectsV2 `Contents` item), following
-// NextContinuationToken until the listing is complete.
 export const awsS3ListObjectsStream = async (options, streamOptions = {}) => {
 	const { client, ...listOptions } = options;
 	async function* command(opts, signal) {
@@ -110,8 +102,6 @@ export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 	// forward Readable.from's throw()) over a destroyOnReturn:false iterator only
 	// ever return()s it without destroying `stream`.
 	const body = Readable.from(_detach(stream));
-	// lib-storage allows at most 10,000 parts. Expose partSize/queueSize so
-	// callers can raise the object-size ceiling or tune upload concurrency.
 	const upload = new Upload({
 		client: client ?? getDefaultClient(),
 		params: {
@@ -124,17 +114,10 @@ export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 		partSize: partSize ?? DEFAULT_PART_SIZE,
 		queueSize,
 	});
-	// lib-storage emits progress on the Upload instance, not the Body stream.
 	if (onProgress) {
 		upload.on("httpUploadProgress", onProgress);
 	}
 	const result = upload.done();
-	// pipeline() only calls stream.result() on success, so handle the rejection
-	// here: forwarding it to the returned stream surfaces the real SDK error (e.g.
-	// AccessDenied) through pipeline instead of a generic AbortError when the
-	// failed Upload stops draining the Body, and avoids an unhandled rejection
-	// when an upstream failure aborts the upload. result() still awaits the
-	// original promise and rethrows.
 	result.catch((error) => stream.destroy(error));
 
 	stream.result = async () => {
@@ -144,9 +127,6 @@ export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 	return stream;
 };
 
-// Computes the S3 multipart checksum of a file you want to upload via a
-// presigned URL. The composite checksum depends on the part boundaries, so
-// partSize must match the upload's part size.
 export const awsS3ChecksumStream = (
 	{ ChecksumAlgorithm, partSize, resultKey } = {},
 	streamOptions = {},
@@ -164,9 +144,6 @@ export const awsS3ChecksumStream = (
 		let filled = 0;
 		while (filled < partSize) {
 			const head = pending[0];
-			// Hash as much of the head chunk as the part still needs. `rest` is
-			// whatever is left of the head afterwards: drop the head once it is fully
-			// consumed, otherwise keep the remainder at the front for the next part.
 			const take = Math.min(head.byteLength, partSize - filled);
 			hash.update(head.subarray(0, take));
 			filled += take;
@@ -181,8 +158,6 @@ export const awsS3ChecksumStream = (
 		return hash.digest();
 	};
 	const passThrough = (chunk) => {
-		// string -> UTF-8 bytes, ArrayBuffer -> view, Buffer/Uint8Array -> copy;
-		// always a Buffer, so digestPart's subarray views are valid.
 		chunk = Buffer.from(chunk);
 		pending.push(chunk);
 		pendingLen += chunk.byteLength;
@@ -206,7 +181,6 @@ export const awsS3ChecksumStream = (
 		}
 	};
 	const stream = createPassThroughStream(passThrough, flush, streamOptions);
-	// Pure over the collected part digests, so repeated calls return equal values.
 	stream.result = async () => ({
 		key: resultKey ?? "s3",
 		value: {

@@ -144,7 +144,6 @@ const prematureClose = () =>
 // 2-3x slower for object streams (e.g. 10k objects: ~1.3k -> ~0.45k ops/s).
 // They also drain plain EventEmitters, which are not async-iterable.
 export const streamToArray = (stream, { maxBufferSize } = {}) => {
-	// undefined (the default) and null are both unlimited.
 	const limit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
@@ -187,7 +186,6 @@ export const streamToArray = (stream, { maxBufferSize } = {}) => {
 };
 
 export const streamToObject = (stream, { maxBufferSize } = {}) => {
-	// undefined (the default) and null are both unlimited.
 	const limit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
@@ -231,17 +229,12 @@ export const streamToObject = (stream, { maxBufferSize } = {}) => {
 };
 
 export const streamToString = (stream, { maxBufferSize } = {}) => {
-	// undefined (the default) and null are both unlimited.
 	const limit = maxBufferSize ?? Number.POSITIVE_INFINITY;
-	// A streaming decoder so multibyte sequences split across byte chunks
-	// decode correctly (browser parity); decoding each Buffer on its own turns a
-	// split "é" into "\ufffd\ufffd". flush() emits any trailing partial bytes.
 	const decoder = createChunkDecoder();
 	const decode = (chunk) =>
 		ArrayBuffer.isView(chunk) || chunk instanceof ArrayBuffer
 			? decoder.decode(chunk)
-			: // Array.prototype.join semantics: null/undefined -> "".
-				`${chunk ?? ""}`;
+			: `${chunk ?? ""}`;
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
 			const chunks = [];
@@ -293,7 +286,6 @@ const toBuffer = (chunk) =>
 		: Buffer.from(chunk ?? []);
 
 export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
-	// undefined (the default) and null are both unlimited.
 	const limit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	if (typeof stream.on === "function") {
 		return new Promise((resolve, reject) => {
@@ -381,8 +373,6 @@ export const createReadableStream = (input, streamOptions = {}) => {
 		const stream = new Readable({
 			objectMode: streamOptions.objectMode ?? true,
 			highWaterMark: streamOptions.highWaterMark,
-			// Browser parity: an abort destroys the push-mode stream (AbortError,
-			// cause = signal.reason) instead of leaving consumers hanging.
 			signal: streamOptions.signal,
 			read() {},
 		});
@@ -447,7 +437,6 @@ const fromIterator = (iterator, streamOptions) => {
 		},
 	});
 	const fail = (e) => stream.destroy(e);
-	// Returns true while the queue still has room, so the sync loop continues.
 	const push = (value) => {
 		if (stream.push(toSafe(value))) return true;
 		reading = false;
@@ -472,7 +461,6 @@ const fromIterator = (iterator, streamOptions) => {
 			} catch (e) {
 				return fail(e);
 			}
-			// An async iterator: one await per value, then back into the loop.
 			if (typeof next.then === "function") {
 				return next.then((n) => settle(n) && pull(), fail);
 			}
@@ -482,14 +470,12 @@ const fromIterator = (iterator, streamOptions) => {
 	return stream;
 };
 
-// `?.`: createReadableStream(input, null) skips the `= {}` default.
 const chunkSizeOf = (streamOptions) => {
 	const size = streamOptions?.chunkSize ?? 16_384; // 16KB
 	if (size <= 0) throw new Error("chunkSize must be a positive number");
 	return size;
 };
 
-// Generators, but the size check runs eagerly (at createReadableStream time).
 const chunkString = (input, streamOptions) => {
 	const size = chunkSizeOf(streamOptions);
 	return (function* () {
@@ -613,9 +599,6 @@ export const createWritableStream = (write, final, streamOptions) => {
 		final = undefined;
 	}
 	const { abort, ...options } = streamOptions ?? {};
-	// Set when our own write/final callback fails: that teardown is the stream
-	// erroring, not an abort, so abort() is skipped (browser parity, where a
-	// failing sink write/close never reaches the sink's abort()).
 	let failed = false;
 	const fail = (callback) => (e) => {
 		failed = true;

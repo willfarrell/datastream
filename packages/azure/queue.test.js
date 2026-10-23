@@ -27,8 +27,6 @@ const receiver = (pages) => {
 		calls,
 		receiveMessages: async (options) => {
 			calls.push(options);
-			// Like a real request: yields to the event loop (so a consumer can run
-			// between empty polls) and rejects once the signal aborts.
 			await new Promise((resolve) => setImmediate(resolve));
 			options.abortSignal.throwIfAborted();
 			return pages.shift() ?? {};
@@ -50,7 +48,6 @@ describe(`@datastream/azure/queue (${variant})`, () => {
 			{ messageId: "1" },
 			{ messageId: "2" },
 		]);
-		// An internal signal, aborted only if the stream is destroyed early.
 		const { abortSignal } = client.calls[0];
 		strictEqual(abortSignal instanceof AbortSignal, true);
 		strictEqual(abortSignal.aborted, false);
@@ -94,8 +91,6 @@ describe(`@datastream/azure/queue (${variant})`, () => {
 			deepStrictEqual(message, { messageId: "1" });
 			break;
 		}
-		// Empty page, the message, then the stream's read-ahead poll, which the
-		// break aborts: no further polling afterwards.
 		strictEqual(client.calls.length, 3);
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		strictEqual(client.calls.length, 3);
@@ -134,8 +129,6 @@ describe(`@datastream/azure/queue (${variant})`, () => {
 		]);
 	});
 
-	// A generator's return() only lands at its next yield; destroying the stream
-	// must also abort the idle poll wait so polling stops and 'close' fires.
 	test(`azureQueueReceiveMessagesStream destroy stops an idle poll`, {
 		timeout: 1000,
 	}, async () => {
@@ -153,8 +146,6 @@ describe(`@datastream/azure/queue (${variant})`, () => {
 		strictEqual(client.calls.length, 1);
 	});
 
-	// Without pollingActive every non-empty page is followed by another receive,
-	// and the stream ends on the first empty page without waiting pollingDelay.
 	test(`azureQueueReceiveMessagesStream reads every page then ends without waiting`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = receiver([
@@ -176,7 +167,6 @@ describe(`@datastream/azure/queue (${variant})`, () => {
 		deepStrictEqual(await result, [{ messageId: "1" }, { messageId: "2" }]);
 	});
 
-	// pollingDelay only applies after an empty page, and 0 schedules no timer.
 	for (const [label, pages, pollingDelay] of [
 		[
 			"after a non-empty page",
@@ -216,8 +206,6 @@ describe(`@datastream/azure/queue (${variant})`, () => {
 		});
 	}
 
-	// After an empty page while polling, the next receive waits exactly
-	// pollingDelay; aborting during that wait ends the stream without a tick.
 	test(`azureQueueReceiveMessagesStream waits pollingDelay after an empty page`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = receiver([
@@ -226,7 +214,6 @@ describe(`@datastream/azure/queue (${variant})`, () => {
 			{},
 		]);
 		const controller = new AbortController();
-		// Stops the poll loop even when an assertion fails first.
 		t.after(() => controller.abort());
 		const stream = await azureQueueReceiveMessagesStream(
 			{ client, pollingActive: true, pollingDelay: 60_000 },
@@ -248,7 +235,6 @@ describe(`@datastream/azure/queue (${variant})`, () => {
 		strictEqual(client.calls.length, 1);
 		t.mock.timers.tick(1);
 		await settle();
-		// The message page, then the empty read-ahead page, now waiting again.
 		strictEqual(client.calls.length, 3);
 		deepStrictEqual(messages, [{ messageId: "1" }]);
 		strictEqual(error, undefined);

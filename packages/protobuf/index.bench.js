@@ -14,8 +14,6 @@ import {
 } from "@datastream/protobuf";
 import protobuf from "protobufjs";
 
-// -- Data generators --
-
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 const ITEMS = 10_000;
@@ -31,15 +29,12 @@ const objects = Array.from({ length: ITEMS }, (_, i) => ({
 	value: i * 1.5,
 }));
 
-// Pre-encoded buffers for the decode/unframe benchmarks.
 const encoded = await streamToArray(
 	pipejoin([createReadableStream(objects), protobufEncodeStream({ Type })]),
 );
 const framed = await streamToArray(
 	pipejoin([createReadableStream(encoded), protobufLengthPrefixFrameStream()]),
 );
-
-// -- Tests --
 
 suite("protobufEncodeStream", () => {
 	bench(`${ITEMS} objects`, options, async (b) => {

@@ -33,9 +33,6 @@ const inferType = (value) => {
 
 const isNumberType = (type) => type instanceof Int32 || type instanceof Float64;
 
-// Widen across every sampled value rather than trusting the first one, so a
-// column that starts with 1 and later holds 2.7 is not truncated by an Int32
-// builder. Int32 + Float64 widen to Float64; any other mix falls back to Utf8.
 const fieldsFromSamples = (samples, fieldNames, isArray) => {
 	return fieldNames.map((name, idx) => {
 		let type = null;
@@ -61,15 +58,10 @@ export const arrowDetectSchemaStream = (
 	streamOptions = {},
 ) => {
 	const value = { schema: null, fields: null };
-	// Rows held back until the schema is sealed; they are also the sample the
-	// schema is inferred from.
 	const buffered = [];
 	let sealed = false;
 
 	const seal = () => {
-		// Nothing to seal until at least one row has been sampled. Once sealed,
-		// `buffered` is drained right after, so this same guard makes a repeat
-		// call a no-op without needing a separate sealed flag here.
 		if (!buffered.length) return;
 		const isArray = Array.isArray(buffered[0]);
 		let fieldNames;
@@ -113,9 +105,6 @@ export const arrowDetectSchemaStream = (
 		}
 	};
 	const flush = (enqueue) => {
-		// Seal a short stream that never reached sampleSize, then flush whatever is
-		// still buffered. If the stream already sealed mid-stream, `buffered` is
-		// empty so seal() is a no-op.
 		seal();
 		while (buffered.length) enqueue(buffered.shift());
 	};
@@ -137,8 +126,6 @@ const buildRecordBatch = (schema, builders, length) => {
 
 const makeBuilders = (schema) =>
 	schema.fields.map((field) =>
-		// inferType treats "" as null, so an empty cell in a non-Utf8 column must
-		// be null too (not 0/false/epoch); only Utf8 can hold a real "".
 		makeBuilder({
 			type: field.type,
 			nullValues: DataType.isUtf8(field.type)
@@ -173,7 +160,6 @@ const intCheck = (type) => {
 };
 const numberCheck = (v) => (typeof v === "number" ? pass() : TypeError);
 const booleanCheck = (v) => (typeof v === "boolean" ? pass() : TypeError);
-// Epoch milliseconds or a valid Date (an Invalid Date's time is NaN).
 const timestampCheck = (v) =>
 	Number.isInteger(v instanceof Date ? v.getTime() : v) ? pass() : TypeError;
 const valueCheck = (type) =>
@@ -194,10 +180,6 @@ const describeValue = (v) =>
 			? Object.prototype.toString.call(v)
 			: String(v);
 
-// Converts one cell for its builder, throwing a descriptive TypeError /
-// RangeError (stream name, zero-based row index, field) for a value the column
-// cannot hold, or a null in a non-nullable field. Nulls match makeBuilders: ""
-// is null except in Utf8.
 const makeConverter = (name, field) => {
 	const { type, nullable } = field;
 	// typeId check (not instanceof Utf8) so schemas built with another copy of
@@ -238,7 +220,6 @@ export const arrowBatchFromArrayStream = (
 	let builders;
 	let converters;
 	let rowCount = 0;
-	// Zero-based index of the row across the whole stream, for error messages.
 	let rowIndex = 0;
 
 	const init = () => {
@@ -289,7 +270,6 @@ export const arrowBatchFromObjectStream = (
 	let builders;
 	let converters;
 	let rowCount = 0;
-	// Zero-based index of the row across the whole stream, for error messages.
 	let rowIndex = 0;
 
 	const init = () => {

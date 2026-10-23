@@ -8,7 +8,6 @@ import type {
 
 export function azureBlobDownloadStream(
 	options: {
-		// BlobClient
 		client: unknown;
 		offset?: number;
 		count?: number;
@@ -19,7 +18,6 @@ export function azureBlobDownloadStream(
 
 export function azureBlobListStream(
 	options: {
-		// ContainerClient
 		client: unknown;
 		prefix?: string;
 		[key: string]: unknown;
@@ -29,7 +27,6 @@ export function azureBlobListStream(
 
 export function azureBlobUploadStream(
 	options: {
-		// BlockBlobClient
 		client: unknown;
 		bufferSize?: number;
 		maxConcurrency?: number;

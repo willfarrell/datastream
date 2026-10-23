@@ -7,7 +7,6 @@ export interface AzureEventHubsKafkaMechanism {
 }
 
 export function azureEventHubsKafkaMechanism(options: {
-	// @azure/identity TokenCredential
 	credential: {
 		getToken: (
 			scope: string,

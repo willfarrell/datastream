@@ -37,15 +37,12 @@ const spy = (impl) => {
 };
 
 describe(`@datastream/core (${variant})`, async () => {
-	// Node-only behaviour (Readable internals, Buffer collectors, NULL_SENTINEL).
 	const nodeTest = variant === "node" ? test : test.skip;
 	// Node-only export (the browser build has no backpressureGauge at all), so it
 	// can't be a static named import shared by both builds.
 	const { backpressureGauge } = await import("@datastream/core");
-	// streamToBuffer yields a Buffer (node) or a Uint8Array (browser).
 	const text = (bytes) => new TextDecoder().decode(bytes);
 
-	// *** streamTo{Array,String,Object} *** //
 	const types = {
 		boolean: [true, false],
 		integer: [-1, 0, 1],
@@ -111,7 +108,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// *** streamTo{Array,String,Object} with async iterable (non-Node stream) *** //
 	test(`streamToArray should work with async iterable`, async (_t) => {
 		async function* gen() {
 			yield "a";
@@ -148,7 +144,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(text(output), "hello world");
 	});
 
-	// *** streamToBuffer *** //
 	test(`streamToBuffer should collect buffers into single buffer`, async (_t) => {
 		const input = ["hello", " ", "world"];
 		const streams = [createReadableStream(input)];
@@ -159,7 +154,7 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	test(`streamToBuffer should work with Uint8Array`, async (_t) => {
-		const input = [Uint8Array.from([104, 101, 108, 108, 111])]; // "hello"
+		const input = [Uint8Array.from([104, 101, 108, 108, 111])];
 		const streams = [createReadableStream(input)];
 		const stream = pipejoin(streams);
 		const output = await streamToBuffer(stream);
@@ -167,9 +162,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(text(output), "hello");
 	});
 
-	// Raw byte window of any view/ArrayBuffer: Buffer.from(view) used to drop a
-	// DataView and truncate Uint16 elements; the browser build used to
-	// stringify them ("[object DataView]").
 	test(`streamToBuffer keeps the raw bytes of any binary chunk`, async (_t) => {
 		const hi = Uint8Array.from([0, 104, 105, 0]).buffer;
 		const input = [
@@ -192,8 +184,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		);
 	});
 
-	// A throwing 'data' listener used to escape as an uncaught exception and
-	// resolve with partial data.
 	nodeTest(
 		`streamToBuffer rejects on a chunk Buffer.from cannot convert`,
 		async (_t) => {
@@ -203,8 +193,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		},
 	);
 
-	// Direct source import so the node run still pins browser-build parity
-	// (streamToBuffer was once missing from the browser build entirely).
 	test(`web build exports a working streamToBuffer`, async (_t) => {
 		const web = await import(
 			`file://${new URL("./index.browser.js", import.meta.url).pathname}`
@@ -217,7 +205,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(new TextDecoder().decode(out), "hello world");
 	});
 
-	// *** backpressureGauge *** //
 	nodeTest(`backpressureGauge should measure stream metrics`, async (_t) => {
 		const input = ["a", "b", "c"];
 		const streams = {
@@ -242,12 +229,9 @@ describe(`@datastream/core (${variant})`, async () => {
 
 			const metrics = backpressureGauge(streams);
 
-			// Simulate pause event
 			transform.emit("pause");
-			// Simulate resume event (with timestamp set)
 			transform.emit("resume");
 
-			// Check that timeline was updated
 			deepStrictEqual(metrics.transform.timeline.length, 1);
 			strictEqual(typeof metrics.transform.timeline[0].timestamp, "number");
 			strictEqual(typeof metrics.transform.timeline[0].duration, "number");
@@ -262,16 +246,12 @@ describe(`@datastream/core (${variant})`, async () => {
 
 			const metrics = backpressureGauge(streams);
 
-			// Simulate resume event without prior pause
 			transform.emit("resume");
 
-			// startTimestamp should be set
 			strictEqual(typeof metrics.transform.total.timestamp, "undefined");
 
-			// Simulate end event
 			transform.emit("end");
 
-			// total should now have values
 			strictEqual(typeof metrics.transform.total.timestamp, "number");
 			strictEqual(typeof metrics.transform.total.duration, "number");
 		},
@@ -283,17 +263,14 @@ describe(`@datastream/core (${variant})`, async () => {
 			const transform = createTransformStream();
 			const metrics = backpressureGauge({ transform });
 
-			// One real pause/resume pair, then a stray resume with no intervening pause.
 			transform.emit("pause");
 			transform.emit("resume");
 			transform.emit("resume");
 
-			// The stray resume must not record a phantom interval from the stale pause.
 			strictEqual(metrics.transform.timeline.length, 1);
 		},
 	);
 
-	// *** createReadableStream *** //
 	test(`createReadableStream should create a readable stream from string`, async (_t) => {
 		const input = "abc";
 		const streams = [createReadableStream(input)];
@@ -306,7 +283,7 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	test(`createReadableStream should chunk long strings`, async (_t) => {
-		const input = "x".repeat(17 * 1024); // where 16*1024 is the default chunkSize/highWaterMark
+		const input = "x".repeat(17 * 1024);
 		const streams = [createReadableStream(input)];
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
@@ -387,11 +364,8 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	test(`createReadableStream read() is invoked when consumer requests data before push`, async (_t) => {
-		// Start consuming BEFORE pushing so the Readable's _read() hook is triggered
-		// when the stream is in flowing mode but the buffer is empty.
 		const source = createReadableStream();
 		const outputPromise = streamToArray(source);
-		// Push data asynchronously so _read() fires first.
 		process.nextTick(() => {
 			source.push("x");
 			source.push(null);
@@ -400,8 +374,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(output, ["x"]);
 	});
 
-	// The .on("data") collectors only settled on 'end'/'error', so a
-	// destroy() without an error (which emits only 'close') hung forever.
 	for (const [name, collect] of Object.entries({
 		streamToArray,
 		streamToObject,
@@ -423,8 +395,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		);
 	}
 
-	// Node used to error ERR_STREAM_NULL_VALUES for non-array iterables
-	// yielding null, while the browser build passed null through.
 	test(`createReadableStream passes null through from a sync iterable`, async (_t) => {
 		const input = function* () {
 			yield 1;
@@ -445,8 +415,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(output, [1, null, 2]);
 	});
 
-	// The null-safe iterable wrappers must not defer Readable.from's
-	// synchronous rejection of a non-iterable input.
 	nodeTest(
 		`createReadableStream throws synchronously for a non-iterable`,
 		async (_t) => {
@@ -454,7 +422,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		},
 	);
 
-	// The browser build threw "Controller is already closed" here; node ignores.
 	test(`createReadableStream push is a no-op after push(null)`, async (_t) => {
 		const source = createReadableStream();
 		source.push("a");
@@ -488,7 +455,7 @@ describe(`@datastream/core (${variant})`, async () => {
 	if (variant === "node") {
 		const { backpressureGauge } = await import("@datastream/core");
 		test(`backpressureGauge should chunk really long strings`, async (_t) => {
-			const input = "x".repeat(1024 * 1024); // where 16*1024 is the default chunkSize/highWaterMark
+			const input = "x".repeat(1024 * 1024);
 			const streams = [
 				createReadableStream(input),
 				createPassThroughStream(async () => {
@@ -499,14 +466,12 @@ describe(`@datastream/core (${variant})`, async () => {
 			const metrics = backpressureGauge(streams);
 
 			await pipeline(streams);
-			// console.log(JSON.stringify(metrics))
 
 			deepStrictEqual(metrics["0"].timeline.length, 3);
 			deepStrictEqual(metrics["1"].timeline.length, 0);
 		});
 	}
 
-	// *** createPassThroughStream *** //
 	test(`createPassThroughStream should create a pass through stream`, async (_t) => {
 		const input = ["a", "b", "c"];
 		const transform = spy();
@@ -592,7 +557,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		await rejects(pipeline(streams), { message: "error" });
 	});
 
-	// *** createTransformStream *** //
 	test(`createTransformStream should create a transform stream`, async (_t) => {
 		const input = ["a", "b", "c"];
 		const transform = spy();
@@ -680,7 +644,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		await rejects(pipeline(streams), { message: "error" });
 	});
 
-	// *** createWritableStream *** //
 	test(`createWritableStream should create a writable stream`, async (_t) => {
 		const input = ["a", "b", "c"];
 		const transform = spy();
@@ -772,32 +735,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		await rejects(pipeline(streams), { message: "error" });
 	});
 
-	// *** createBranchStream *** //
-	/*if (variant === "node") {
-		test(`createBranchStream should create a branch stream`, async (_t) => {
-			const input = ["a", "b", "c"];
-			const transform = spy();
-
-			const stream = createWritableStream(transform);
-			stream.result = () => ({ key: "a", value: 1 });
-
-			const streams = [
-				createReadableStream(input),
-				createBranchStream({ streams: [stream] }),
-				createWritableStream(transform),
-			];
-
-			strictEqual(isReadable(streams[1]), true);
-			strictEqual(isWritable(streams[1]), true);
-
-			const result = await pipeline(streams);
-
-			deepStrictEqual(result, { branch: { a: 1 } });
-			strictEqual(transform.callCount, 6);
-		});
-	}*/
-
-	// *** pipeline *** //
 	test(`pipeline should add writable to end of streams array`, async (_t) => {
 		const input = ["a", "b", "c"];
 		const transform = spy();
@@ -840,8 +777,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		await rejects(pipeline(streams), { message: "Error" });
 	});
 
-	// The index-0 check is easy to miss with reduce() (no initial value skips
-	// the callback for the first element), e.g. an un-awaited async source.
 	test(`pipeline should throw error when promise passed in at index 0`, async (_t) => {
 		const streams = [
 			Promise.resolve(createReadableStream(["a"])),
@@ -855,8 +790,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	});
 
-	// An already-aborted signal never fires "abort" again, so it must be checked
-	// up front (the node build errors immediately too).
 	test(`createTransformStream and createPassThroughStream error on an already-aborted signal`, async (_t) => {
 		const signal = AbortSignal.abort();
 		await rejects(
@@ -879,8 +812,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		);
 	});
 
-	// A source that throws errors the stream without close()/cancel(); its abort
-	// listener must still be removed from a shared signal.
 	test(`createReadableStream removes its abort listener when the source throws`, async (_t) => {
 		const controller = new AbortController();
 		const source = (async function* () {
@@ -897,7 +828,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(getEventListeners(controller.signal, "abort").length, 0);
 	});
 
-	// *** pipejoin *** //
 	test(`pipejoin should throw error when promise passed in`, async (_t) => {
 		const input = ["a", "b", "c"];
 		const transform = spy();
@@ -906,15 +836,12 @@ describe(`@datastream/core (${variant})`, async () => {
 			Promise.resolve(objectCountStream()),
 			createTransformStream(transform),
 		];
-		// Validation is synchronous: the Promise is rejected before any piping.
 		throws(() => pipejoin(streams), {
 			message: "Promise instead of stream passed in at index 1",
 		});
 	});
 
-	// *** timeout *** //
 	test(`timeout should resolve after delay`, async (t) => {
-		// Mock timers: a wall-clock `elapsed >= 9` check was flaky under load.
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		let resolved = false;
 		const pending = timeout(10).then(() => {
@@ -924,14 +851,11 @@ describe(`@datastream/core (${variant})`, async () => {
 		await Promise.resolve();
 		strictEqual(resolved, false);
 		t.mock.timers.tick(1);
-		// Flush microtasks instead of awaiting `pending`, so a too-late timer
-		// fails the assertion rather than hanging the test.
 		await Promise.resolve();
 		strictEqual(resolved, true);
 		await pending;
 	});
 
-	// *** result *** //
 	test(`result should collect stream results`, async (_t) => {
 		const stream1 = createPassThroughStream(() => {});
 		stream1.result = () => ({ key: "a", value: 1 });
@@ -947,7 +871,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(output, {});
 	});
 
-	// *** makeOptions *** //
 	if (variant === "node") {
 		test(`makeOptions should return interoperable structure`, async (_t) => {
 			const options = makeOptions({
@@ -967,7 +890,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// *** timeout abort cleanup regression *** //
 	test(`timeout should clear timer when aborted`, async (_t) => {
 		const timers = () =>
 			process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
@@ -983,7 +905,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			strictEqual(e.message, "Aborted");
 			deepStrictEqual(e.cause, { code: "AbortError" });
 		}
-		// A leaked 60s timer would keep the process alive after the abort.
 		strictEqual(timers(), before);
 	});
 
@@ -998,7 +919,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// *** maxBufferSize *** //
 	test(`streamToArray should throw when exceeding maxBufferSize`, async (_t) => {
 		const stream = createReadableStream(["aaa", "bbb", "ccc"]);
 		try {
@@ -1054,7 +974,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// *** createReadableStream queue limit regression *** //
 	test(`createReadableStream should throw when queue exceeds limit`, async (_t) => {
 		const stream = createReadableStream(undefined, { highWaterMark: 3 });
 		stream.push("a");
@@ -1068,7 +987,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// *** shared helpers *** //
 	test(`createChunkDecoder reassembles a multi-byte char split across chunks`, () => {
 		const { decode, flush } = createChunkDecoder();
 		const bytes = new TextEncoder().encode("aé€b");
@@ -1083,7 +1001,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		const { decode, flush } = createChunkDecoder();
 		strictEqual(decode(new Uint8Array([0x61, 0xe2, 0x82])), "a");
 		strictEqual(flush(), "\ufffd");
-		// flush resets the decoder for reuse.
 		strictEqual(flush(), "");
 	});
 
@@ -1092,7 +1009,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(decode(new Uint8Array([0xc3])), "");
 		strictEqual(decode(new Uint8Array(0)), "");
 		strictEqual(decode(""), "");
-		// A string chunk is returned untouched, even with a split byte pending.
 		strictEqual(decode("\ufeffx"), "\ufeffx");
 		strictEqual(decode(new Uint8Array([0xa9])), "é");
 		strictEqual(flush(), "");
@@ -1138,10 +1054,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		);
 	});
 
-	// *** Node NULL_SENTINEL collector regression *** //
-	// The documented way to flow a null through a node object-mode stream is
-	// enqueue(null), which createTransformStream wraps as NULL_SENTINEL. Every
-	// collector must unwrap it via fromSafe, not just streamToArray.
 	test(`streamToArray unwraps NULL_SENTINEL from object stream`, async (_t) => {
 		const streams = [
 			createReadableStream(["a"]),
@@ -1157,7 +1069,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			createTransformStream((_chunk, enqueue) => enqueue(null)),
 		];
 		const output = await streamToString(pipejoin(streams));
-		// fromSafe(null) -> null; "".join semantics turn null into an empty string.
 		strictEqual(output, "");
 	});
 
@@ -1169,7 +1080,6 @@ describe(`@datastream/core (${variant})`, async () => {
 				enqueue(null);
 			}),
 		];
-		// Object.assign(value, null) is a no-op, so the null chunk must not throw.
 		const output = await streamToObject(pipejoin(streams));
 		deepStrictEqual(output, { x: 1 });
 	});
@@ -1182,12 +1092,10 @@ describe(`@datastream/core (${variant})`, async () => {
 				enqueue(null);
 			}),
 		];
-		// Buffer.from(null) throws; fromSafe(null) must yield an empty buffer.
 		const output = await streamToBuffer(pipejoin(streams));
 		strictEqual(text(output), "hi");
 	});
 
-	// *** Node backpressureGauge writable total regression *** //
 	if (variant === "node") {
 		test(`backpressureGauge records total for writable sinks`, async (_t) => {
 			const writable = createWritableStream();
@@ -1197,17 +1105,12 @@ describe(`@datastream/core (${variant})`, async () => {
 			};
 			const metrics = backpressureGauge(streams);
 			await pipeline(Object.values(streams));
-			// Writable streams emit 'finish'/'close', not 'end', so total must be
-			// recorded from those lifecycle events too.
 			strictEqual(typeof metrics.writable.total.timestamp, "number");
 			strictEqual(typeof metrics.writable.total.duration, "number");
 		});
 	}
 
-	// *** Node streamToObject __proto__ contract regression *** //
 	test(`streamToObject does not expose own __proto__ data key`, async (_t) => {
-		// JSON.parse produces an own __proto__ key; the accumulator must not surface
-		// it as an own enumerable property on the returned object.
 		const evil = JSON.parse('{"__proto__":{"polluted":true},"safe":1}');
 		const streams = [
 			createReadableStream(["a"]),
@@ -1216,14 +1119,9 @@ describe(`@datastream/core (${variant})`, async () => {
 		const output = await streamToObject(pipejoin(streams));
 		strictEqual(Object.hasOwn(output, "__proto__"), false);
 		strictEqual(output.safe, 1);
-		// And no global prototype pollution occurred.
 		strictEqual({}.polluted, undefined);
 	});
 
-	// *** Web build direct-import regressions *** //
-	// The bare `@datastream/core` import always resolves to the node build, so the
-	// Under the browser run `@datastream/core` is the built browser bundle; the
-	// node run imports the source directly so these paths are pinned there too.
 	const loadWeb = () =>
 		variant === "browser"
 			? import("@datastream/core")
@@ -1243,7 +1141,7 @@ describe(`@datastream/core (${variant})`, async () => {
 
 	test(`web streamToString decodes multibyte split across chunks`, async (_t) => {
 		const web = await loadWeb();
-		const bytes = new TextEncoder().encode("é"); // 2 bytes: 0xC3 0xA9
+		const bytes = new TextEncoder().encode("é");
 		async function* gen() {
 			yield bytes.subarray(0, 1);
 			yield bytes.subarray(1);
@@ -1262,9 +1160,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(output, "hello world");
 	});
 
-	// A bare ArrayBuffer is not an ArrayBuffer view; without the
-	// `instanceof ArrayBuffer` arm it would be String()-ified to
-	// "[object ArrayBuffer]" instead of decoded.
 	test(`streamToString decodes bare ArrayBuffer chunks`, async (_t) => {
 		const ab = new TextEncoder().encode("hi").buffer;
 		strictEqual(await streamToString(createReadableStream([ab])), "hi");
@@ -1272,10 +1167,8 @@ describe(`@datastream/core (${variant})`, async () => {
 
 	test(`web createReadableStream honors typed-array byteOffset/byteLength`, async (_t) => {
 		const web = await loadWeb();
-		// A subarray view over a larger buffer must stream only its own window,
-		// not the whole backing ArrayBuffer (adjacent-heap leak otherwise).
 		const full = new Uint8Array([0, 0, 1, 2, 3, 0, 0]);
-		const view = full.subarray(2, 5); // [1,2,3]
+		const view = full.subarray(2, 5);
 		const out = await web.streamToBuffer(web.createReadableStream(view));
 		deepStrictEqual(Array.from(out), [1, 2, 3]);
 	});
@@ -1295,7 +1188,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		const { signal } = controller;
 		const before = signal.removeEventListener;
 		let removed = 0;
-		// Count removeEventListener calls for 'abort' to detect listener cleanup.
 		signal.removeEventListener = function (type, ...rest) {
 			if (type === "abort") removed += 1;
 			return before.call(this, type, ...rest);
@@ -1316,13 +1208,9 @@ describe(`@datastream/core (${variant})`, async () => {
 		} catch (e) {
 			strictEqual(e.message, "boom");
 		}
-		// Both the transform and the writable registered an abort listener; both
-		// must be removed on the error path.
 		ok(removed >= 2, `expected >=2 abort listener removals, got ${removed}`);
 	});
 
-	// Race against a short timeout: an unsupported input must error promptly, not
-	// hang the stream forever (which would otherwise stall the whole test run).
 	const withTimeout = (promise, ms = 1000) =>
 		Promise.race([
 			promise,
@@ -1359,24 +1247,12 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(web.isReadable(undefined), false);
 		strictEqual(web.isWritable(null), false);
 		strictEqual(web.isWritable(undefined), false);
-		// And primitives must not throw either.
 		strictEqual(web.isReadable(42), false);
 		strictEqual(web.isWritable("x"), false);
 	});
 
-	// ===========================================================================
-	// *** Mutation-killing tests (node build) ***
-	// Each test below pins a specific behavior so a one-line mutation of the
-	// source would flip an assertion. Grouped by the source construct targeted.
-	// ===========================================================================
-
-	// --- EventEmitter-only collector path (the `typeof stream.on === "function"`
-	// branch). A Node Readable is also async-iterable, so deleting the .on branch
-	// still works via the async path. A bare EventEmitter is NOT async-iterable, so
-	// only the .on path can drain it; this distinguishes the two code paths. ---
 	const emitterStream = (chunks) => {
 		const ee = new EventEmitter();
-		// Not async-iterable on purpose: no Symbol.asyncIterator, no .pipe.
 		process.nextTick(() => {
 			for (const c of chunks) ee.emit("data", c);
 			ee.emit("end");
@@ -1407,7 +1283,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			strictEqual(out.toString(), "abc");
 		});
 
-		// The .on path must reject on 'error' (kills deletion of stream.on("error")).
 		test(`streamToArray .on path rejects on error event`, async (_t) => {
 			const ee = new EventEmitter();
 			ee.destroy = () => {};
@@ -1421,18 +1296,11 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// --- maxBufferSize boundary precision for every collector. The threshold is a
-	// strict `>` and the running total is an ADDITION. These pin `>` (not >=, <=),
-	// the `+=` (not -=), and that the boundary value itself does NOT throw. ---
-
-	// streamToArray: object-mode length fallback is `?? 1` per chunk.
 	test(`streamToArray counts each non-sized chunk as 1 (?? 1 fallback)`, async (_t) => {
-		// 3 plain objects -> size 3. maxBufferSize 3 must pass (boundary, not > ).
 		const ok3 = await streamToArray(createReadableStream([{}, {}, {}]), {
 			maxBufferSize: 3,
 		});
 		strictEqual(ok3.length, 3);
-		// A 4th identical chunk -> size 4 > 3 must throw (kills `?? 0`, `-=`, `>=`).
 		try {
 			await streamToArray(createReadableStream([{}, {}, {}, {}]), {
 				maxBufferSize: 3,
@@ -1444,7 +1312,6 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	test(`streamToArray at exact maxBufferSize boundary does not throw`, async (_t) => {
-		// "aaa"+"bbb" = 6 chars; maxBufferSize 6 is the boundary and must pass.
 		const out = await streamToArray(createReadableStream(["aaa", "bbb"]), {
 			maxBufferSize: 6,
 		});
@@ -1452,7 +1319,6 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	test(`streamToArray uses byteLength when length is absent`, async (_t) => {
-		// Uint8Array has byteLength but no string length; size must accrue 5.
 		const chunk = Uint8Array.from([1, 2, 3, 4, 5]);
 		try {
 			await streamToArray(createReadableStream([chunk]), { maxBufferSize: 4 });
@@ -1460,7 +1326,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		} catch (e) {
 			ok(e.message.includes("maxBufferSize"));
 		}
-		// And 5 (exact) passes.
 		const out = await streamToArray(createReadableStream([chunk]), {
 			maxBufferSize: 5,
 		});
@@ -1483,17 +1348,13 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	test(`streamToString non-sized chunk fallback is 0, not 1`, async (_t) => {
-		// streamToString uses `?? 0`: an object with no length contributes 0, so a
-		// tiny maxBufferSize must NOT trip on object-mode chunks. (Kills `?? 1`.)
 		const out = await streamToString(createReadableStream([{}, {}, {}]), {
 			maxBufferSize: 0,
 		});
-		// String(...) of objects joined; just assert it did not throw.
 		strictEqual(typeof out, "string");
 	});
 
 	test(`streamToObject at exact boundary passes, one over throws`, async (_t) => {
-		// Each object counts as 1 (?? 1). 3 objects, boundary 3 passes.
 		const ok3 = await streamToObject(
 			createReadableStream([{ a: 1 }, { b: 2 }, { c: 3 }]),
 			{ maxBufferSize: 3 },
@@ -1527,8 +1388,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// The maxBufferSize error messages must name the collector and the limit value
-	// (kills StringLiteral -> "" on each `buffer exceeds maxBufferSize (...)`).
 	test(`maxBufferSize errors carry collector name and limit`, async (_t) => {
 		const cases = [
 			[streamToArray, ["aaa", "bbb", "ccc"], "streamToArray"],
@@ -1558,8 +1417,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// Limits: undefined -> default (unlimited for collectors), null -> unlimited,
-	// and exceeding a limit is a RangeError.
 	test(`streamTo* treat maxBufferSize null as unlimited`, async (_t) => {
 		deepStrictEqual(
 			await streamToArray(createReadableStream(["aaa", "bbb"]), {
@@ -1604,8 +1461,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// --- async-iterable path also enforces maxBufferSize boundary (covers the
-	// second copy of each guard in the for-await branch). ---
 	const asyncGen = (chunks) =>
 		(async function* () {
 			for (const c of chunks) yield c;
@@ -1671,9 +1526,7 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// streamToObject async byteLength fallback (Uint8Array chunks count by bytes).
 	test(`streamToObject byteLength fallback counts bytes`, async (_t) => {
-		// A typed array of 5 bytes -> size 5 > 4 must throw even in object mode.
 		const chunk = Uint8Array.from([1, 2, 3, 4, 5]);
 		try {
 			await streamToObject(createReadableStream([chunk]), { maxBufferSize: 4 });
@@ -1683,15 +1536,9 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// The size fallback is `length ?? byteLength ?? N`, NOT `length && byteLength`.
-	// A chunk with NO `length` but a truthy `byteLength` must count by byteLength.
-	// Under the `&&` (LogicalOperator) mutant, `undefined && byteLength` is
-	// undefined, so the fallback collapses to N (1 or 0) and the limit is not hit.
-	// Use a plain object exposing only `byteLength` so `?.length` is undefined.
 	const byteLenChunk = (n, extra = {}) => ({ byteLength: n, ...extra });
 
 	test(`streamToArray counts a byteLength-only chunk by its byteLength`, async (_t) => {
-		// .on path: size 5 > 4 must throw (kills `?? -> &&` at the .on guard).
 		try {
 			await streamToArray(createReadableStream([byteLenChunk(5)]), {
 				maxBufferSize: 4,
@@ -1700,7 +1547,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		} catch (e) {
 			ok(e.message.includes("maxBufferSize"));
 		}
-		// async path: same expectation.
 		try {
 			await streamToArray(asyncGen([byteLenChunk(5)]), { maxBufferSize: 4 });
 			throw new Error("Should have thrown");
@@ -1729,8 +1575,6 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	test(`streamToString counts a byteLength-only chunk by its byteLength`, async (_t) => {
-		// streamToString fallback is `?? 0`; a byteLength-only chunk of 5 still
-		// exceeds maxBufferSize 4 via byteLength (kills `?? -> &&`).
 		try {
 			await streamToString(createReadableStream([byteLenChunk(5)]), {
 				maxBufferSize: 4,
@@ -1747,19 +1591,13 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// --- async path `?? N` size fallbacks when chunks have neither length nor
-	// byteLength (kills `?? 1` / `?? 0` in the for-await branch of each collector). ---
-
 	test(`streamToArray async path ?? 1 fallback counts no-size chunks`, async (_t) => {
-		// A plain object has no length/byteLength; ?? 1 makes it count as 1.
-		// 4 such chunks -> size 4 > 3 must throw (kills the ?? 1 deletion mutant).
 		try {
 			await streamToArray(asyncGen([{}, {}, {}, {}]), { maxBufferSize: 3 });
 			throw new Error("Should have thrown");
 		} catch (e) {
 			ok(e.message.includes("maxBufferSize"));
 		}
-		// 3 chunks -> size 3, boundary passes.
 		const out = await streamToArray(asyncGen([{}, {}, {}]), {
 			maxBufferSize: 3,
 		});
@@ -1767,8 +1605,6 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	test(`streamToString async path ?? 0 fallback does not count no-size chunks`, async (_t) => {
-		// streamToString uses ?? 0 for chunks without length/byteLength.
-		// Even with maxBufferSize: 0, plain-object chunks must NOT trip the limit.
 		const out = await streamToString(asyncGen([{}, {}]), { maxBufferSize: 0 });
 		strictEqual(typeof out, "string");
 	});
@@ -1776,31 +1612,21 @@ describe(`@datastream/core (${variant})`, async () => {
 	nodeTest(
 		`streamToBuffer async path handles null-sentinel chunk`,
 		async (_t) => {
-			// The async path of streamToBuffer wraps each chunk with fromSafe(...) ?? [].
-			// Yielding the NULL_SENTINEL symbol triggers fromSafe -> null -> [] -> empty Buffer.
 			const NULL_SENTINEL = Symbol.for("@datastream/null");
 			async function* gen() {
 				yield "hi";
 				yield NULL_SENTINEL;
 			}
 			const out = await streamToBuffer(gen());
-			// Only "hi" contributes bytes; the null-sentinel chunk becomes an empty buffer.
 			strictEqual(out.toString(), "hi");
 		},
 	);
 
-	// --- NULL_SENTINEL round-trip: a transform enqueue(null) flows through as null,
-	// AND a literal pushed null is treated as EOF (does not appear). ---
 	test(`createReadableStream array null becomes a flowing null value`, async (_t) => {
-		// toSafe maps array `null` -> NULL_SENTINEL so it is not interpreted as EOF;
-		// the collector's fromSafe maps it back to null.
 		const out = await streamToArray(createReadableStream(["a", null, "b"]));
 		deepStrictEqual(out, ["a", null, "b"]);
 	});
 
-	// --- sanitizeObject: own-enumerable __proto__ key must be stripped. Use a
-	// literal own-enumerable key via Object.defineProperty so the
-	// `key === "__proto__"` guard is exercised through Object.keys. ---
 	test(`streamToObject strips an own-enumerable __proto__ key`, async (_t) => {
 		const evil = {};
 		Object.defineProperty(evil, "__proto__", {
@@ -1819,18 +1645,10 @@ describe(`@datastream/core (${variant})`, async () => {
 		const out = await streamToObject(asyncGen([evil]));
 		strictEqual(Object.hasOwn(out, "__proto__"), false);
 		strictEqual(out.safe, 1);
-		// Without the `key === "__proto__"` guard, `out["__proto__"] = ...` would
-		// replace out's prototype (out is a plain `{}`), leaking `polluted` and
-		// changing the prototype. The guard must keep a clean Object.prototype.
 		strictEqual(Object.getPrototypeOf(out), Object.prototype);
 		strictEqual(out.polluted, undefined);
 	});
 
-	// --- pipeline: lastStream index is length - 1 (kills `+ 1`). A single pure
-	// Readable needs an appended writable sink to terminate; with `+ 1` the index
-	// is undefined, isReadable(undefined) is false, no sink is appended, and
-	// pipelinePromise([readable]) rejects with "streams argument must be specified".
-	// This also kills the isReadable(lastStream) branch deletion. ---
 	test(`pipeline appends a sink for a single pure readable`, async (_t) => {
 		const out = await withTimeout(
 			pipeline([createReadableStream(["a", "b", "c"])]),
@@ -1838,9 +1656,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(out, {});
 	});
 
-	// --- pipeline promise guard loop must actually iterate (kills loop `false`,
-	// `idx >= l`, block deletion, the `typeof ... then` check, and the index in the
-	// message). A promise at index 2 must be reported with that index. ---
 	test(`pipeline reports the index of a promise-instead-of-stream`, async (_t) => {
 		const streams = [
 			createReadableStream(["a"]),
@@ -1855,9 +1670,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// pipejoin has no onError callback any more: a stream error tears the chain
-	// down and surfaces on the returned stream (browser parity) instead of being
-	// rethrown on process.nextTick as an uncaught exception.
 	nodeTest(
 		`pipejoin surfaces errors on the returned stream without an uncaught rethrow`,
 		async (_t) => {
@@ -1885,17 +1697,11 @@ describe(`@datastream/core (${variant})`, async () => {
 		},
 	);
 
-	// --- createReadableStream branch coverage ---
-
-	// Array.isArray branch: array maps null -> sentinel so an embedded null is
-	// preserved as a value (raw null would be EOF). (kills branch deletion /
-	// `false` / `true`).
 	test(`createReadableStream array branch preserves embedded null`, async (_t) => {
 		const out = await streamToArray(createReadableStream([null, "x"]));
 		deepStrictEqual(out, [null, "x"]);
 	});
 
-	// object-with-byteLength branch (ArrayBuffer) yields a single Uint8Array chunk.
 	test(`createReadableStream routes ArrayBuffer to byte chunker`, async (_t) => {
 		const buf = new Uint8Array([9, 8, 7]).buffer;
 		const out = await streamToArray(createReadableStream(buf));
@@ -1903,8 +1709,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(Array.from(out[0]), [9, 8, 7]);
 	});
 
-	// String routing splits by chunkSize via substring (kills MethodExpression
-	// yield input2 and the position arithmetic).
 	test(`createReadableStream chunks strings by chunkSize via substring`, async (_t) => {
 		const input = "abcdefgh";
 		const out = await streamToArray(
@@ -1914,15 +1718,12 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	test(`createReadableStream string chunk boundary is exact`, async (_t) => {
-		// length 6, chunkSize 3 -> exactly 2 full chunks, no empty trailing chunk
-		// (kills while `<=` which would emit an extra empty "" at position===length).
 		const out = await streamToArray(
 			createReadableStream("abcdef", { chunkSize: 3 }),
 		);
 		deepStrictEqual(out, ["abc", "def"]);
 	});
 
-	// chunkSize <= 0 must throw (kills `<= 0` -> `< 0`, `false`, and message "").
 	test(`createReadableStream rejects zero chunkSize for strings`, (_t) => {
 		try {
 			createReadableStream("abc", { chunkSize: 0 });
@@ -1959,8 +1760,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// ArrayBuffer chunking by size (kills while/position mutants and the subarray
-	// window arithmetic in the arraybuffer iterator).
 	if (variant === "node") {
 		test(`createReadableStream chunks ArrayBuffer by chunkSize`, async (_t) => {
 			const buf = new Uint8Array([1, 2, 3, 4, 5]).buffer;
@@ -1974,15 +1773,11 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// createReadableStream() push queue guard: the `chunk !== null` half means
-	// pushing null (EOF) is always allowed even past the limit.
 	if (variant === "node") {
 		test(`createReadableStream allows null push even at queue limit`, async (_t) => {
 			const stream = createReadableStream(undefined, { highWaterMark: 2 });
 			stream.push("a");
 			stream.push("b");
-			// At the limit; pushing null (EOF) must NOT throw (kills `chunk !== null`
-			// -> `true`, which would throw on the null push).
 			stream.push(null);
 			const out = await streamToArray(stream);
 			deepStrictEqual(out, ["a", "b"]);
@@ -1999,9 +1794,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// --- createPassThroughStream default passThrough is identity (kills the
-	// ArrowFunction mutant `() => undefined`). With no transform fn, chunks must
-	// flow through unchanged. ---
 	test(`createPassThroughStream default identity passes chunks through`, async (_t) => {
 		const out = await streamToArray(
 			pipejoin([createReadableStream(["a", "b"]), createPassThroughStream()]),
@@ -2009,11 +1801,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(out, ["a", "b"]);
 	});
 
-	// --- The thenable check must be a strict `typeof result.then === "function"`.
-	// A handler that returns a non-null, non-thenable value (e.g. a string) must NOT
-	// be treated as a promise: with `&& true` (or `!== "function"`, or `=== ""`)
-	// the code would call `result.then(...)` on a string and throw. Returning a
-	// plain value must pass cleanly. ---
 	test(`createPassThroughStream tolerates a non-thenable return value`, async (_t) => {
 		const out = await streamToArray(
 			pipejoin([
@@ -2087,10 +1874,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(seen, ["a"]);
 	});
 
-	// --- async vs sync result detection in create*Stream. A function returning a
-	// thenable must be awaited BEFORE the chunk is pushed / callback runs. Ordering
-	// proves the promise branch (kills `=== "function"` -> `!== "function"` /
-	// `true` / `false` / "" in the thenable checks). ---
 	test(`createPassThroughStream awaits a returned promise before continuing`, async (_t) => {
 		const order = [];
 		const streams = [
@@ -2182,8 +1965,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(order, ["t", "flush-start", "flush-end"]);
 	});
 
-	// --- timeout abort: exact error shape (kills cause/code ObjectLiteral and
-	// StringLiteral mutants) for BOTH the already-aborted and abort-during paths. ---
 	test(`timeout already-aborted rejects with AbortError cause code`, async (_t) => {
 		const controller = new AbortController();
 		controller.abort();
@@ -2211,8 +1992,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// timeout abort handler `settled` guard: after an abort, the later timer firing
-	// must NOT resolve the already-rejected promise (double-settle is a no-op).
 	test(`timeout abort wins the race; later timer does not resolve`, async (_t) => {
 		const controller = new AbortController();
 		const promise = timeout(30, { signal: controller.signal });
@@ -2227,8 +2006,6 @@ describe(`@datastream/core (${variant})`, async () => {
 				rejected = true;
 			},
 		);
-		// Wait past the original 30ms timer to ensure its callback, if it ran,
-		// cannot flip an already-settled promise to resolved.
 		await timeout(60);
 		strictEqual(rejected, true);
 		strictEqual(resolved, false);
@@ -2244,9 +2021,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			return realRemove(type, ...rest);
 		};
 		await timeout(10, { signal });
-		// On normal resolution the listener registered for "abort" must be removed
-		// (kills the `if (signal) signal.removeEventListener("abort", ...)` and the
-		// "" string mutant in the resolve path).
 		strictEqual(removedAbort, 1);
 	});
 
@@ -2262,13 +2036,9 @@ describe(`@datastream/core (${variant})`, async () => {
 		const promise = timeout(60_000, { signal });
 		controller.abort();
 		await promise.catch(() => {});
-		// The abort handler must remove its own "abort" listener (kills the
-		// removeEventListener("abort", ...) -> "" string mutant on the abort path).
 		strictEqual(removedAbort, 1);
 	});
 
-	// --- backpressureGauge: duration arithmetic is a SUBTRACTION (Date.now() -
-	// start), so durations are small/non-negative, not gigantic sums (kills `+`). ---
 	nodeTest(
 		`backpressureGauge pause/resume duration is a small subtraction`,
 		async (_t) => {
@@ -2279,19 +2049,15 @@ describe(`@datastream/core (${variant})`, async () => {
 			transform.emit("resume");
 			const { duration } = metrics.transform.timeline[0];
 			ok(duration >= 0, `duration should be >=0, got ${duration}`);
-			// A summed (Date.now()+timestamp) value would be ~2*Date.now() (>1e12).
 			ok(duration < 1e6, `duration should be small, got ${duration}`);
 		},
 	);
 
-	// total recorded via 'finish'/'close' for writable sinks, AND the
-	// double-record guard means total.timestamp is set exactly once.
 	nodeTest(
 		`backpressureGauge records writable total exactly once`,
 		async (_t) => {
 			const writable = createWritableStream();
 			const metrics = backpressureGauge({ writable });
-			// Fire all three terminal events; guard must record total exactly once.
 			writable.emit("finish");
 			const first = metrics.writable.total.timestamp;
 			const firstDuration = metrics.writable.total.duration;
@@ -2299,10 +2065,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			await timeout(30);
 			writable.emit("close");
 			writable.emit("end");
-			// Both timestamp AND duration must be unchanged by the later events. The
-			// recorded timestamp is always startTimestamp (so it can't move), but
-			// duration is Date.now()-start, so a re-record after a 30ms wait would
-			// bump duration. The `!= null` guard must prevent that (kills it -> false).
 			strictEqual(metrics.writable.total.timestamp, first);
 			strictEqual(metrics.writable.total.duration, firstDuration);
 			ok(metrics.writable.total.duration >= 0);
@@ -2310,8 +2072,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		},
 	);
 
-	// 'finish' and 'close' events are both wired (kills on("") string mutants):
-	// a writable that emits only 'finish' (no 'end') must still get a total.
 	nodeTest(
 		`backpressureGauge records total on the finish event`,
 		async (_t) => {
@@ -2329,10 +2089,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(typeof metrics.writable.total.timestamp, "number");
 	});
 
-	// --- pipeline derives objectMode from a trailing readable's state and pushes a
-	// sink built from a (non-empty) streamOptions object. With the readable-last
-	// case, object chunks must drain without a non-buffer-chunk error. (covers the
-	// isReadable branch and the streamOptions object literal.) ---
 	test(`pipeline drains an object-mode readable-last stream`, async (_t) => {
 		const streams = [
 			createReadableStream([{ a: 1 }, { b: 2 }]),
@@ -2342,14 +2098,8 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(out, {});
 	});
 
-	// --- pipeline passes the spread streamOptions object (not `{}`) to
-	// pipelinePromise for a readable-last pipeline. A signal supplied in
-	// streamOptions and aborted mid-flight must abort the pipeline. The
-	// ObjectLiteral -> `{}` mutant drops the signal so the pipeline runs to
-	// completion and resolves instead of rejecting. ---
 	if (variant === "node") {
 		test(`pipeline forwards a streamOptions signal to the readable-last sink`, async (_t) => {
-			// A slow trailing readable so the abort lands while the pipeline runs.
 			let emitted = 0;
 			const slowReadable = new Readable({
 				objectMode: true,
@@ -2371,9 +2121,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// --- audit: a caller-supplied terminal writable must still honor
-	// streamOptions.signal (the browser build only gave the signal to a sink it
-	// appended itself, so it read every chunk after abort). ---
 	test(`pipeline rejects on streamOptions.signal abort with a caller-supplied writable`, async (_t) => {
 		const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 		async function* gen() {
@@ -2400,11 +2147,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		ok(written.length < 5, `wrote ${written.length} chunks after abort`);
 	});
 
-	// --- regression: aborting streamOptions.signal mid-write must tear the
-	// source down (iterator return() for generators, cancel() for a raw
-	// ReadableStream). The browser build once handed the signal to every
-	// pipeThrough, whose own abort handling raced the terminal pipe and never
-	// cancelled the source, leaking paginated fetches / DB cursors. ---
 	test(`pipeline abort mid-write runs the source iterator's return()`, async (_t) => {
 		const tick = () => new Promise((resolve) => setImmediate(resolve));
 		let returned = false;
@@ -2417,7 +2159,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			}
 		}
 		const controller = new AbortController();
-		// Abort while a write is still pending (it settles on the next tick).
 		const sink = createWritableStream(
 			() =>
 				new Promise((resolve) =>
@@ -2472,12 +2213,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// --- size accumulation `chunk?.length ?? chunk?.byteLength ?? N` is computed
-	// for every chunk. An `undefined` chunk leaves both optional chains nullish so
-	// the `?? N` fallback applies. Removing either `?.` (OptionalChaining mutant)
-	// makes `undefined.length` / `undefined.byteLength` throw, so a stream carrying
-	// an `undefined` chunk must still drain cleanly. Covers .on and async paths of
-	// every collector. ---
 	if (variant === "node") {
 		test(`streamToArray tolerates an undefined chunk (.on + async paths)`, async (_t) => {
 			const onOut = await streamToArray(emitterStream([undefined, "a"]));
@@ -2501,9 +2236,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// --- createReadableStream input dispatch. An iterable WITHOUT a `.map` method
-	// (a Set) must reach the `Readable.from(input)` branch. The Array.isArray ->
-	// `true` mutant would call `set.map(...)`, which throws because Set has no map. ---
 	test(`createReadableStream streams a non-array iterable (Set) input`, async (_t) => {
 		const input = new Set(["a", "b", "c"]);
 		const streams = [createReadableStream(input)];
@@ -2512,9 +2244,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(output, ["a", "b", "c"]);
 	});
 
-	// --- The node string/byte chunkers read `streamOptions?.chunkSize`, so an
-	// explicit `null` options object falls back to the default chunkSize (the
-	// OptionalChaining mutant would throw on `null.chunkSize`). ---
 	nodeTest(
 		`createReadableStream tolerates null streamOptions for strings and bytes`,
 		async (_t) => {
@@ -2528,22 +2257,13 @@ describe(`@datastream/core (${variant})`, async () => {
 		},
 	);
 
-	// --- string chunker loops `while (position < length)`. With a chunkSize that
-	// divides the input length exactly, the `<=` (EqualityOperator) mutant runs one
-	// extra iteration and yields a trailing empty-string chunk. Pin the exact chunk
-	// list so a phantom "" chunk fails the assertion. ---
 	test(`createReadableStream string stops exactly at the end (no trailing empty chunk)`, async (_t) => {
-		// length 8, chunkSize 4 -> exactly 2 chunks, no remainder.
 		const stream = createReadableStream("abcdefgh", { chunkSize: 4 });
 		const output = await streamToArray(stream);
 		deepStrictEqual(output, ["abcd", "efgh"]);
 	});
 
-	// --- byte chunker loops `while (position < length)`. With a chunkSize
-	// dividing byteLength exactly, the `<=` mutant runs one extra iteration and
-	// yields a trailing empty (zero-length) chunk. Pin exactly 2 chunks. ---
 	test(`createReadableStream ArrayBuffer stops exactly at the end (no trailing empty chunk)`, async (_t) => {
-		// 8 bytes, chunkSize 4 -> exactly 2 chunks of 4 bytes, no remainder.
 		const input = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer;
 		const stream = createReadableStream(input, { chunkSize: 4 });
 		const output = await streamToArray(stream);
@@ -2552,14 +2272,11 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(Array.from(output[1]), [5, 6, 7, 8]);
 	});
 
-	// --- aborting a stream over a generator must call its return() so upstream
-	// cleanup (finally blocks: DB cursors, fetch bodies) runs. ---
 	test(`createReadableStream abort calls the source iterator's return()`, async (_t) => {
 		const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 		let cleaned = false;
 		async function* gen() {
 			try {
-				// Unbounded but paced source; a pending next() would queue return().
 				for (;;) {
 					await sleep(2);
 					yield "a";
@@ -2578,9 +2295,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(cleaned, true);
 	});
 
-	// --- createReadableStream covers the removed createReadableStreamFrom{String,
-	// ArrayBuffer}: empty string / zero-length ArrayBuffer (or SharedArrayBuffer)
-	// stream no chunks, and a view streams its raw bytes. ---
 	test(`createReadableStream streams empty string and zero-length buffers as no chunks`, async (_t) => {
 		deepStrictEqual(await streamToArray(createReadableStream("")), []);
 		deepStrictEqual(
@@ -2595,21 +2309,12 @@ describe(`@datastream/core (${variant})`, async () => {
 			createReadableStream(new SharedArrayBuffer(2)),
 		);
 		deepStrictEqual(Array.from(shared), [0, 0]);
-		// A view streams its raw bytes, not element values (Uint16 0x0102).
 		const u16 = new Uint16Array([0x0102]);
 		const [chunk] = await streamToArray(createReadableStream(u16));
 		deepStrictEqual(Array.from(chunk), Array.from(new Uint8Array(u16.buffer)));
 	});
 
-	// --- createPassThroughStream default passThrough is `(chunk) => chunk`. The
-	// default's return value feeds the thenable detection: when a chunk is itself a
-	// rejecting thenable, the default returns it, the stream awaits it, and the
-	// rejection surfaces as a stream error. The ArrowFunction mutant
-	// (`() => undefined`) returns undefined, skips the await, and the pipeline
-	// would resolve instead of rejecting. ---
 	test(`createPassThroughStream default forwards the chunk's own thenable (rejection surfaces)`, async (_t) => {
-		// A thenable object whose `then` rejects. Built via a computed key so the
-		// linter's no-thenable-literal rule is not tripped; it is intentional here.
 		const thenKey = "then";
 		const rejecting = {
 			[thenKey](_resolve, reject) {
@@ -2633,10 +2338,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// --- createWritableStream final handler awaits a returned thenable. An async
-	// `final` that REJECTS must propagate as a pipeline error. The thenable-check
-	// mutants (`if (false)`, `typeof ... === ""`) would take the else branch and
-	// resolve, swallowing the rejection. ---
 	test(`createWritableStream propagates a rejecting async final`, async (_t) => {
 		const streams = [
 			createReadableStream(["a", "b", "c"]),
@@ -2655,35 +2356,18 @@ describe(`@datastream/core (${variant})`, async () => {
 		}
 	});
 
-	// ===========================================================================
-	// *** Stream-leak resilience ***
-	// Legacy `.pipe()` only tears a chain down on `finish`; when a stream errors
-	// or a consumer closes early it leaves the upstream source running, producing
-	// into a dead pipeline (the classic Node.js stream leak). pipejoin must mirror
-	// what pipeline()/pipelinePromise does internally: destroy EVERY stream on the
-	// first error so nothing is left running. pipeline() (pipelinePromise) already
-	// does this; these tests pin both behaviours so neither can regress.
-	// ===========================================================================
-
-	// pipejoin's teardown is node-build behaviour (the browser build has no
-	// teardown); this pins the already-destroyed skip so it can't regress.
 	nodeTest(`pipejoin teardown skips already-destroyed streams`, async (_t) => {
 		const source = createReadableStream(["a", "b", "c"]);
 		const failing = createTransformStream(() => {
 			throw new Error("teardown-failure");
 		});
 		const sink = createWritableStream();
-		// Count how often the already-destroyed erroring stream gets destroy()ed: Node
-		// tears `failing` down on throw, so teardown's loop must SKIP it (the
-		// `!stream.destroyed` guard) — it must end at exactly one destroy, not two.
 		let failingDestroyCalls = 0;
 		const failingDestroy = failing.destroy.bind(failing);
 		failing.destroy = (error) => {
 			failingDestroyCalls++;
 			return failingDestroy(error);
 		};
-		// Destroying the streams re-emits 'error', re-entering teardown; the
-		// `!stream.destroyed` guard makes the re-entry a no-op.
 		pipejoin([source, failing, sink]);
 		await timeout(50);
 		strictEqual(
@@ -2697,16 +2381,12 @@ describe(`@datastream/core (${variant})`, async () => {
 	});
 
 	if (variant === "node") {
-		// A mid-chain error must destroy the upstream source AND the downstream sink,
-		// not just the stream that threw. With bare `.pipe()` the source survives and
-		// keeps producing — the leak this guards against.
 		test(`pipejoin destroys every stream when one errors (no upstream leak)`, async (_t) => {
 			const source = createReadableStream(["a", "b", "c"]);
 			const failing = createTransformStream(() => {
 				throw new Error("mid-failure");
 			});
 			const sink = createWritableStream();
-			// The error surfaces on the (unconsumed) sink; we assert on teardown here.
 			pipejoin([source, failing, sink]);
 			await timeout(50);
 			strictEqual(source.destroyed, true, "source must be destroyed");
@@ -2718,8 +2398,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			strictEqual(sink.destroyed, true, "downstream sink must be destroyed");
 		});
 
-		// The error must still reach a collector consuming the joined stream, and the
-		// upstream source must be torn down rather than left producing.
 		test(`pipejoin surfaces the error to a collector and tears the source down`, async (_t) => {
 			const source = createReadableStream(["a", "b", "c"]);
 			const failing = createTransformStream((chunk, enqueue) => {
@@ -2736,15 +2414,12 @@ describe(`@datastream/core (${variant})`, async () => {
 			strictEqual(source.destroyed, true, "source must be destroyed on error");
 		});
 
-		// A consumer that stops reading early (break out of the async iterator) must
-		// not leave the source running: the iterator protocol destroys the readable,
-		// and pipejoin's teardown must propagate that to every upstream stream.
 		test(`pipejoin tears the source down when the consumer stops early`, async (_t) => {
 			const source = createReadableStream(["a", "b", "c", "d", "e"]);
 			const passThrough = createPassThroughStream((c) => c);
 			const joined = pipejoin([source, passThrough]);
 			for await (const chunk of joined) {
-				if (chunk === "b") break; // early exit -> iterator destroys `joined`
+				if (chunk === "b") break;
 			}
 			await timeout(50);
 			strictEqual(joined.destroyed, true, "joined stream must be destroyed");
@@ -2755,8 +2430,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			);
 		});
 
-		// Characterization: pipeline() (pipelinePromise) already destroys the whole
-		// chain on a mid-stream error. Pin it so the resilient teardown can't regress.
 		test(`pipeline destroys the source when a transform errors`, async (_t) => {
 			const source = createReadableStream(["a", "b", "c"]);
 			const streams = [
@@ -2775,10 +2448,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// *** createWritableStream streamOptions.abort *** //
-	// Same contract in both builds: abort(reason) runs once when the sink is torn
-	// down before it finishes by something other than its own write/final failing
-	// (an upstream/pipe error, a writer abort / destroy(), or its signal firing).
 	const upstreamFailure = () => [
 		createReadableStream(["a"]),
 		createTransformStream(() => {
@@ -2876,12 +2545,9 @@ describe(`@datastream/core (${variant})`, async () => {
 	test(`createWritableStream abort runs when the sink is aborted/destroyed directly`, async () => {
 		const abort = spy();
 		const sink = createWritableStream(() => {}, { abort });
-		// node: destroy() without an error; browser: WritableStream#abort() with no
-		// reason. Both hand abort() an undefined reason.
 		if (variant === "node") {
 			sink.destroy();
 			await new Promise((resolve) => setImmediate(resolve));
-			// destroy() must still complete (its callback runs after abort()).
 			strictEqual(sink.closed, true);
 		} else {
 			await sink.abort();
@@ -2900,15 +2566,12 @@ describe(`@datastream/core (${variant})`, async () => {
 		if (variant === "node") sink.on("error", () => {});
 		controller.abort();
 		await new Promise((resolve) => setImmediate(resolve));
-		// A later teardown must not re-run it.
 		if (variant === "node") sink.destroy(new Error("again"));
 		else await sink.abort(new Error("again")).catch(() => {});
 		strictEqual(abort.callCount, 1);
 		strictEqual(abort.mock.calls[0].arguments[0].name, "AbortError");
 	});
 
-	// Node destroys a Writable built with an already-aborted signal; the browser
-	// build must error it too (and run the hook) instead of accepting writes.
 	test(`createWritableStream with an already-aborted signal errors and runs abort once`, async () => {
 		const abort = spy();
 		const write = spy();
@@ -2929,9 +2592,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(abort.mock.calls[0].arguments[0].name, "AbortError");
 	});
 
-	// Node's pipeline() throws ERR_STREAM_UNABLE_TO_PIPE, before it listens for
-	// 'error', when a later stream is already destroyed by an aborted signal, so
-	// the real AbortError was emitted with no listener (uncaught exception).
 	const withoutUncaught = async (fn) => {
 		const caught = spy();
 		const events = ["uncaughtException", "unhandledRejection"];
@@ -2942,7 +2602,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 		try {
 			await fn();
-			// Outlast the async abort hooks below so a late 'error' would land.
 			await new Promise((resolve) => setTimeout(resolve, 30));
 			strictEqual(caught.callCount, 0);
 		} finally {
@@ -2962,13 +2621,9 @@ describe(`@datastream/core (${variant})`, async () => {
 		return true;
 	};
 
-	// A stream destroyed without an error after push(null) but before "end" (e.g.
-	// a source stopped then destroyed before flowing) is seen as finished by pipe, which then never ends the
-	// destination: the pipeline hung. It must reject and tear the rest down.
 	nodeTest(
 		`pipeline rejects promptly when a stream was already destroyed without an error`,
 		async () => {
-			// push(null) then destroy() before anything reads: ended, never emitted "end".
 			const source = createReadableStream();
 			source.push(null);
 			source.destroy();
@@ -3020,7 +2675,6 @@ describe(`@datastream/core (${variant})`, async () => {
 				order.push("pipeline-settled");
 				if (abort) {
 					strictEqual(abort.callCount, 1);
-					// node waits for the hook before settling (as on any abort).
 					if (variant === "node") {
 						deepStrictEqual(order, ["abort-done", "pipeline-settled"]);
 					}
@@ -3037,7 +2691,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			const { signal } = controller;
 			const write = spy();
 			const source = createReadableStream(["a"]);
-			// Several destroyed streams in one chain: every one is listened to.
 			await rejects(
 				pipeline([
 					source,
@@ -3048,9 +2701,7 @@ describe(`@datastream/core (${variant})`, async () => {
 				abortedBy(reason),
 			);
 			strictEqual(write.callCount, 0);
-			// The healthy source is torn down too, not left open.
 			if (variant === "node") strictEqual(source.destroyed, true);
-			// A web stream in a node pipeline (no destroy()) doesn't break teardown.
 			await rejects(
 				pipeline([
 					new ReadableStream({
@@ -3063,7 +2714,6 @@ describe(`@datastream/core (${variant})`, async () => {
 				abortedBy(reason),
 			);
 			strictEqual(write.callCount, 0);
-			// Readable-last: the appended sink is built with the aborted signal.
 			await rejects(
 				pipeline([createReadableStream(["a"])], { signal }),
 				abortedBy(reason),
@@ -3099,8 +2749,6 @@ describe(`@datastream/core (${variant})`, async () => {
 				throw new Error("abort-rejected");
 			},
 		]) {
-			// The sink is already failing with `reason`; abort's own failure must
-			// neither replace that error nor surface as an unhandled rejection.
 			await rejects(
 				pipeline([
 					...upstreamFailure(),
@@ -3133,7 +2781,6 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(order, ["abort-done", "pipeline-settled"]);
 	});
 
-	// *** Major-version API: removed exports stay removed *** //
 	test(`removed core exports are absent`, async () => {
 		const mod = await import("@datastream/core");
 		for (const name of [
@@ -3147,16 +2794,12 @@ describe(`@datastream/core (${variant})`, async () => {
 		]) {
 			strictEqual(mod[name], undefined, name);
 		}
-		// Platform-unsupported: the browser build has no backpressureGauge export.
 		strictEqual(
 			typeof mod.backpressureGauge,
 			variant === "node" ? "function" : "undefined",
 		);
 	});
 
-	// Every browser stream registers an abort listener when given a signal; it
-	// must be dropped on every terminal path (clean close, cancel, abort) or a
-	// long-lived shared signal accumulates one listener per stream ever built.
 	if (variant === "browser") {
 		test(`create*Stream drop the abort listener on close, cancel and abort`, async () => {
 			const controller = new AbortController();
@@ -3237,8 +2880,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			);
 		});
 
-		// chunkSize only means the readable slice size; it no longer turns into a
-		// queuing-strategy size() (which made highWaterMark a byte-ish budget).
 		test(`makeOptions forwards highWaterMark and ignores chunkSize in the strategies`, () => {
 			const { readableStrategy, writableStrategy, signal } = makeOptions({
 				highWaterMark: 2,
@@ -3271,8 +2912,6 @@ describe(`@datastream/core (${variant})`, async () => {
 				await streamToArray(createReadableStream(new Set([1, 2]))),
 				[1, 2],
 			);
-			// A bare iterator without return(): pulled one item at a time, cancel and
-			// abort must still settle.
 			const source = () => {
 				let pulled = 0;
 				return {
@@ -3314,10 +2953,6 @@ describe(`@datastream/core (${variant})`, async () => {
 			}
 		});
 
-		// No chunk is in flight when the signal fires, so only the start()
-		// abort listener can error the stream (transform()/write() never run
-		// throwIfAborted). Waiting a macrotask first also proves a live signal
-		// doesn't error the stream on its own.
 		const abortable = {
 			createPassThroughStream: (signal) =>
 				createPassThroughStream(undefined, { signal }),
@@ -3390,21 +3025,13 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 	}
 
-	// --- audit: streamToString must decode byte chunks with a streaming decoder
-	// so a multibyte char split across chunks survives (was "\ufffd\ufffd" in node).
-	// createReadableStream(array) exercises the .on path in node; asyncGen the
-	// async-iterator path. ---
 	test(`streamToString decodes a multibyte char split across byte chunks`, async (_t) => {
-		const bytes = new TextEncoder().encode("é"); // 0xC3 0xA9
+		const bytes = new TextEncoder().encode("é");
 		const split = () => [bytes.subarray(0, 1), bytes.subarray(1)];
 		strictEqual(await streamToString(createReadableStream(split())), "é");
 		strictEqual(await streamToString(asyncGen(split())), "é");
 	});
 
-	// --- audit: typed-array views must stream their raw bytes (byteOffset/
-	// byteLength window), not element values; node copied element-wise
-	// (Uint16 -> [2,4]), a DataView yielded nothing and an empty Buffer yielded
-	// one chunk. Both builds must agree. ---
 	test(`createReadableStream streams the raw bytes of any typed-array view`, async (_t) => {
 		const bytesOf = async (input) =>
 			(await streamToArray(createReadableStream(input))).map((c) =>
@@ -3424,10 +3051,6 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 	const nodeTest = variant === "node" ? test : test.skip;
 	const browserTest = variant === "browser" ? test : test.skip;
 
-	// --- An async iterator's next() must never be in flight twice (DB cursor /
-	// paginated fetch safety, Readable.from parity). Kills the `if (reading)`
-	// guard mutants: without it, Readable's maybeReadMore re-enters read()
-	// while a next() is still pending. ---
 	nodeTest(
 		`createReadableStream never calls an async iterator's next() concurrently`,
 		async (_t) => {
@@ -3461,11 +3084,6 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 		},
 	);
 
-	// --- Readable.from parity: a promise value in a sync iterable is awaited
-	// and its settled value flows, in order. Kills the thenable probe mutants
-	// (`typeof value?.then === "function"` -> false emits the promise itself;
-	// the `return false` -> `return true` after scheduling it would pull "b"
-	// ahead of "a"). The browser build enqueues values as-is, so node only. ---
 	nodeTest(
 		`createReadableStream awaits promise values from a sync iterable in order`,
 		async (_t) => {
@@ -3488,12 +3106,6 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 		},
 	);
 
-	// --- A sync iterable fills the queue up to highWaterMark within a single
-	// read(): next() #2..#4 run before the nextTick queued by #1. Kills the
-	// `push()` loop-exit mutants (one next() per read(), which would only
-	// resume from maybeReadMore's nextTick) and the eager-drain mutant
-	// (`if (true) return true`, which would pull all 8 before the first
-	// chunk is handed out). ---
 	nodeTest(
 		`createReadableStream pulls a sync iterable up to highWaterMark per read() and no further`,
 		async (_t) => {
@@ -3516,12 +3128,10 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 			};
 			const stream = createReadableStream(source, { highWaterMark: 4 });
 			strictEqual(stream.read(), 0);
-			// read() pulled exactly highWaterMark items, all synchronously.
 			strictEqual(pulled, 4);
 			deepStrictEqual(ticks, [false, false, false, false]);
 			stream.destroy();
 
-			// Readable.from parity: the default highWaterMark is 1, not objectMode's 16.
 			pulled = 0;
 			const lazy = createReadableStream(source);
 			strictEqual(lazy.read(), 0);
@@ -3530,11 +3140,6 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 		},
 	);
 
-	// --- The browser pull() fills the queue up to highWaterMark in one call for
-	// sync iterators: next() #2 runs before the microtask queued by #1, and
-	// next() #3 (after one chunk is read) does not. Kills `desiredSize > 0`
-	// -> `false` / `<` (one next() per pull, a microtask apart) and `>=`
-	// (over-fills by one, so #3 would also run synchronously). ---
 	browserTest(
 		`createReadableStream pulls a sync iterable up to highWaterMark per pull()`,
 		async (_t) => {
@@ -3556,11 +3161,9 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 				}),
 			};
 			const stream = createReadableStream(source, { highWaterMark: 2 });
-			// The first pull() (after start) fills the queue: exactly 2, synchronously.
 			await new Promise((resolve) => setImmediate(resolve));
 			strictEqual(pulled, 2);
 			deepStrictEqual(ticks, [false, false]);
-			// Reading one frees a slot; the refill is a separate pull() (microtask later).
 			const reader = stream.getReader();
 			deepStrictEqual(await reader.read(), { value: 0, done: false });
 			await new Promise((resolve) => setImmediate(resolve));
@@ -3570,9 +3173,6 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 		},
 	);
 
-	// --- A sync source ending while chunks are still queued: close() is only
-	// requested (desiredSize stays positive), so the loop must stop on done
-	// rather than keep pulling (a second close() throws "already closed"). ---
 	browserTest(
 		`createReadableStream ends a sync iterable cleanly with chunks still queued`,
 		async (_t) => {
@@ -3585,9 +3185,6 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 		},
 	);
 
-	// --- A sync source that throws mid-iteration errors the stream and drops
-	// the abort listener (the async case is covered by "removes its abort
-	// listener when the source throws"; the sync path now has its own catch). ---
 	test(`createReadableStream errors and removes its abort listener when a sync source throws`, async (_t) => {
 		const controller = new AbortController();
 		const source = (function* () {
@@ -3604,9 +3201,6 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 		strictEqual(getEventListeners(controller.signal, "abort").length, 0);
 	});
 
-	// --- destroy() runs a sync generator's finally (iterator.return()) before
-	// 'close', and a bare iterator without return() still closes cleanly
-	// (kills the `iterator.return?.()` optional-chaining mutant). ---
 	nodeTest(
 		`createReadableStream destroy() runs a sync iterator's return() before close`,
 		async (_t) => {
@@ -3636,20 +3230,18 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 		},
 	);
 
-	// --- Readable.from parity for a failing return(): the destroy error wins
-	// when there is one (kills `error ?? e` -> `e`), and otherwise the
-	// return() failure surfaces as the stream error (kills -> `error`). ---
 	nodeTest(
 		`createReadableStream destroy() keeps its own error over a failing return()`,
 		async (_t) => {
-			function* gen() {
-				try {
-					for (;;) yield "a";
-				} finally {
-					// biome-ignore lint/correctness/noUnsafeFinally: deliberate
+			const gen = () => ({
+				[Symbol.iterator]() {
+					return this;
+				},
+				next: () => ({ value: "a", done: false }),
+				return: () => {
 					throw new Error("cleanup-failed");
-				}
-			}
+				},
+			});
 			const errored = createReadableStream(gen());
 			strictEqual(errored.read(), "a");
 			errored.destroy(new Error("destroy-error"));
@@ -3662,9 +3254,6 @@ describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
 		},
 	);
 
-	// --- Backpressure through a transform: the sync loop stops when push()
-	// returns false and resumes on the next read() (kills `reading = false`
-	// removal, which would stall after the first full queue). ---
 	test(`createReadableStream resumes a sync iterable after backpressure`, async (_t) => {
 		const input = Array.from({ length: 1000 }, (_, i) => i);
 		const seen = [];

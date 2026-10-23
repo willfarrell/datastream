@@ -104,7 +104,6 @@ test("fuzz protobufDecodeStream with random byte inputs", async () => {
 	);
 });
 
-// *** protobufDecodeStream maxMessageSize guard *** //
 test("fuzz protobufDecodeStream with maxMessageSize", async () => {
 	await fc.assert(
 		fc.asyncProperty(

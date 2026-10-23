@@ -1,6 +1,5 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-/* global crypto */
 import { concatBytes, createTransformStream } from "@datastream/core";
 import {
 	authAlgorithms,
@@ -18,12 +17,8 @@ import {
 
 const textEncoder = new TextEncoder();
 
-// concatBytes callers only ever pass Uint8Arrays (each transform normalises
-// its chunk).
-
-// libsodium-wrappers is an optional peer dep loaded lazily. After `await
-// ready`, the bound functions live on the module's default export, not the
-// namespace object, so normalize to that.
+// After `await ready`, libsodium-wrappers' bound functions live on the
+// module's default export, not the namespace object.
 const loadSodium = async () => {
 	let mod;
 	try {
@@ -37,10 +32,7 @@ const loadSodium = async () => {
 	return mod.default ?? mod;
 };
 
-// 128-bit big-endian add, wrapping modulo 2^128 like node:crypto's CTR. BigInt
-// keeps blockOffset exact past 2^53; keystream reuse would need 2^128 blocks
-// through one IV, so no overflow guard is reachable or needed. No explicit
-// mask: writing only the low 16 bytes below already drops any carry past 2^128.
+// 128-bit big-endian add, wrapping modulo 2^128 like node:crypto's CTR.
 const incrementCounter = (iv, blockOffset) => {
 	let n = 0n;
 	for (const byte of iv) n = (n << 8n) | BigInt(byte);
@@ -56,8 +48,6 @@ const incrementCounter = (iv, blockOffset) => {
 const toBytes = (chunk) =>
 	chunk instanceof Uint8Array ? chunk : textEncoder.encode(chunk);
 
-// AEAD modes must see the whole message before they can encrypt or verify, so
-// buffer every chunk, bounded by `max` bytes (DoS guard).
 const bufferInput = (max, error) => {
 	const guard = byteLimit(max, error);
 	const chunks = [];
@@ -69,7 +59,6 @@ const bufferInput = (max, error) => {
 	return { transform, data: () => concatBytes(chunks) };
 };
 
-// Decrypt input for the AEAD primitives: ciphertext with the tag re-appended.
 const withAuthTag = (ciphertext, authTag) => concatBytes([ciphertext, authTag]);
 
 const checkOutputSize = (plaintext, maxOutputSize) => {
@@ -79,7 +68,6 @@ const checkOutputSize = (plaintext, maxOutputSize) => {
 	)(plaintext.byteLength);
 };
 
-// AES-GCM: buffer all chunks, encrypt on flush
 const aesGcmEncrypt = async ({ key, iv, aad, maxInputSize }) => {
 	const input = bufferInput(
 		bufferedInputLimit(maxInputSize),
@@ -115,8 +103,6 @@ const aesGcmDecrypt = async ({
 	maxInputSize,
 	maxOutputSize,
 }) => {
-	// Bound memory before buffering/decryption: maxOutputSize alone is checked
-	// only post-decryption, after the full ciphertext is already allocated.
 	const input = bufferInput(
 		bufferedInputLimit(maxInputSize),
 		decryptInputError,
@@ -141,10 +127,6 @@ const aesGcmDecrypt = async ({
 	return { transform: input.transform, flush };
 };
 
-// AES-CTR: true streaming. Only whole 16-byte blocks are processed per chunk;
-// the sub-block tail is carried into the next chunk (or the flush) so the
-// keystream is continuous and the ciphertext does not depend on how the input
-// was chunked — node:crypto's aes-*-ctr produces the same bytes.
 const aesCtr = async ({ key, iv }, usage, guard) => {
 	const cryptoKey = await crypto.subtle.importKey(
 		"raw",
@@ -181,8 +163,6 @@ const aesCtr = async ({ key, iv }, usage, guard) => {
 	return { transform, flush };
 };
 
-// Node parity: unlike the AEAD modes, CTR streams without buffering, so there
-// is no default limit; only an explicit maxInputSize is enforced.
 const aesCtrEncrypt = (options) =>
 	aesCtr(
 		options,
@@ -193,7 +173,6 @@ const aesCtrEncrypt = (options) =>
 		),
 	);
 
-// CTR preserves length, so the output bound can be enforced on the input.
 const aesCtrDecrypt = (options) =>
 	aesCtr(
 		options,
@@ -204,7 +183,6 @@ const aesCtrDecrypt = (options) =>
 		),
 	);
 
-// ChaCha20-Poly1305: requires optional peer dep
 const chacha20Encrypt = async ({ iv, key, aad, maxInputSize }) => {
 	const sodium = await loadSodium();
 	const input = bufferInput(
@@ -236,7 +214,6 @@ const chacha20Decrypt = async ({
 	maxOutputSize,
 }) => {
 	const sodium = await loadSodium();
-	// Bound memory before buffering/decryption (maxOutputSize is post-decrypt).
 	const input = bufferInput(
 		bufferedInputLimit(maxInputSize),
 		decryptInputError,

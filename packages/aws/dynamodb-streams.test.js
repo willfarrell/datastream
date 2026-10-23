@@ -96,9 +96,6 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		deepStrictEqual(output, [{ eventID: "1" }]);
 	});
 
-	// SDK v3 omits NextShardIterator (undefined, not null) for a closed shard; the
-	// loop must treat that as closed too, or pollingActive calls GetRecords forever
-	// with an undefined ShardIterator.
 	test(`awsDynamoDBStreamsGetRecordsStream stops polling when NextShardIterator is undefined`, async (_t) => {
 		let calls = 0;
 		awsDynamoDBStreamsSetClient({
@@ -204,7 +201,6 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 
 		const consuming = (async () => {
 			for await (const _item of stream) {
-				// no records ever arrive
 			}
 		})();
 
@@ -216,7 +212,6 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		});
 	});
 
-	// *** AbortSignal *** //
 	test(`awsDynamoDBStreamsGetRecordsStream should pass signal to client`, async (_t) => {
 		const client = mockClient(DynamoDBStreamsClient);
 		awsDynamoDBStreamsSetClient(client);
@@ -233,15 +228,12 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(GetRecordsCommand);
-		// Forwarded as a signal that follows streamOptions.signal (and also
-		// aborts when the stream is destroyed early).
 		const sent = calls[0].args[1]?.abortSignal;
 		deepStrictEqual(sent.aborted, false);
 		controller.abort();
 		deepStrictEqual(sent.aborted, true);
 	});
 
-	// *** options spread through to the command *** //
 	test(`awsDynamoDBStreamsGetRecordsStream passes Limit through to GetRecords`, async (_t) => {
 		const client = mockClient(DynamoDBStreamsClient);
 		awsDynamoDBStreamsSetClient(client);
@@ -255,15 +247,10 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		});
 		await streamToArray(stream);
 
-		// `opts.ShardIterator` is reassigned inside the loop and captured by
-		// reference, so assert on `Limit` (not mutated) -- it proves the caller
-		// options were spread through (a `command({})` mutant would drop it).
 		const input = client.commandCalls(GetRecordsCommand)[0].args[0].input;
 		deepStrictEqual(input.Limit, 25);
 	});
 
-	// A per-call `client` option must route that call's sends to it (not the
-	// module client) and must not be forwarded into the command input.
 	test(`awsDynamoDBStreamsGetRecordsStream uses the per-call client option and does not forward it`, async (_t) => {
 		awsDynamoDBStreamsSetClient({
 			send: async () => {
@@ -286,7 +273,6 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		deepStrictEqual(inputs, [{ ShardIterator: "s" }]);
 	});
 
-	// *** setClient swap *** //
 	test(`awsDynamoDBStreamsSetClient routes to the new client`, async (_t) => {
 		const first = mockClient(DynamoDBStreamsClient);
 		awsDynamoDBStreamsSetClient(first);
@@ -331,14 +317,10 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		deepStrictEqual(calls, 1);
 	});
 
-	// *** idle-wait guard conjuncts *** //
 	test(`awsDynamoDBStreamsGetRecordsStream does not delay when records are present`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(DynamoDBStreamsClient);
 		awsDynamoDBStreamsSetClient(client);
-		// Records always present so the `records.length === 0` conjunct is false and
-		// no timer is scheduled. A `true` mutant on that conjunct would delay after
-		// every (non-empty) poll and the consumer would stall on the mock timer.
 		client.on(GetRecordsCommand).resolves({
 			Records: [{ eventID: "1" }],
 			NextShardIterator: "iter-next",
@@ -363,9 +345,6 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(DynamoDBStreamsClient);
 		awsDynamoDBStreamsSetClient(client);
-		// pollingActive, empty records, pollingDelay === 0: `pollingDelay > 0` is false
-		// so no idle wait. A `> 0` -> `true` or `>= 0` mutant would await timeout(0)
-		// which the un-ticked mock timer never resolves.
 		client
 			.on(GetRecordsCommand)
 			.resolvesOnce({ Records: [], NextShardIterator: "iter2" })
@@ -390,10 +369,6 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(DynamoDBStreamsClient);
 		awsDynamoDBStreamsSetClient(client);
-		// Not polling: an empty page ends the stream WITHOUT entering the idle wait.
-		// The `&&` -> `||` mutant makes `pollingActive || records.length === 0` true on
-		// the empty page, scheduling a (default 1000ms) timeout the un-ticked mock
-		// timer never resolves -> the stream would hang instead of completing.
 		client
 			.on(GetRecordsCommand)
 			.resolvesOnce({ Records: [{ eventID: "1" }], NextShardIterator: "iter2" })
@@ -421,8 +396,6 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		]);
 	});
 
-	// A generator's return() only lands at its next yield; destroying the stream
-	// must also abort the idle poll wait so polling stops and 'close' fires.
 	test(`awsDynamoDBStreamsGetRecordsStream destroy stops an idle poll`, {
 		timeout: 1000,
 	}, async (_t) => {
@@ -445,7 +418,6 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(GetRecordsCommand).length, 1);
 	});
 
-	// Named exports are canonical; a default export must not come back.
 	test(`dynamodb-streams has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
 	});

@@ -190,7 +190,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(result, {});
 	});
 
-	// *** PutRecords partial failure (data loss) *** //
 	test(`awsKinesisPutRecordsStream should retry failed records on partial failure`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
@@ -223,7 +222,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 
 		const calls = client.commandCalls(PutRecordsCommand);
 		deepStrictEqual(calls.length, 2);
-		// The retry must resubmit only the failed record (b)
 		deepStrictEqual(calls[1].args[0].input.Records, [
 			{ Data: "b", PartitionKey: "b" },
 		]);
@@ -256,8 +254,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// 8 records just under 1 MiB each => ~8 MiB total, well below 500 count
-		// but over the 5 MiB aggregate limit, forcing multiple flushes.
 		const big = "x".repeat(1024 * 1024 - 1024);
 		const input = Array.from({ length: 8 }, (_v, i) => ({
 			Data: big,
@@ -272,9 +268,7 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		await pipeline(stream);
 
 		const calls = client.commandCalls(PutRecordsCommand);
-		// ~8 MiB cannot fit in a single 5 MiB request -> multiple flushes
 		deepStrictEqual(calls.length > 1, true);
-		// And no single flush may carry more than the 5 MiB aggregate
 		for (const call of calls) {
 			deepStrictEqual(call.args[0].input.Records.length <= 5, true);
 		}
@@ -301,7 +295,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 	test(`awsKinesisPutRecordsStream should not retry when FailedRecordCount has no ErrorCode entries`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
-		// Defensive: count says failures but no entry carries an ErrorCode.
 		client.on(PutRecordsCommand).resolves({
 			FailedRecordCount: 1,
 			Records: [{ SequenceNumber: "1" }],
@@ -315,7 +308,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		];
 		await pipeline(stream);
 
-		// No ErrorCode => no retry
 		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 1);
 	});
 
@@ -381,7 +373,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 
-		// Always empty so the poller enters the idle pollingDelay wait.
 		client
 			.on(GetRecordsCommand)
 			.resolves({ Records: [], NextShardIterator: "i" });
@@ -390,8 +381,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		const options = {
 			ShardIterator: "iter1",
 			pollingActive: true,
-			// Large delay: if the timer is not abort-aware the consumer would hang
-			// far longer than this test's window.
 			pollingDelay: 60_000,
 		};
 		const stream = await awsKinesisGetRecordsStream(options, {
@@ -400,12 +389,9 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 
 		const consuming = (async () => {
 			for await (const _item of stream) {
-				// no records ever arrive
 			}
 		})();
 
-		// Let the generator reach the idle delay, then abort. The abortable timeout
-		// must reject promptly instead of waiting out the 60s delay.
 		await new Promise((resolve) => setImmediate(resolve));
 		controller.abort();
 
@@ -414,7 +400,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		});
 	});
 
-	// *** AbortSignal *** //
 	test(`awsKinesisGetRecordsStream should pass signal to client`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
@@ -431,34 +416,22 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(GetRecordsCommand);
-		// Forwarded as a signal that follows streamOptions.signal (and also
-		// aborts when the stream is destroyed early).
 		const sent = calls[0].args[1]?.abortSignal;
 		deepStrictEqual(sent.aborted, false);
 		controller.abort();
 		deepStrictEqual(sent.aborted, true);
 	});
 
-	// *** Batch byte-cap boundary (KINESIS_MAX_BATCH_BYTES = 5MiB - 64KiB) *** //
 	test(`awsKinesisPutRecordsStream splits at the 5MiB-64KiB aggregate cap, not 5MiB`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// Each record is 128KiB Data + 1-byte PartitionKey = 131,073 bytes, chosen so
-		// the real cap (5MiB - 64KiB = 5,177,344) and a mutated `+64KiB` cap
-		// (5,308,416) disagree on where to split:
-		//   real cap:  39 records = 5,111,847 (fits); 40th = 5,242,920 (> cap)
-		//              -> flush after 39
-		//   +64KiB:    40 records = 5,242,920 (fits); 41st = 5,373,993 (> cap)
-		//              -> flush after 40
-		// Multiplicative mutants (`*1024/1024`, `5/1024*1024`) drive the cap negative
-		// so every record after the first flushes -> a completely different shape.
-		const each = 128 * 1024; // 131,072 bytes of Data
+		const each = 128 * 1024;
 		const data = "x".repeat(each);
 		const input = Array.from({ length: 41 }, (_v, i) => ({
 			Data: data,
-			PartitionKey: `${i % 10}`, // single-char key => 1 byte
+			PartitionKey: `${i % 10}`,
 		}));
 		const options = { StreamName: "test-stream" };
 		await pipeline([
@@ -468,7 +441,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 
 		const calls = client.commandCalls(PutRecordsCommand);
 		deepStrictEqual(calls.length, 2);
-		// The true cap splits after exactly 39 records.
 		deepStrictEqual(calls[0].args[0].input.Records.length, 39);
 		deepStrictEqual(calls[1].args[0].input.Records.length, 2);
 	});
@@ -478,7 +450,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// Two tiny records: well under both the count and byte caps -> single flush.
 		const input = [
 			{ Data: "a", PartitionKey: "1" },
 			{ Data: "b", PartitionKey: "2" },
@@ -493,15 +464,11 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(calls[0].args[0].input.Records.length, 2);
 	});
 
-	// *** Per-record 1MiB boundary (strict `>` not `>=`) *** //
 	test(`awsKinesisPutRecordsStream accepts a record exactly at the 1MiB limit`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// Exactly 1 MiB of single-byte chars (1 byte each in UTF-8), no PartitionKey,
-		// so byteLength === KINESIS_MAX_RECORD_BYTES. With strict `>` this is allowed;
-		// a `>=` mutant would wrongly reject it.
 		const exact = "x".repeat(1024 * 1024);
 		const input = [{ Data: exact }];
 		await pipeline([
@@ -512,8 +479,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 1);
 	});
 
-	// An absent Data counts as zero bytes: a PartitionKey alone at exactly 1MiB is
-	// still within the limit.
 	test(`awsKinesisPutRecordsStream counts a missing Data as zero bytes`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
@@ -528,15 +493,11 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 1);
 	});
 
-	// *** recordByteLength counts PartitionKey & ExplicitHashKey *** //
 	test(`awsKinesisPutRecordsStream counts PartitionKey bytes toward the 1MiB limit`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// Data alone is exactly 1MiB (allowed), but adding a non-empty PartitionKey
-		// pushes the record over 1MiB -> must reject. This proves PartitionKey is
-		// summed in (the `record.PartitionKey ?? ""` term and its `+`).
 		const data = "x".repeat(1024 * 1024);
 		const input = [{ Data: data, PartitionKey: "pk" }];
 		await rejects(
@@ -554,9 +515,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// Data exactly 1MiB; a non-empty ExplicitHashKey tips it over -> reject.
-		// Proves the ExplicitHashKey branch and its `+=` (a `-=` mutant would keep
-		// it under the limit and the record would be accepted).
 		const data = "x".repeat(1024 * 1024);
 		const input = [{ Data: data, PartitionKey: "p", ExplicitHashKey: "h" }];
 		await rejects(
@@ -569,7 +527,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		);
 	});
 
-	// *** Failure cause only carries ErrorCode entries *** //
 	test(`awsKinesisPutRecordsStream error cause lists only failed (ErrorCode) records`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
@@ -598,7 +555,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 					error.message,
 					"awsKinesisPutRecords has failed records",
 				);
-				// cause must be filtered to only the ErrorCode-bearing entry.
 				deepStrictEqual(error.cause, [
 					{ ErrorCode: "InternalFailure", ErrorMessage: "boom" },
 				]);
@@ -607,15 +563,11 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		);
 	});
 
-	// *** Count cap split at exactly 500 records *** //
 	test(`awsKinesisPutRecordsStream flushes at exactly 500 records`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// 501 tiny records: count cap (500) forces exactly one mid-stream flush of
-		// 500, then a final flush of 1. Proves `=== 500` (not 499/501) and that the
-		// count check, not bytes, triggers here.
 		const input = Array.from({ length: 501 }, (_v, i) => ({
 			Data: "x",
 			PartitionKey: `${i}`,
@@ -631,7 +583,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(calls[1].args[0].input.Records.length, 1);
 	});
 
-	// *** Backoff floor: first retry waits >= 50ms, not 3^0 == 1ms *** //
 	test(`awsKinesisPutRecordsStream first retry backoff is floored at 50ms`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 
@@ -651,10 +602,7 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 			awsKinesisPutRecordsStream({ StreamName: "test-stream" }),
 		]);
 
-		// Let the first send + failure happen, entering the backoff timer.
 		await new Promise((resolve) => setImmediate(resolve));
-		// 3^0 == 1ms would already have elapsed; the floor means the retry must
-		// still be pending after 1ms but fire by 50ms.
 		t.mock.timers.tick(1);
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 1);
@@ -663,8 +611,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 2);
 	});
 
-	// A per-call `client` option must route that call's sends to it (not the
-	// module client) and must not be forwarded into the command input.
 	test(`awsKinesis streams use the per-call client option and do not forward it`, async (_t) => {
 		awsKinesisSetClient({
 			send: async () => {
@@ -696,7 +642,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		]);
 	});
 
-	// *** setClient swaps the active client *** //
 	test(`awsKinesisSetClient routes subsequent sends to the new client`, async (_t) => {
 		const first = mockClient(KinesisClient);
 		awsKinesisSetClient(first);
@@ -704,8 +649,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 
 		const second = mockClient(KinesisClient);
 		second.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
-		// Swap before any send: only `second` should receive the command. If
-		// setClient's body were removed, the stale `first` would be used.
 		awsKinesisSetClient(second);
 
 		await pipeline([
@@ -717,14 +660,10 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(first.commandCalls(PutRecordsCommand).length, 0);
 	});
 
-	// *** GetRecords stops when NextShardIterator becomes null (shard closed) *** //
 	test(`awsKinesisGetRecordsStream stops polling when NextShardIterator is null even with pollingActive`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 
-		// A closed shard returns a null NextShardIterator: the generator must stop
-		// regardless of pollingActive. If `ShardIterator !== null` were dropped from
-		// the expectMore condition, pollingActive would loop forever.
 		client.on(GetRecordsCommand).resolves({
 			Records: [{ Data: "a" }],
 			NextShardIterator: null,
@@ -739,13 +678,9 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		const output = await streamToArray(stream);
 
 		deepStrictEqual(output, [{ Data: "a" }]);
-		// Exactly one GetRecords call: the null iterator ends the loop.
 		deepStrictEqual(client.commandCalls(GetRecordsCommand).length, 1);
 	});
 
-	// SDK v3 omits NextShardIterator (undefined, not null) for a closed shard; the
-	// loop must treat that as closed too, or pollingActive calls GetRecords forever
-	// with an undefined ShardIterator.
 	test(`awsKinesisGetRecordsStream stops polling when NextShardIterator is undefined`, async (_t) => {
 		let calls = 0;
 		awsKinesisSetClient({
@@ -769,9 +704,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(calls, 1);
 	});
 
-	// Kinesis can return an empty Records page while the iterator is still behind
-	// the tip (MillisBehindLatest > 0); non-polling reads must keep paging until
-	// caught up (MillisBehindLatest === 0) and an empty page.
 	test(`awsKinesisGetRecordsStream without pollingActive keeps reading empty pages while MillisBehindLatest > 0`, async (_t) => {
 		const responses = [
 			{ Records: [], NextShardIterator: "iter2", MillisBehindLatest: 5000 },
@@ -794,7 +726,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 			},
 		});
 
-		// pollingDelay 0 skips the catch-up wait (pinned by its own test below).
 		const stream = await awsKinesisGetRecordsStream({
 			ShardIterator: "iter1",
 			pollingDelay: 0,
@@ -805,9 +736,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(iterators, ["iter1", "iter2", "iter3"]);
 	});
 
-	// Back-to-back empty GetRecords calls while catching up would exceed Kinesis'
-	// 5 calls/s/shard limit (ProvisionedThroughputExceeded): an empty page that
-	// continues (MillisBehindLatest > 0) must wait pollingDelay first.
 	test(`awsKinesisGetRecordsStream without pollingActive waits pollingDelay between empty catch-up pages`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const responses = [
@@ -836,15 +764,11 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(calls, 1);
 		t.mock.timers.tick(1);
-		// The caught-up last page ends the stream with no further wait (checked
-		// without ticking again, so a stray wait fails instead of hanging).
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(calls, 2);
 		deepStrictEqual(output, []);
 	});
 
-	// A closed shard ends the stream at once: no idle wait before stopping, even
-	// with pollingActive and an empty last page.
 	test(`awsKinesisGetRecordsStream closed shard with an empty page ends without an idle wait`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		awsKinesisSetClient({
@@ -856,8 +780,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 			pollingActive: true,
 			pollingDelay: 1000,
 		});
-		// Completion is checked without ticking the mocked clock, so a stray idle
-		// wait fails this assertion instead of hanging the test.
 		let output;
 		streamToArray(stream).then((result) => {
 			output = result;
@@ -870,9 +792,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 
-		// Non-null iterator but empty Records and no pollingActive: expectMore must
-		// become false (records.length > 0 is false). A surviving mutant that forces
-		// the loop true would call GetRecords forever.
 		client
 			.on(GetRecordsCommand)
 			.resolvesOnce({ Records: [{ Data: "a" }], NextShardIterator: "iter2" })
@@ -883,11 +802,9 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		const output = await streamToArray(stream);
 
 		deepStrictEqual(output, [{ Data: "a" }]);
-		// First call returns a record (keep going), second returns empty (stop).
 		deepStrictEqual(client.commandCalls(GetRecordsCommand).length, 2);
 	});
 
-	// *** setClient stores the reference (not just prototype-mocked behavior) *** //
 	test(`awsKinesisSetClient stores the passed client reference`, async (_t) => {
 		// mockClient patches the SDK prototype, hiding instance identity; a plain
 		// stub proves the stored reference is the one actually used to send. A
@@ -909,12 +826,7 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(calls, 1);
 	});
 
-	// *** getRecords forwards the caller options (spread, not {}) to the command *** //
 	test(`awsKinesisGetRecordsStream forwards ShardIterator to GetRecords`, async (_t) => {
-		// Capture the ShardIterator at send time: the generator mutates opts.ShardIterator
-		// to the (null) NextShardIterator AFTER the await, so we must read it synchronously
-		// inside send. A `command({})` object-literal mutant starts with an empty opts and
-		// the first command would carry ShardIterator === undefined.
 		let firstShardIterator = "unset";
 		const stub = {
 			send: (command) => {
@@ -937,15 +849,10 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(firstShardIterator, "iter-xyz");
 	});
 
-	// *** polling delay guard: each conjunct of the idle-wait condition *** //
 	test(`awsKinesisGetRecordsStream does not delay when records are present (pollingActive)`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
-		// Always returns records: the idle-wait `records.length === 0` conjunct is
-		// false, so no timeout should ever be scheduled. A `true` mutant on that
-		// conjunct would delay between every (non-empty) poll and the consumer would
-		// stall on the (un-ticked) mock timer.
 		client.on(GetRecordsCommand).resolves({
 			Records: [{ Data: "a" }],
 			NextShardIterator: "iter-next",
@@ -970,10 +877,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
-		// pollingActive with empty records but pollingDelay === 0: the `pollingDelay > 0`
-		// guard is false so no idle wait runs. A `> 0` -> `true` or `>= 0` mutant would
-		// schedule a timeout(0) that the un-ticked mock timer never resolves, stalling
-		// the consumer (which would otherwise reach the 2nd record immediately).
 		client
 			.on(GetRecordsCommand)
 			.resolvesOnce({ Records: [], NextShardIterator: "iter2" })
@@ -986,8 +889,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		};
 		const stream = await awsKinesisGetRecordsStream(options);
 
-		// Read without ticking the mocked clock: a stray timeout(0) leaves the
-		// first record unread, failing the assertion instead of hanging the test.
 		const output = [];
 		(async () => {
 			for await (const item of stream) {
@@ -1003,10 +904,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
-		// Not polling: an empty page must end the stream WITHOUT entering the idle
-		// wait. The `&&` -> `||` mutant makes `pollingActive || records.length === 0`
-		// true on the empty page, scheduling a (default 1000ms) timeout the un-ticked
-		// mock timer never resolves -> the stream would hang instead of completing.
 		client
 			.on(GetRecordsCommand)
 			.resolvesOnce({ Records: [{ Data: "a" }], NextShardIterator: "iter2" })
@@ -1018,14 +915,11 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(output, [{ Data: "a" }]);
 	});
 
-	// *** record byte accounting *** //
 	test(`awsKinesisPutRecordsStream accepts a record with no Data field`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// No Data property: `record.Data ?? ""` must count it as zero bytes.
-		// Buffer.byteLength(undefined) would throw.
 		const input = [{ PartitionKey: "p" }];
 		await pipeline([
 			createReadableStream(input),
@@ -1039,10 +933,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// Data is EXACTLY 1MiB (allowed on its own, no PartitionKey). The 1-byte
-		// ExplicitHashKey is the ONLY thing tipping the record over 1MiB, so the
-		// `record.ExplicitHashKey ?? ""` term must be summed. A `&&` mutant counts
-		// it as zero bytes and the record would be wrongly accepted.
 		const data = "x".repeat(1024 * 1024);
 		const input = [{ Data: data, ExplicitHashKey: "h" }];
 		await rejects(
@@ -1060,10 +950,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// A Uint8Array exactly at the 1MiB limit must be accepted via .byteLength.
-		// The `typeof value === "string"` branch must be FALSE here; a `true` mutant
-		// would TextEncoder.encode() the typed array (encoding its iterable/UTF-8 view
-		// rather than measuring byteLength) and the boundary check would shift.
 		const exact = new Uint8Array(1024 * 1024);
 		await pipeline([
 			createReadableStream([{ Data: exact }]),
@@ -1099,8 +985,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 					error.message,
 					"awsKinesisPutRecords record exceeds 1MiB limit",
 				);
-				// `{}` mutant on the cause object would drop these fields. bytes counts
-				// Data (1MiB+1) plus the 1-byte PartitionKey.
 				deepStrictEqual(error.cause.limit, 1024 * 1024);
 				deepStrictEqual(error.cause.bytes, 1024 * 1024 + 2);
 				return true;
@@ -1108,13 +992,9 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		);
 	});
 
-	// *** success short-circuit: a stray ErrorCode with FailedRecordCount 0 must not retry *** //
 	test(`awsKinesisPutRecordsStream does not retry when FailedRecordCount is 0`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
-		// FailedRecordCount 0 but a stray ErrorCode entry: the `if (!FailedRecordCount)`
-		// early return must fire so we do NOT loop into the filter-and-retry path. A
-		// `false` mutant (or removed return block) would see the ErrorCode and retry.
 		client.on(PutRecordsCommand).resolves({
 			FailedRecordCount: 0,
 			Records: [{ ErrorCode: "ShouldBeIgnored" }],
@@ -1127,14 +1007,9 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 1);
 	});
 
-	// *** results indexing tolerates a short Records array (optional chaining) *** //
 	test(`awsKinesisPutRecordsStream tolerates a results array shorter than records`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
-		// Two records sent, but the response Records array has a single entry. The
-		// failed-records filter indexes results[1] which is undefined; the
-		// `results[index]?.ErrorCode` optional chain must guard it. A non-optional
-		// `results[index].ErrorCode` mutant throws a TypeError on index 1.
 		client
 			.on(PutRecordsCommand)
 			.resolvesOnce({
@@ -1153,19 +1028,14 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 
 		const calls = client.commandCalls(PutRecordsCommand);
 		deepStrictEqual(calls.length, 2);
-		// Only the first record (the one with an ErrorCode) is retried.
 		deepStrictEqual(calls[1].args[0].input.Records, [
 			{ Data: "a", PartitionKey: "a" },
 		]);
 	});
 
-	// *** retryCount must increment so retryMaxCount is eventually reached *** //
 	test(`awsKinesisPutRecordsStream stops retrying after retryMaxCount`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
-		// Persistent failure with retryMaxCount 2: retryCount must climb 0->1->2 and
-		// throw after 3 attempts. A `retryCount--` mutant would drive it negative,
-		// never reach the cap, and retry forever (test timeout = killed).
 		client.on(PutRecordsCommand).resolves({
 			FailedRecordCount: 1,
 			Records: [{ ErrorCode: "InternalFailure" }],
@@ -1182,11 +1052,9 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 				]),
 			{ message: "awsKinesisPutRecords has failed records" },
 		);
-		// 1 initial + 2 retries = 3 attempts.
 		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 3);
 	});
 
-	// *** retryMaxCount: null = unlimited retries (undefined keeps the default) *** //
 	test(`awsKinesisPutRecordsStream retries without limit when retryMaxCount is null`, async (t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
@@ -1194,8 +1062,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 			FailedRecordCount: 1,
 			Records: [{ ErrorCode: "InternalFailure" }],
 		};
-		// 11 failures: one more than the default retryMaxCount of 10. Backoff
-		// timers fire on the next macrotask so the retries take no real time.
 		t.mock.method(globalThis, "setTimeout", (fn) => setImmediate(fn));
 		const mock = client.on(PutRecordsCommand);
 		for (let i = 0; i < 11; i++) mock.resolvesOnce(failed);
@@ -1211,17 +1077,12 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 12);
 	});
 
-	// *** aggregate byte cap is 5MiB - 64KiB (subtract 64*1024, not 64/1024) *** //
 	test(`awsKinesisPutRecordsStream cap subtracts 64KiB (not 64/1024)`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// Real cap = 5*1024*1024 - 64*1024 = 5,177,344. A `64 / 1024` mutant makes the
-		// cap ~5,242,879.94 (essentially 5MiB). Five 1,048,001-byte records sum to
-		// 5,240,005 which is OVER the real cap (so the 5th forces a flush after 4) but
-		// UNDER the mutated cap (so all five would batch together).
-		const data = "x".repeat(1_048_000); // 1,048,000 Data + 1-byte PartitionKey
+		const data = "x".repeat(1_048_000);
 		const input = Array.from({ length: 5 }, (_v, i) => ({
 			Data: data,
 			PartitionKey: `${i % 10}`,
@@ -1237,16 +1098,11 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(calls[1].args[0].input.Records.length, 1);
 	});
 
-	// *** byte-cap boundary uses strict `>` (equal-to-cap stays in the batch) *** //
 	test(`awsKinesisPutRecordsStream keeps a batch summing exactly to the cap`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
 		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
 
-		// 65,536-byte records (65,535 Data + 1-byte PartitionKey). 79 of them sum to
-		// exactly the cap (79 * 65,536 = 5,177,344). With strict `>` the 79th stays in
-		// the batch (flush happens only when the 80th would exceed the cap) -> first
-		// flush carries 79. A `>=` mutant flushes one record early -> 78.
 		const data = "x".repeat(65_535);
 		const input = Array.from({ length: 80 }, (_v, i) => ({
 			Data: data,
@@ -1263,18 +1119,13 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(calls[1].args[0].input.Records.length, 1);
 	});
 
-	// *** PutRecords response.Records undefined fallback (`?? []`) *** //
 	test(`awsKinesisPutRecordsStream falls back to empty array when response.Records is undefined`, async (_t) => {
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
-		// FailedRecordCount is truthy but Records is absent (undefined) -> `?? []` must
-		// produce an empty array so the failed.length check returns [] and returns early.
-		// A missing `?? []` would call .filter() on undefined and throw a TypeError.
 		client
 			.on(PutRecordsCommand)
 			.resolvesOnce({
 				FailedRecordCount: 1,
-				// Records intentionally absent
 			})
 			.resolves({ FailedRecordCount: 0 });
 
@@ -1285,17 +1136,13 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		];
 		await pipeline(stream);
 
-		// The first response had no ErrorCode entries (empty array after fallback),
-		// so no retry. Only one PutRecords call.
 		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 1);
 	});
 
-	// *** putRecords backoff is abortable (signal forwarded to the timeout) *** //
 	test(`awsKinesisPutRecordsStream aborts during retry backoff`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(KinesisClient);
 		awsKinesisSetClient(client);
-		// Persistent partial failure so the stream enters the (real-timer) backoff.
 		client.on(PutRecordsCommand).resolves({
 			FailedRecordCount: 1,
 			Records: [{ ErrorCode: "ProvisionedThroughputExceededException" }],
@@ -1319,7 +1166,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 			),
 		]);
 
-		// Let the first send fail and enter the backoff timer, then abort.
 		await new Promise((resolve) => setImmediate(resolve));
 		controller.abort();
 
@@ -1327,10 +1173,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 			return error.cause?.code === "AbortError" || /Abort/i.test(error.message);
 		});
 
-		// The backoff timeout was given `{ signal }`, so the abort rejects the pending
-		// backoff immediately and NO further PutRecords is issued. A `{}` mutant
-		// (dropping the signal) leaves the backoff timer pending, so advancing the
-		// mocked clock past it wakes it and retries -> more than one send.
 		t.mock.timers.tick(60_000);
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(sends, 1);
@@ -1346,8 +1188,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(await streamToArray(pipejoin([stream])), [{ Data: "a" }]);
 	});
 
-	// A generator's return() only lands at its next yield; destroying the stream
-	// must also abort the idle poll wait so polling stops and 'close' fires.
 	test(`awsKinesisGetRecordsStream destroy stops an idle poll`, {
 		timeout: 1000,
 	}, async (_t) => {
@@ -1370,15 +1210,10 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(GetRecordsCommand).length, 1);
 	});
 
-	// Named exports are canonical; a default export must not come back.
 	test(`kinesis has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
 	});
 
-	// --- buffered entries on destroy / abort ---
-	// final() never runs on destroy() or an abort, so entries still buffered
-	// below the batch limit are handed to the teardown error as failedMessages
-	// (the kafkaProduceStream contract) and nothing is sent.
 	const writeEach = async (stream, chunks) => {
 		for (const chunk of chunks) {
 			await new Promise((resolve, reject) =>
@@ -1386,7 +1221,6 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 			);
 		}
 	};
-	// Resolves stream.errored once closed (null when no error was raised).
 	const destroyedWith = async (stream, error) => {
 		const closed = new Promise((resolve) => stream.once("close", resolve));
 		stream.once("error", () => {});

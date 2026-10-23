@@ -32,12 +32,6 @@ const catchError = (input, e) => {
 
 const message = fc.record({ body: fc.anything() });
 
-// ---------------------------------------------------------------------------
-// fuzz: azureEventHubsKafkaMechanism namespace
-// ---------------------------------------------------------------------------
-
-// The namespace becomes the token scope's host: an accepted value must never
-// change the host or path of the scope URL.
 test("fuzz azureEventHubsKafkaMechanism w/ random namespace", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -79,11 +73,6 @@ test("fuzz azureEventHubsKafkaMechanism w/ random namespace", async () => {
 	);
 });
 
-// ---------------------------------------------------------------------------
-// fuzz: azureServiceBusSendMessagesStream (shared Service Bus / Event Hubs
-// batch writer)
-// ---------------------------------------------------------------------------
-
 const fakeSender = (capacity) => {
 	const sent = [];
 	return {
@@ -104,7 +93,6 @@ const fakeSender = (capacity) => {
 	};
 };
 
-// Every written message is either sent or handed back as failedMessages.
 test("fuzz azureServiceBusSendMessagesStream w/ random messages and destroy", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -144,10 +132,6 @@ test("fuzz azureServiceBusSendMessagesStream w/ random messages and destroy", as
 	);
 });
 
-// ---------------------------------------------------------------------------
-// fuzz: azureServiceBusReceiveMessagesStream
-// ---------------------------------------------------------------------------
-
 test("fuzz azureServiceBusReceiveMessagesStream w/ random pages", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -174,10 +158,6 @@ test("fuzz azureServiceBusReceiveMessagesStream w/ random pages", async () => {
 		},
 	);
 });
-
-// ---------------------------------------------------------------------------
-// fuzz: azureServiceBusDeadLetterMessageStream
-// ---------------------------------------------------------------------------
 
 test("fuzz azureServiceBusDeadLetterMessageStream w/ random options", async () => {
 	await fc.assert(
@@ -214,10 +194,6 @@ test("fuzz azureServiceBusDeadLetterMessageStream w/ random options", async () =
 	);
 });
 
-// ---------------------------------------------------------------------------
-// fuzz: azureCosmosUpsertItemStream w/ random bulk results
-// ---------------------------------------------------------------------------
-
 const bulkResult = fc.oneof(
 	fc.record({
 		response: fc.record({ statusCode: fc.integer({ min: 100, max: 599 }) }),
@@ -239,7 +215,6 @@ test("fuzz azureCosmosUpsertItemStream w/ random bulk results", async () => {
 					},
 				};
 				try {
-					// retryMaxCount 0: no throttle backoff waits.
 					await pipeline([
 						createReadableStream(items),
 						azureCosmosUpsertItemStream({ client, retryMaxCount: 0 }),
@@ -256,10 +231,6 @@ test("fuzz azureCosmosUpsertItemStream w/ random bulk results", async () => {
 		},
 	);
 });
-
-// ---------------------------------------------------------------------------
-// fuzz: azureCosmosQueryStream w/ random pages
-// ---------------------------------------------------------------------------
 
 test("fuzz azureCosmosQueryStream w/ random pages", async () => {
 	await fc.assert(

@@ -12,8 +12,6 @@ export const protobufEncodeStream = ({ Type } = {}, streamOptions = {}) => {
 	return createTransformStream(transform, streamOptions);
 };
 
-// Default per-message ceiling: a hostile length prefix (unframe) or oversized
-// payload (decode) must not force an unbounded buffer/decode. null opts out.
 const DEFAULT_MAX_MESSAGE_SIZE = 64 * 1024 * 1024;
 
 export const protobufDecodeStream = (
@@ -21,8 +19,6 @@ export const protobufDecodeStream = (
 	streamOptions = {},
 ) => {
 	const getPayload = payload ?? ((chunk) => chunk);
-	// Checked per message, not cumulatively: a cumulative cap with any finite
-	// default would eventually kill every long-lived consumer.
 	const messageLimit = maxMessageSize ?? Number.POSITIVE_INFINITY;
 	const checkedPayload = (chunk) => {
 		const bytes = getPayload(chunk);
@@ -45,7 +41,6 @@ export const protobufDecodeStream = (
 
 // Base-128 varint, matching the protobuf length-delimited wire format. Uses
 // arithmetic (not bitwise) so lengths beyond 2^31 encode/decode correctly.
-// Bytes needed to encode `value` as a varint (1 for 0..127, 2 for ..16383).
 const varintLength = (value) => {
 	let n = 1;
 	let v = value;
@@ -55,8 +50,6 @@ const varintLength = (value) => {
 	}
 	return n;
 };
-// Writes `value` as a varint into `out` from index 0; the caller sized it with
-// varintLength so the last byte is the one without a continuation bit.
 const writeVarint = (out, value) => {
 	let i = 0;
 	let v = value;
@@ -94,8 +87,6 @@ export const protobufLengthPrefixUnframeStream = (
 	// is speed (and which mutation testing cannot distinguish from the slow path).
 	const pending = [];
 	let pendingLen = 0;
-	// Bytes already consumed off the front of pending[0]: tracked as an offset so
-	// consuming never re-slices the head chunk.
 	let headOffset = 0;
 
 	// Byte at absolute position `pos` (0 <= pos < pendingLen) across the chunks.
@@ -109,8 +100,6 @@ export const protobufLengthPrefixUnframeStream = (
 		return pending[index][pos];
 	};
 
-	// Consume `n` bytes off the front of pending[0] (n is at most what is left of
-	// it), dropping the chunk once it is used up.
 	const consume = (n) => {
 		headOffset += n;
 		pendingLen -= n;
@@ -159,8 +148,6 @@ export const protobufLengthPrefixUnframeStream = (
 				complete = true;
 				break;
 			}
-			// A varint is at most 10 bytes; longer overflows `length` to NaN and
-			// silently drops every following message.
 			if (prefixBytes === 10) {
 				throw new Error("Protobuf length prefix exceeds 10 bytes");
 			}

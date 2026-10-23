@@ -20,7 +20,6 @@ const settle = async () => {
 	}
 };
 
-// Fake EventHubConsumerClient: `drive(handlers)` runs once subscribed.
 const consumer = (drive) => {
 	const state = { args: undefined, closed: false };
 	return {
@@ -76,8 +75,6 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 		ok(client.state.closed);
 	});
 
-	// subscribe() without a partitionId runs one pump per partition; every pump
-	// waiting in processEvents must resume once the queue drains, not just the last.
 	test(`azureEventHubsReceiveEventsStream resumes every concurrent partition pump`, {
 		timeout: 1000,
 	}, async () => {
@@ -103,7 +100,6 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 
 	test(`azureEventHubsReceiveEventsStream ignores retryable processError`, async () => {
 		const client = consumer(async (handlers) => {
-			// The SDK reports errors it is already retrying, then carries on.
 			await handlers.processError(
 				Object.assign(new Error("transient"), { retryable: true }),
 			);
@@ -142,7 +138,6 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 			{ signal: controller.signal },
 		);
 		await rejects(streamToArray(stream));
-		// Never subscribed.
 		strictEqual(client.state.args, undefined);
 	});
 
@@ -182,8 +177,6 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 		deepStrictEqual(await streamToArray(pipejoin([stream])), [{ body: 1 }]);
 	});
 
-	// A generator's return() only lands at its next yield; destroying the stream
-	// while no events arrive must still close the subscription and emit 'close'.
 	test(`azureEventHubsReceiveEventsStream destroy closes an idle subscription`, {
 		timeout: 1000,
 	}, async () => {
@@ -200,8 +193,6 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 		ok(client.state.closed);
 	});
 
-	// processEvents holds the SDK pump until the consumer drains the page (so it
-	// cannot read ahead of a slow pipeline), and ending the stream releases it.
 	test(`azureEventHubsReceiveEventsStream holds processEvents until the page drains`, {
 		timeout: 1000,
 	}, async () => {
@@ -221,14 +212,12 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 			resolved = true;
 		});
 		await settle();
-		// Read-ahead buffers only highWaterMark events, not the whole page.
 		strictEqual(resolved, false);
 		await iterator.return();
 		await delivered;
 		ok(client.state.closed);
 	});
 
-	// The SDK may deliver before the generator first waits for events.
 	test(`azureEventHubsReceiveEventsStream accepts callbacks fired inside subscribe`, async () => {
 		const delivered = [];
 		const client = {
@@ -257,7 +246,6 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 		deepStrictEqual(await streamToArray(stream), [{ body: "a" }]);
 	});
 
-	// A long-lived signal must not keep a finished stream's abort handler.
 	test(`azureEventHubsReceiveEventsStream drops its abort listener once done`, async () => {
 		const controller = new AbortController();
 		const client = consumer(async (handlers) => {

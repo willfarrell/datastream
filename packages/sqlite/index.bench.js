@@ -25,10 +25,6 @@ const makeDb = () => {
 	return db;
 };
 
-// ---------------------------------------------------------------------------
-// perf: sqliteInsertStream
-// ---------------------------------------------------------------------------
-
 suite("sqliteInsertStream", () => {
 	bench(`insert ${ROW_COUNT} object rows`, options, async (b) => {
 		b.start();
@@ -56,10 +52,6 @@ suite("sqliteInsertStream", () => {
 		b.end(OPS);
 	});
 });
-
-// ---------------------------------------------------------------------------
-// perf: sqliteQueryStream
-// ---------------------------------------------------------------------------
 
 suite("sqliteQueryStream", () => {
 	const db = makeDb();

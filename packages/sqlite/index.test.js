@@ -68,8 +68,6 @@ describe("@datastream/sqlite", () => {
 
 		test("never binds a leading object in positional params as named", () => {
 			const db = makeDb();
-			// e.g. untrusted JSON `{}` in the first slot would otherwise shift 2
-			// into the first placeholder.
 			throws(
 				() =>
 					sqliteQueryStream({
@@ -86,8 +84,6 @@ describe("@datastream/sqlite", () => {
 
 		test("treats null params as no params", async () => {
 			const db = makeDb();
-			// Without the guard, null is bound as a positional NULL and a query
-			// with no placeholders fails with "column index out of range".
 			const stream = sqliteQueryStream({
 				db,
 				sql: "SELECT 1 AS x",
@@ -127,8 +123,6 @@ describe("@datastream/sqlite", () => {
 			}
 			deepStrictEqual(rows, [1]);
 			strictEqual(stream.destroyed, true);
-			// A still-open read cursor would hold a SHARED lock; with the iterator
-			// released, DDL on the same table succeeds.
 			db.exec("DROP TABLE t");
 		});
 	});
@@ -337,7 +331,6 @@ describe("@datastream/sqlite", () => {
 					createReadableStream([
 						{ id: 1, name: "a" },
 						{ id: 2, name: "b" },
-						// A nested object cannot be bound to a parameter.
 						{ id: 3, name: {} },
 					]),
 					sqliteInsertStream({ db, table: "t" }),
@@ -350,8 +343,6 @@ describe("@datastream/sqlite", () => {
 
 		test("never binds a first-column object as named params", async () => {
 			const db = makeDb();
-			// node:sqlite reads a leading plain object as named parameters, which
-			// would shift "b" into the id column instead of failing.
 			await rejects(
 				pipeline([
 					createReadableStream([{ id: {}, name: "b" }]),
@@ -429,7 +420,6 @@ describe("@datastream/sqlite", () => {
 			const db = makeDb();
 			const insert = sqliteInsertStream({ db, table: "t" });
 			insert.write({ id: 1, name: "a" });
-			// The caller closed the database first, so ROLLBACK throws.
 			db.close();
 			insert.destroy();
 			await new Promise((resolve) => insert.once("close", resolve));
@@ -489,8 +479,6 @@ describe("@datastream/sqlite", () => {
 						"sqlite: connection already has an open transaction; SQLite allows one writer per database file, so run insert streams on it one after another",
 				},
 			);
-			// The failed stream never owned the transaction, so it must not roll
-			// back the first stream's rows.
 			strictEqual(db.isTransaction, true);
 			first.end({ id: 3, name: "c" });
 			await new Promise((resolve) => first.once("close", resolve));

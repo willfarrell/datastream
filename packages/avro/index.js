@@ -6,14 +6,9 @@
 import { createTransformStream } from "@datastream/core";
 import avro from "avsc";
 
-// Per-message ceiling, matching @datastream/protobuf. null opts out.
 const DEFAULT_MAX_MESSAGE_SIZE = 64 * 1024 * 1024;
-// Compiled Types kept per schema id by avroDecodeStream({ resolveSchema }); the
-// resolver caches the definitions, this only saves recompiling them.
 const MAX_CACHED_TYPES = 1000;
 
-// Compiles an Avro schema object, its JSON text, or an avsc Type (returned
-// as-is by forSchema) into an avsc Type.
 const compile = (name, value, options) => {
 	if (!value) throw new TypeError(`${name}: schema required`);
 	// Type.forSchema treats a bare string as a type *name*, so JSON text
@@ -24,12 +19,6 @@ const compile = (name, value, options) => {
 	);
 };
 
-// Returns a transform calling handle(type, chunk, enqueue) with the Type of
-// `schema` (a schema, or a function returning one or a Promise of one). A
-// concrete schema is compiled at construction so a bad one throws at the call
-// site, and its transform is synchronous (no promise per chunk); a function is
-// called once, on the first chunk, by which time upstream can have produced it
-// (e.g. from a schema registry lookup).
 const makeTransform = (name, schema, compileType, handle) => {
 	if (typeof schema !== "function") {
 		const type = compileType(name, schema);
@@ -42,7 +31,6 @@ const makeTransform = (name, schema, compileType, handle) => {
 	};
 };
 
-// *** Block-count guard *** //
 // avsc 5 trusts an array/map block count: a 5-byte message claiming 50M null
 // items allocates ~750MB, and maxMessageSize cannot catch it. Every map entry
 // (its key) and every array item takes at least one byte, except zero-width
@@ -99,8 +87,6 @@ export const avroEncodeStream = ({ schema } = {}, streamOptions = {}) => {
 	const name = "avroEncodeStream";
 	// toBuffer's own error names only the leaf type ('invalid "int": "x"');
 	// isValid's errorHook gives the path of every offending field instead.
-	// Values are left out of the message: records may carry personal data.
-	// One list for the stream: the first invalid record errors it.
 	const paths = [];
 	const errorHook = (path) => paths.push(["$", ...path].join("."));
 	const checkOptions = { errorHook };
@@ -116,16 +102,6 @@ export const avroEncodeStream = ({ schema } = {}, streamOptions = {}) => {
 	return createTransformStream(transform, streamOptions);
 };
 
-// One whole Avro record per chunk (no container file, no framing): unframe
-// upstream, e.g. with confluentUnframeStream.
-//
-// With `schema`, each chunk is the record's bytes and the decoded record is
-// emitted. With `resolveSchema(id)`, each chunk is an unframe stream's envelope
-// ({ schemaId | schemaVersionId, payload, ...message }): the writer schema is
-// looked up per id (a registry resolver's { schemaDefinition } result works
-// directly) and `{ ...envelope, value: record }` is emitted without payload, so
-// message metadata such as Kafka's topic/partition/offset reaches
-// kafkaCommitStream.
 export const avroDecodeStream = (
 	{ schema, resolveSchema, maxMessageSize = DEFAULT_MAX_MESSAGE_SIZE } = {},
 	streamOptions = {},
@@ -134,7 +110,6 @@ export const avroDecodeStream = (
 	if (schema && resolveSchema) {
 		throw new TypeError(`${name}: pass schema or resolveSchema, not both`);
 	}
-	// Checked per message, not cumulatively, as in @datastream/protobuf.
 	const messageLimit = maxMessageSize ?? Number.POSITIVE_INFINITY;
 	// Zero-copy Buffer view: avsc 5 decodes strings with Buffer methods that
 	// plain Uint8Array / ArrayBuffer chunks lack.
@@ -165,9 +140,7 @@ export const avroDecodeStream = (
 	};
 
 	if (resolveSchema) {
-		// Map preserves insertion order: FIFO eviction deletes the first key.
 		const types = new Map();
-		// Cache miss only: resolves, compiles and caches the Type for `id`.
 		const loadType = async (id) => {
 			const resolved = await resolveSchema(id);
 			const type = compileDecoder(name, resolved?.schemaDefinition ?? resolved);
@@ -177,7 +150,6 @@ export const avroDecodeStream = (
 			types.set(id, type);
 			return type;
 		};
-		// A cached Type decodes synchronously; only a miss awaits the resolver.
 		const transform = ({ payload, ...envelope }, enqueue) => {
 			const buffer = toBuffer(payload, "payload");
 			const id = envelope.schemaId ?? envelope.schemaVersionId;
@@ -199,7 +171,6 @@ export const avroDecodeStream = (
 		compileDecoder,
 		(type, buffer, enqueue) => enqueue(decode(type, buffer)),
 	);
-	// The chunk is checked before the (possibly pending) schema is awaited.
 	const transform = (chunk, enqueue) =>
 		decodeBuffer(toBuffer(chunk, "chunk"), enqueue);
 	return createTransformStream(transform, streamOptions);

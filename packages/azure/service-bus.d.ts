@@ -8,7 +8,6 @@ import type {
 
 export function azureServiceBusReceiveMessagesStream(
 	options: {
-		// ServiceBusReceiver
 		client: unknown;
 		maxMessageCount?: number;
 		maxWaitTimeInMs?: number;
@@ -21,7 +20,6 @@ export function azureServiceBusReceiveMessagesStream(
 
 export function azureServiceBusSendMessagesStream(
 	options: {
-		// ServiceBusSender
 		client: unknown;
 		maxSizeInBytes?: number;
 		[key: string]: unknown;
@@ -31,7 +29,6 @@ export function azureServiceBusSendMessagesStream(
 
 export function azureServiceBusCompleteMessageStream(
 	options: {
-		// ServiceBusReceiver
 		client: unknown;
 	},
 	streamOptions?: StreamOptions,
@@ -41,7 +38,6 @@ type ServiceBusPropertyValue = number | boolean | string | Date | null;
 
 export function azureServiceBusAbandonMessageStream(
 	options: {
-		// ServiceBusReceiver
 		client: unknown;
 		propertiesToModify?: Record<string, ServiceBusPropertyValue>;
 	},
@@ -50,7 +46,6 @@ export function azureServiceBusAbandonMessageStream(
 
 export function azureServiceBusDeadLetterMessageStream(
 	options: {
-		// ServiceBusReceiver
 		client: unknown;
 		deadLetterReason?: string;
 		deadLetterErrorDescription?: string;

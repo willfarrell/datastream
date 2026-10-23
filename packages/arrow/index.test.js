@@ -23,6 +23,7 @@ import {
 	RecordBatch,
 	Schema,
 	TimestampMillisecond,
+	Type,
 	Uint8,
 	Uint32,
 	Utf8,
@@ -35,7 +36,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		new Field("name", new Utf8(), true),
 	]);
 
-	// *** arrowDetectSchemaStream *** //
 	test(`arrowDetectSchemaStream should infer schema from object rows`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 2 });
 		const stream = pipejoin([
@@ -72,7 +72,7 @@ describe(`@datastream/arrow (${variant})`, () => {
 	});
 
 	test(`arrowDetectSchemaStream widens out-of-range integers to Float64 (no Int32 overflow)`, async () => {
-		const big = 3_000_000_000; // > 2^31, overflows Int32
+		const big = 3_000_000_000;
 		const detect = arrowDetectSchemaStream({ sampleSize: 1 });
 		const stream = pipejoin([
 			createReadableStream([{ id: big, small: 5 }]),
@@ -80,9 +80,7 @@ describe(`@datastream/arrow (${variant})`, () => {
 		]);
 		await streamToArray(stream);
 		const { value } = detect.result();
-		// Out-of-range integer must not be inferred as Int32 (which silently wraps).
 		strictEqual(value.schema.fields[0].type instanceof Float64, true);
-		// In-range integer stays Int32.
 		strictEqual(value.schema.fields[1].type instanceof Int32, true);
 	});
 
@@ -115,12 +113,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		deepStrictEqual(value.fields, ["id", "name"]);
 	});
 
-	// The schema must be sealed mid-stream exactly when `samples.length` REACHES
-	// sampleSize, using only the rows seen so far. With sampleSize 2 the first two
-	// 1-element array rows seal a single-column schema; the wider later row
-	// [3, 4, 5] arrives after sealing and must NOT widen the schema. A mutant that
-	// defers sealing (>=  ->  >, the guard removed, or `if (false)`) would instead
-	// sample the wider row and infer three columns.
 	test(`arrowDetectSchemaStream seals mid-stream at sampleSize, ignoring wider later rows`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 2 });
 		const stream = pipejoin([
@@ -131,12 +123,10 @@ describe(`@datastream/arrow (${variant})`, () => {
 		const { value } = detect.result();
 		deepStrictEqual(value.fields, ["column0"]);
 		strictEqual(value.schema.fields.length, 1);
-		// All input rows still flow through unchanged (the wider row is passed as-is).
 		strictEqual(rows.length, 3);
 		deepStrictEqual(rows[2], [3, 4, 5]);
 	});
 
-	// *** arrowBatchFromArrayStream *** //
 	test(`arrowBatchFromArrayStream should emit a RecordBatch per batchSize rows`, async () => {
 		const stream = pipejoin([
 			createReadableStream([
@@ -169,7 +159,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(batches[0].numRows, 1);
 	});
 
-	// *** arrowBatchFromObjectStream *** //
 	test(`arrowBatchFromObjectStream should batch object rows`, async () => {
 		const stream = pipejoin([
 			createReadableStream([
@@ -185,7 +174,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(batches[0].getChildAt(1).get(0), "a");
 	});
 
-	// *** arrowToArrayStream / arrowToObjectStream *** //
 	test(`arrowToArrayStream should emit one array row per record-batch row`, async () => {
 		const buildStream = pipejoin([
 			createReadableStream([
@@ -217,7 +205,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		deepStrictEqual(rows, input);
 	});
 
-	// *** lazy schema wired to detect *** //
 	test(`detect + batchFromObject end-to-end with lazy schema`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 2 });
 		const stream = pipejoin([
@@ -242,8 +229,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 	});
 
 	test(`detect + batchFromObject writes "" as null in non-Utf8 columns`, async () => {
-		// inferType skips "" as null, so an empty cell in an Int32/Bool/Timestamp
-		// column must not become 0/false/epoch. Utf8 keeps "" as a real value.
 		const detect = arrowDetectSchemaStream({ sampleSize: 3 });
 		const stream = pipejoin([
 			createReadableStream([
@@ -261,7 +246,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		deepStrictEqual(rows[1], { a: null, b: null, d: null, s: "" });
 	});
 
-	// *** heterogeneous keys: schema detection must union across all sampled rows *** //
 	test(`arrowDetectSchemaStream unions object keys across all sampled rows`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
 		const stream = pipejoin([
@@ -272,7 +256,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		const { value } = detect.result();
 		deepStrictEqual(value.fields, ["id", "name"]);
 		strictEqual(value.schema.fields.length, 2);
-		// 'name' should be a Utf8 column inferred from the second row.
 		strictEqual(value.schema.fields[1].name, "name");
 		strictEqual(value.schema.fields[1].type instanceof Utf8, true);
 	});
@@ -306,7 +289,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(rows[1].name, "bob");
 	});
 
-	// *** Date round-trip *** //
 	test(`detect -> batch -> rows round-trips Date values as Date`, async () => {
 		const when = new Date("2020-06-01T00:00:00.000Z");
 		const input = [{ id: 1, at: when }];
@@ -342,10 +324,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(rows[0][0].getTime(), when.getTime());
 	});
 
-	// *** empty / zero-field schema must error rather than silently lose rows *** //
-	// apache-arrow derives a RecordBatch's length from its child columns, so a
-	// zero-field schema can never carry rows; rejecting it prevents corrupt
-	// numRows:0 batches that silently discard data.
 	test(`arrowBatchFromObjectStream rejects a zero-field schema instead of losing rows`, () => {
 		throws(
 			() =>
@@ -362,8 +340,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		);
 	});
 
-	// *** missing-schema validation, including empty input *** //
-	// A concrete missing schema is rejected eagerly at construction.
 	test(`arrowBatchFromObjectStream throws eagerly when schema is missing`, () => {
 		throws(() => arrowBatchFromObjectStream({}), /schema is required/);
 		throws(() => arrowBatchFromObjectStream(), /schema is required/);
@@ -374,9 +350,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		throws(() => arrowBatchFromArrayStream(), /schema is required/);
 	});
 
-	// A lazy schema that resolves to nothing must still error even for an empty
-	// stream: init runs on flush, so the config bug is surfaced (as a stream error)
-	// rather than silently swallowed.
 	const errorFromEmptyLazy = async (build) => {
 		try {
 			await pipeline([createReadableStream([]), build()]);
@@ -400,9 +373,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		ok(/schema is required/.test(error.message));
 	});
 
-	// *** inferType: null/undefined/empty-string branch *** //
-	// Kills: LogicalOperator (|| -> &&), ConditionalExpression short-circuits,
-	//        StringLiteral ("" -> "Stryker was here!")
 	test(`inferType treats null as no-type (first non-null row wins)`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
 		const stream = pipejoin([
@@ -436,14 +406,12 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(value.schema.fields[0].type instanceof Utf8, true);
 	});
 
-	// *** inferType: boolean branch *** //
-	// Kills: ConditionalExpression (false), StringLiteral ("" for "boolean")
 	test(`inferType returns Bool typeId for boolean true`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 1 });
 		const stream = pipejoin([createReadableStream([{ flag: true }]), detect]);
 		await streamToArray(stream);
 		const { value } = detect.result();
-		strictEqual(value.schema.fields[0].type.typeId, 6); // Bool typeId
+		strictEqual(value.schema.fields[0].type.typeId, Type.Bool);
 	});
 
 	test(`inferType returns Bool typeId for boolean false`, async () => {
@@ -454,12 +422,9 @@ describe(`@datastream/arrow (${variant})`, () => {
 		]);
 		await streamToArray(stream);
 		const { value } = detect.result();
-		strictEqual(value.schema.fields[0].type.typeId, 6); // Bool typeId
+		strictEqual(value.schema.fields[0].type.typeId, Type.Bool);
 	});
 
-	// *** inferType: number/Float64/Int32 boundary checks *** //
-	// Kills: ConditionalExpression (!isInteger false), EqualityOperator (>= vs >),
-	//        lower-bound ConditionalExpression and EqualityOperator.
 	test(`inferType returns Float64 for non-integer number`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 1 });
 		const stream = pipejoin([createReadableStream([{ x: 3.14 }]), detect]);
@@ -512,8 +477,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(value.schema.fields[0].type instanceof Float64, true);
 	});
 
-	// *** inferType: Date branch *** //
-	// Kills: ConditionalExpression (false for instanceof Date)
 	test(`inferType returns TimestampMillisecond typeId for Date values`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 1 });
 		const stream = pipejoin([
@@ -522,12 +485,9 @@ describe(`@datastream/arrow (${variant})`, () => {
 		]);
 		await streamToArray(stream);
 		const { value } = detect.result();
-		strictEqual(value.schema.fields[0].type.typeId, 10); // Timestamp typeId
+		strictEqual(value.schema.fields[0].type.typeId, Type.Timestamp);
 	});
 
-	// *** fieldsFromSamples: type !== null break + nullable Field *** //
-	// Kills: ConditionalExpression (true/false on break), EqualityOperator (=== null),
-	//        BooleanLiteral (false for nullable).
 	test(`fieldsFromSamples skips null rows and uses first non-null type`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
 		const stream = pipejoin([
@@ -540,9 +500,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(value.schema.fields[0].nullable, true);
 	});
 
-	// *** fieldsFromSamples: type ?? new Utf8() fallback when ALL sampled values are null *** //
-	// Kills: branch where every sampled value for a field is null/undefined/empty-string,
-	//        so type stays null and the ?? fallback produces a Utf8 Field.
 	test(`fieldsFromSamples falls back to Utf8 when all sampled values are null`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
 		const stream = pipejoin([
@@ -555,8 +512,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(value.schema.fields[0].nullable, true);
 	});
 
-	// *** arrowDetectSchemaStream: value object must have schema + fields keys *** //
-	// Kills: ObjectLiteral ({} for {schema:null, fields:null})
 	test(`arrowDetectSchemaStream result value has schema and fields properties`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
 		const stream = pipejoin([createReadableStream([{ id: 1 }]), detect]);
@@ -566,9 +521,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		ok("fields" in value, "value must have fields key");
 	});
 
-	// *** seal() guarding: empty stream leaves schema null *** //
-	// Kills: ConditionalExpression (false for sealed || !samples.length),
-	//        LogicalOperator (|| -> &&).
 	test(`arrowDetectSchemaStream leaves schema null for empty stream`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
 		const stream = pipejoin([createReadableStream([]), detect]);
@@ -577,8 +529,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(value.schema, null);
 	});
 
-	// *** seal(): sealed = true flag *** //
-	// Kills: BooleanLiteral (false for sealed = true)
 	test(`arrowDetectSchemaStream sealed flag prevents re-sealing`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 2 });
 		const stream = pipejoin([
@@ -591,8 +541,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(value.schema.fields.length, 1);
 	});
 
-	// *** transform: samples.length >= sampleSize threshold *** //
-	// Kills: ConditionalExpression (false), EqualityOperator (> vs >=).
 	test(`arrowDetectSchemaStream seals at exactly sampleSize rows`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 2 });
 		const stream = pipejoin([
@@ -605,8 +553,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		ok(value.schema !== null);
 	});
 
-	// *** transform: BlockStatement kill (buffered rows emitted after seal) *** //
-	// Kills: BlockStatement (empty block when sampleSize reached).
 	test(`arrowDetectSchemaStream emits all rows when sampleSize is hit mid-stream`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 2 });
 		const stream = pipejoin([
@@ -617,8 +563,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(rows.length, 4);
 	});
 
-	// *** flush(): !sealed branch *** //
-	// Kills: ConditionalExpression (true for !sealed), BlockStatement (empty).
 	test(`arrowDetectSchemaStream flush path emits the buffered row`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 100 });
 		const stream = pipejoin([createReadableStream([{ id: 42 }]), detect]);
@@ -627,8 +571,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(rows[0].id, 42);
 	});
 
-	// *** stream.result: ?? vs && and default key string *** //
-	// Kills: LogicalOperator (?? -> &&), StringLiteral ("" for "arrowDetectSchema").
 	test(`arrowDetectSchemaStream result key defaults to "arrowDetectSchema"`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 1 });
 		const stream = pipejoin([createReadableStream([{ id: 1 }]), detect]);
@@ -646,8 +588,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(detect.result().key, "myKey");
 	});
 
-	// *** makeBuilders: nullValues must include null and undefined *** //
-	// Kills: ArrayDeclaration ([] for [null, undefined]).
 	test(`null field values survive object stream round-trip as null`, async () => {
 		const stream = pipejoin([
 			createReadableStream([
@@ -674,8 +614,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(rows[1][1], null);
 	});
 
-	// *** assertSchema error messages include function name *** //
-	// Kills: StringLiteral ("" for "arrowBatchFromArrayStream" / "arrowBatchFromObjectStream").
 	test(`arrowBatchFromArrayStream error message includes function name`, () => {
 		throws(
 			() => arrowBatchFromArrayStream({}),
@@ -702,8 +640,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		);
 	});
 
-	// *** arrowBatchFromArrayStream flush: rowCount > 0 guards *** //
-	// Kills: ConditionalExpression (true), EqualityOperator (>= 0 vs > 0).
 	test(`arrowBatchFromArrayStream flush emits no extra batch when rowCount is 0`, async () => {
 		const stream = pipejoin([
 			createReadableStream([
@@ -717,8 +653,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(batches[0].numRows, 2);
 	});
 
-	// *** arrowBatchFromObjectStream transform: rowCount >= batchSize + BlockStatement *** //
-	// Kills: EqualityOperator (> vs >=), ConditionalExpression (false), BlockStatement.
 	test(`arrowBatchFromObjectStream emits batch at exactly batchSize rows`, async () => {
 		const stream = pipejoin([
 			createReadableStream([
@@ -734,8 +668,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(batches[1].numRows, 1);
 	});
 
-	// *** arrowBatchFromObjectStream flush: rowCount > 0 guards *** //
-	// Kills: ConditionalExpression (true), EqualityOperator (>= 0 vs > 0).
 	test(`arrowBatchFromObjectStream flush emits no extra batch when rowCount is 0`, async () => {
 		const stream = pipejoin([
 			createReadableStream([
@@ -749,8 +681,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(batches[0].numRows, 2);
 	});
 
-	// *** readCell: isTimestamp && typeof value === "number" *** //
-	// Kills: ConditionalExpression (isTimestamp && true).
 	test(`readCell does not wrap null timestamp cell in Date`, async () => {
 		const when = new Date("2021-01-01T00:00:00.000Z");
 		const detect = arrowDetectSchemaStream({ sampleSize: 1 });
@@ -768,8 +698,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(rows[1].ts, null);
 	});
 
-	// *** arrowToArrayStream: new Array(colCount) pre-allocates with colCount *** //
-	// Kills: ArrayDeclaration (new Array() instead of new Array(colCount)).
 	test(`arrowToArrayStream row length equals schema column count`, async () => {
 		const stream = pipejoin([
 			createReadableStream([{ id: 1, name: "alice" }]),
@@ -780,7 +708,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(rows[0].length, 2);
 	});
 
-	// *** named exports only (no default export) *** //
 	test(`exports only the five named stream factories`, async () => {
 		const mod = await import("@datastream/arrow");
 		deepStrictEqual(Object.keys(mod).sort(), [
@@ -791,9 +718,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 			"arrowToObjectStream",
 		]);
 	});
-	// *** fieldsFromSamples: widening across all samples (order-independent) *** //
-	// Previously asserted first-non-null-wins (42 then "hello" -> Int32), which
-	// made "hello" unrepresentable. Each column pins one widening rule.
 	test(`fieldsFromSamples widens mixed types across all samples`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
 		const stream = pipejoin([
@@ -823,11 +747,7 @@ describe(`@datastream/arrow (${variant})`, () => {
 		deepStrictEqual(types, ["Utf8", "Utf8", "Float64", "Utf8", "Int32"]);
 	});
 
-	// *** fieldsFromSamples: max array width uses > not >= or always-true *** //
-	// Kills: ConditionalExpression (if (true)) - always updates width to last sample's length.
 	test(`arrowDetectSchemaStream uses max width across descending-width array rows`, async () => {
-		// First row has 3 cols, second has 1. Real: width=3 (never shrinks).
-		// Mutant (if true): width=1 (last row wins), giving only column0.
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
 		const stream = pipejoin([createReadableStream([[1, 2, 3], [4]]), detect]);
 		await streamToArray(stream);
@@ -836,8 +756,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(value.schema.fields.length, 3);
 	});
 
-	// *** init() in arrowBatchFromArrayStream: error message from lazy schema must include function name *** //
-	// Kills: StringLiteral ( for arrowBatchFromArrayStream in init()).
 	test(`arrowBatchFromArrayStream lazy schema error includes function name`, async () => {
 		const err = await errorFromEmptyLazy(() =>
 			arrowBatchFromArrayStream({ schema: () => undefined }),
@@ -845,19 +763,12 @@ describe(`@datastream/arrow (${variant})`, () => {
 		ok(/arrowBatchFromArrayStream/.test(err.message), `got: ${err.message}`);
 	});
 
-	// *** init() in arrowBatchFromObjectStream: error message from lazy schema must include function name *** //
-	// Kills: StringLiteral ( for arrowBatchFromObjectStream in init()).
 	test(`arrowBatchFromObjectStream lazy schema error includes function name`, async () => {
 		const err = await errorFromEmptyLazy(() =>
 			arrowBatchFromObjectStream({ schema: () => undefined }),
 		);
 		ok(/arrowBatchFromObjectStream/.test(err.message), `got: ${err.message}`);
 	});
-	// *** Kill empty-string mutants by testing against a non-string next value *** //
-	// Kills: ConditionalExpression (false for value === ""),
-	//        StringLiteral ("Stryker was here!" for "").
-	// If empty-string is NOT skipped, it types as Utf8 and breaks. Next value (42) is
-	// never seen. Result would be Utf8 instead of Int32.
 	test(`inferType skips empty string before a number (type from number row wins)`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
 		const stream = pipejoin([
@@ -866,19 +777,9 @@ describe(`@datastream/arrow (${variant})`, () => {
 		]);
 		await streamToArray(stream);
 		const { value } = detect.result();
-		// Real: "" skipped, 42 wins → Int32.
-		// Mutant: "" not skipped, Utf8 typed, breaks → Utf8 (wrong).
 		strictEqual(value.schema.fields[0].type instanceof Int32, true);
 	});
-	// *** Kill sealed = false mutant: schema must not be re-detected from later rows *** //
-	// Kills: BooleanLiteral (false for sealed = true in seal()).
-	// With sealed=false: seal() re-runs for every subsequent sampleSize rows, overwriting
-	// the schema with types from the new batch. With sealed=true: schema is frozen after
-	// the first sampleSize rows.
 	test(`arrowDetectSchemaStream schema is frozen after first sampleSize rows`, async () => {
-		// sampleSize=2: rows 1-2 produce Int32 schema. Rows 3-4 produce Float64 schema.
-		// Real (sealed=true): schema stays Int32.
-		// Mutant (sealed=false): seal() re-runs on rows 3-4, overwriting to Float64.
 		const detect = arrowDetectSchemaStream({ sampleSize: 2 });
 		const stream = pipejoin([
 			createReadableStream([{ x: 1 }, { x: 2 }, { x: 3.14 }, { x: 2.72 }]),
@@ -886,12 +787,9 @@ describe(`@datastream/arrow (${variant})`, () => {
 		]);
 		await streamToArray(stream);
 		const { value } = detect.result();
-		// Schema must reflect the FIRST two rows (Int32), not the last two (Float64).
 		strictEqual(value.schema.fields[0].type instanceof Int32, true);
 	});
 
-	// A lazy schema is resolved on first row, never at construction: it usually
-	// reads a detect stream's result, which does not exist yet.
 	test(`arrowBatchFrom*Stream do not resolve a lazy schema at construction`, () => {
 		let calls = 0;
 		const schema = () => {
@@ -903,7 +801,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		strictEqual(calls, 0);
 	});
 
-	// *** fieldsFromSamples: widen across every sampled value, not just the first *** //
 	test(`arrowDetectSchemaStream widens mixed int/float samples to Float64 and preserves 2.7`, async () => {
 		const input = [{ a: 1 }, { a: 2.7 }];
 		const detect = arrowDetectSchemaStream({ sampleSize: 10 });
@@ -924,7 +821,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 		deepStrictEqual(rows, [{ a: 1 }, { a: 2.7 }]);
 	});
 
-	// *** arrowToObjectStream reserved column name *** //
 	test(`arrowToObjectStream keeps a "__proto__" column as an own property`, async () => {
 		const schema = new Schema([
 			new Field("__proto__", new Utf8(), true),
@@ -944,8 +840,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 			configurable: true,
 		});
 	});
-	// *** Utf8 cells: Date -> ISO string (not a local-timezone String(date)),
-	// object -> JSON (not "[object Object]"); null stays null. *** //
 	const mixedCells = [new Date(0), "x", { b: 1 }, null];
 	const mixedStrings = ["1970-01-01T00:00:00.000Z", "x", '{"b":1}', null];
 	const mixedSchema = new Schema([new Field("a", new Utf8(), true)]);
@@ -977,10 +871,6 @@ describe(`@datastream/arrow (${variant})`, () => {
 			mixedStrings.map((a) => [a]),
 		);
 	});
-	// *** values validated against the sealed schema type *** //
-	// The Arrow builders coerce silently (Int32 wraps 3000000000 to -1294967296,
-	// truncates 2.7 to 2, turns "oops" into 0), so a row that does not fit the
-	// schema inferred from the first sampleSize rows must error, not corrupt.
 	test(`detect + batchFromObject rejects a later row that overflows the sampled Int32`, async () => {
 		const detect = arrowDetectSchemaStream({ sampleSize: 2 });
 		await rejects(
@@ -1037,13 +927,11 @@ describe(`@datastream/arrow (${variant})`, () => {
 			[new Int32(), 2_147_483_647, 2_147_483_647],
 			[new Int32(), -2_147_483_648, -2_147_483_648],
 			[new Uint32(), 3_000_000_000, 3_000_000_000],
-			// 64-bit ints are left to the builder (they take bigint).
 			[new Int64(), 5n, 5n],
 			[new Float64(), 2.7, 2.7],
 			[new Bool(), false, false],
 			[new TimestampMillisecond(), date, date],
 			[new TimestampMillisecond(), 2_000, new Date(2_000)],
-			// Utf8 is unchecked: non-strings keep their String() form.
 			[new Utf8(), 5, "5"],
 		];
 		for (const [type, value, expected] of cases) {

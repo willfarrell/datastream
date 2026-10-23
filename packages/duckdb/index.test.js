@@ -49,8 +49,6 @@ import {
 } from "apache-arrow";
 import { variant } from "../variant.js";
 
-// Fake appenders only define appendValue; the typed appends (which appendCell
-// now prefers for primitives) delegate to it via the prototype.
 const typedAppends = {
 	get appendVarchar() {
 		return this.appendValue;
@@ -67,11 +65,7 @@ const typedAppends = {
 };
 
 describe(`@datastream/duckdb (${variant})`, () => {
-	// @duckdb/node-api tests; the browser build (duckdb-wasm) is exercised further down.
 	const nodeTest = variant === "node" ? test : test.skip;
-
-	// Tests run unconditionally against the node build (@duckdb/node-api); the
-	// browser build (duckdb-wasm) is imported directly by file URL further down.
 
 	const usersArrowSchema = new Schema([
 		new Field("id", new Int32(), true),
@@ -197,8 +191,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			const db = await duckdbConnect();
 			await db.run("CREATE TABLE secret (id INTEGER)");
 			await db.run("INSERT INTO secret VALUES (1)");
-			// A quote-laden name must be treated as a single (weird) identifier, not as
-			// a statement boundary that drops `secret`.
 			const table = `evil"; DROP TABLE secret; --`;
 			const detect = arrowDetectSchemaStream({ sampleSize: 1 });
 			await pipeline([
@@ -210,7 +202,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					schema: () => detect.result().value.schema,
 				}),
 			]);
-			// `secret` survived because the malicious name was escaped into one ident.
 			const reader = await db.runAndReadAll("SELECT id FROM secret");
 			deepStrictEqual(reader.getRowsJS(), [[1]]);
 			db.closeSync();
@@ -250,7 +241,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			}
 			ok(caught, "the write error must propagate");
 			ok(caught.message.includes("bad cell"));
-			// The native appender handle must be released even though final() never ran.
 			strictEqual(closed, true);
 		},
 	);
@@ -310,9 +300,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		db.closeSync();
 	});
 
-	// Provided schema field order differs from the physical table column order.
-	// The appender appends positionally into the table's PHYSICAL columns, so the
-	// column order MUST come from the physical table, never from schema.fields.
 	const reversedUsersSchema = new Schema([
 		new Field("name", new Utf8(), true),
 		new Field("id", new Int32(), true),
@@ -321,7 +308,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	nodeTest(
 		`duckdbAppenderStream maps object rows by physical column order when provided schema order differs`,
 		async () => {
-			const db = await setupTable(); // physical order: id INTEGER, name VARCHAR
+			const db = await setupTable();
 			await pipeline([
 				createReadableStream([
 					{ id: 1, name: "alice" },
@@ -345,7 +332,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	nodeTest(
 		`duckdbArrowInsertStream maps batch columns by physical column order when provided schema order differs`,
 		async () => {
-			const db = await setupTable(); // physical order: id INTEGER, name VARCHAR
+			const db = await setupTable();
 			await pipeline([
 				createReadableStream([
 					{ id: 1, name: "alice" },
@@ -391,7 +378,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				createAppender: async () => appender,
 			};
 			async function* source() {
-				yield { id: 1, name: "alice" }; // creates the appender (init)
+				yield { id: 1, name: "alice" };
 				throw new Error("upstream boom");
 			}
 			let caught;
@@ -405,8 +392,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			}
 			ok(caught, "the upstream error must propagate");
 			ok(caught.message.includes("upstream boom"));
-			// The native appender handle must be released even though the error came
-			// from upstream (final never runs, write's catch never fires).
 			strictEqual(closed, true);
 		},
 	);
@@ -431,15 +416,13 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				runAndReadAll: async () => ({ columnNames: () => ["id", "name"] }),
 				createAppender: async () => appender,
 			};
-			// A passthrough-style fake batch (2 columns, matching the table) that
-			// triggers init() on first write, then the upstream errors before final().
 			const fakeBatch = {
 				schema: { fields: [{ name: "id" }, { name: "name" }] },
 				numRows: 1,
 				getChild: () => ({ get: () => 1 }),
 			};
 			async function* source() {
-				yield fakeBatch; // creates the appender (init)
+				yield fakeBatch;
 				throw new Error("upstream batch boom");
 			}
 			let caught;
@@ -483,7 +466,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				await duckdbAppenderStream({ db, table: "big" }),
 			]);
 			const reader = await db.runAndReadAll("SELECT v FROM big");
-			// A DOUBLE append would store "1099511627776.0".
 			deepStrictEqual(reader.getRowsJS(), [["1099511627776"]]);
 			db.closeSync();
 		},
@@ -504,10 +486,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// Typed appends report a cast failure without appendValue's "Failed to cast
-	// value: " prefix (and with the typed source type), which is what makes the
-	// per-type dispatch observable: a value routed through appendValue instead
-	// would fail with a different message.
 	nodeTest(
 		`duckdbAppenderStream cast failures come from the typed appends`,
 		async () => {
@@ -525,8 +503,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			await rejects(insert("dates", true), {
 				message: "Unimplemented type for cast (BOOL -> INT32)",
 			});
-			// A non-int32 integer-valued double stays on appendValue (BIGINT), so this
-			// is the binding's own message, not a DOUBLE cast.
 			await rejects(insert("ints", 1e30), {
 				message: "bigint out of int64 range",
 			});
@@ -547,8 +523,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	nodeTest(
 		`duckdbArrowInsertStream throws a descriptive error when the batch column count does not match the table`,
 		async () => {
-			const db = await setupTable(); // table users(id, name) -> 2 columns
-			// A batch with only one column does not match the 2-column table.
+			const db = await setupTable();
 			const oneColSchema = new Schema([new Field("id", new Int32(), true)]);
 			let caught;
 			try {
@@ -586,7 +561,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				]),
 				{ message: "upstream boom" },
 			);
-			// Let the stream's error/close teardown run before reading back.
 			await new Promise((resolve) => setTimeout(resolve, 10));
 			deepStrictEqual(await selectAll(db), []);
 			db.closeSync();
@@ -622,17 +596,13 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					{ signal: controller.signal },
 				),
 			);
-			// Let the stream's error/close teardown run before reading back.
 			await new Promise((resolve) => setTimeout(resolve, 10));
 			deepStrictEqual(await selectAll(db), []);
 			db.closeSync();
 		},
 	);
 
-	// *** write atomicity: one transaction per write stream (node) *** //
 	{
-		// More rows than DuckDB's 204,800-row appender auto-flush, which clear()
-		// alone cannot undo.
 		const ROWS = 300_000;
 		const BEGIN_ERROR =
 			"duckdb: could not begin the write stream's transaction; use a connection with no open transaction";
@@ -660,7 +630,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					{ message: "upstream failed" },
 				);
 				strictEqual(await count(db, "t"), 0);
-				// The stream's transaction is gone: the connection can open its own.
 				await db.run("BEGIN TRANSACTION");
 				await db.run("ROLLBACK");
 				db.closeSync();
@@ -677,7 +646,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				}).batches[0];
 				async function* source() {
 					yield batch;
-					// Let the write land (and auto-flush) before failing.
 					await new Promise((resolve) => setTimeout(resolve, 10));
 					throw new Error("upstream failed");
 				}
@@ -730,8 +698,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					createReadableStream([batchOf([2], ["bob"])]),
 					await duckdbArrowInsertStream({ db, table: "users" }),
 				]);
-				// Committed, not just visible inside a still-open transaction: a new
-				// transaction can start and rolling it back keeps the rows.
 				await db.run("BEGIN TRANSACTION");
 				await db.run("ROLLBACK");
 				deepStrictEqual(await selectAll(db), [
@@ -771,7 +737,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			},
 		);
 
-		// A fake connection logging every statement and appender call in order.
 		const makeTxDb = ({ run = async () => {} } = {}) => {
 			const calls = [];
 			const db = {
@@ -905,7 +870,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				const db = makeTxDb();
 				const createAppender = db.createAppender;
 				db.createAppender = async () => ({
-					// Spread copies own keys only, so re-attach the typed-append prototype.
 					__proto__: typedAppends,
 					...(await createAppender()),
 					endRow: () => {
@@ -937,7 +901,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 						]),
 						{ message: "commit failed" },
 					);
-					// DuckDB already rolled the failed commit back.
 					deepStrictEqual(db.calls, [
 						"BEGIN TRANSACTION",
 						"row",
@@ -1005,9 +968,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		}
 	}
 
-	// *** browser build (duckdb-wasm), driven by fake db objects *** //
-	// Under the browser run `@datastream/duckdb` is the built browser bundle; the
-	// node run imports the source directly so these paths are pinned there too.
 	const importWeb = () =>
 		variant === "browser"
 			? import("@datastream/duckdb")
@@ -1019,15 +979,11 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		const { duckdbArrowInsertStream: webArrowInsertStream } = await importWeb();
 		let inserted;
 		const db = {
-			// tableExists() probe — succeed so the table is treated as existing.
 			query: async () => ({ schema: { fields: usersArrowSchema.fields } }),
 			insertArrowTable: async (arrowTable) => {
 				inserted = arrowTable;
 			},
 		};
-		// batchSize 1 forces three separate RecordBatch objects (the bug merged
-		// three complete IPC streams and the reader stopped at the first EOS,
-		// dropping batches 2 and 3).
 		await pipeline([
 			createReadableStream([
 				{ id: 1, name: "alice" },
@@ -1053,7 +1009,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		let closed = false;
 		const sent = [];
 		const db = {
-			// tableExists() probe — succeed so the table is treated as existing.
 			query: async () => ({ schema: { fields: usersArrowSchema.fields } }),
 			prepare: async (sql) => {
 				preparedSql = sql;
@@ -1074,8 +1029,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			]),
 			await webAppenderStream({ db, table: "users" }),
 		]);
-		// The web build binds by name: the INSERT must list the (physical) columns
-		// and the sent values must follow that same column order.
 		ok(
 			preparedSql.includes('INSERT INTO "users"'),
 			`unexpected SQL: ${preparedSql}`,
@@ -1091,7 +1044,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	test(`web duckdbAppenderStream maps object rows by physical column order when provided schema order differs`, async () => {
 		const { duckdbAppenderStream: webAppenderStream } = await importWeb();
 		const sent = [];
-		// Physical column order reported by the table probe is [id, name].
 		const db = {
 			query: async () => ({ schema: { fields: usersArrowSchema.fields } }),
 			prepare: async () => ({
@@ -1109,7 +1061,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				schema: reversedUsersSchema,
 			}),
 		]);
-		// Even with a reversed provided schema, values follow physical order [id, name].
 		deepStrictEqual(sent, [[1, "alice"]]);
 	});
 
@@ -1127,7 +1078,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				}),
 			};
 			async function* source() {
-				yield { id: 1, name: "alice" }; // prepares the statement (init)
+				yield { id: 1, name: "alice" };
 				throw new Error("upstream boom");
 			}
 			let caught;
@@ -1140,12 +1091,9 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				caught = e;
 			}
 			ok(caught?.message.includes("upstream boom"));
-			// final() never runs and write() never threw, so only abort can release it.
 			strictEqual(closed, true, "prepared statement must be closed");
 		};
-		// Without a caller abort hook (the default no-op runs).
 		await run();
-		// The caller's own abort hook still runs, with the upstream error.
 		const aborted = [];
 		await run({ abort: (reason) => aborted.push(reason) });
 		strictEqual(aborted.length, 1);
@@ -1178,17 +1126,9 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			caught = e;
 		}
 		ok(caught?.message.includes("upstream boom"));
-		// No statement was prepared, so there is nothing to close and the
-		// caller's hook must not be skipped by a failed close.
 		strictEqual(aborted.length, 1);
 		strictEqual(aborted[0].message, "upstream boom");
 	});
-
-	// *** arrowTypeToDuckDBSQL coverage *** //
-	// Each Arrow type must map to its corresponding DuckDB SQL type name so that
-	// CREATE TABLE produces the right column definition. We exercise every branch
-	// through duckdbAppenderStream with a schema (which calls createTableFromArrowSchema
-	// then DESCRIBE to confirm the column type).
 
 	const describeColumns = async (db, table) => {
 		const r = await db.runAndReadAll(`DESCRIBE ${table}`);
@@ -1204,7 +1144,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				new Field("c_bool", new Bool(), true),
 				new Field("c_int8", new Int8(), true),
 				new Field("c_int16", new Int16(), true),
-				// Int32 is already exercised by the usersArrowSchema tests
 				new Field("c_int64", new Int64(), true),
 				new Field("c_uint8", new Uint8(), true),
 				new Field("c_uint16", new Uint16(), true),
@@ -1255,7 +1194,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			strictEqual(cols.c_uint16, "USMALLINT");
 			strictEqual(cols.c_uint32, "UINTEGER");
 			strictEqual(cols.c_uint64, "UBIGINT");
-			// DuckDB reports REAL as FLOAT (they are aliases)
 			strictEqual(cols.c_float32, "FLOAT");
 			strictEqual(cols.c_float64, "DOUBLE");
 			strictEqual(cols.c_date, "DATE");
@@ -1263,15 +1201,11 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			strictEqual(cols.c_ts_ms, "TIMESTAMP_MS");
 			strictEqual(cols.c_ts_us, "TIMESTAMP");
 			strictEqual(cols.c_ts_ns, "TIMESTAMP_NS");
-			// Utf8 (and any unknown type) maps to VARCHAR
 			strictEqual(cols.c_str, "VARCHAR");
 			db.closeSync();
 		},
 	);
 
-	// *** Arrow types decoded from IPC/Parquet *** //
-	// Decoded schemas use the generic Int_/Float/Date_/Timestamp_ classes (not
-	// Int32/Float64/...), so the SQL type must come from typeId + its parameters.
 	const ipcBatch = (vectors) => {
 		const decoded = tableFromIPC(tableToIPC(new Table(vectors)));
 		return { schema: decoded.schema, batch: decoded.batches[0] };
@@ -1344,9 +1278,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		`duckdbArrowInsertStream stores DateDay/DateMillisecond as DATE values`,
 		async () => {
 			const db = await duckdbConnect();
-			// 2024-01-02T03:04:05Z: the time part must be dropped, not rounded up.
 			const at = new Date(Date.UTC(2024, 0, 2, 23, 4, 5));
-			// 1969-12-31T12:00Z: pre-epoch must floor to the previous day.
 			const before = new Date(Date.UTC(1969, 11, 31, 12));
 			await insertDecoded(db, "dates", {
 				d_day: vectorFromArray([at, before], new DateDay()),
@@ -1408,7 +1340,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** Arrow Date/Timestamp only convert into DATE/TIMESTAMP* target columns *** //
 	nodeTest(
 		`duckdbArrowInsertStream converts Date/Timestamp only for DATE/TIMESTAMP target columns`,
 		async () => {
@@ -1442,7 +1373,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** Batch fields are matched to table columns case-insensitively *** //
 	nodeTest(
 		`duckdbArrowInsertStream matches batch fields to table columns case-insensitively`,
 		async () => {
@@ -1492,12 +1422,9 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** quoteIdent coverage *** //
-
 	nodeTest(
 		`quoteIdent escapes embedded double-quotes in table name`,
 		async () => {
-			// A table name containing " must be doubled so the identifier is valid SQL.
 			const db = await duckdbConnect();
 			const schema = new Schema([new Field("id", new Int32(), true)]);
 			await pipeline([
@@ -1525,8 +1452,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		ok(caught.message.includes("identifier must be a non-empty string"));
 		db.closeSync();
 	});
-
-	// *** isMissingTableError coverage *** //
 
 	nodeTest(
 		`non-table-missing error from db.run propagates instead of being swallowed`,
@@ -1696,8 +1621,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** appendCell coverage *** //
-
 	nodeTest(
 		`appendCell calls appendNull for null values and appendValue for non-null`,
 		async () => {
@@ -1761,8 +1684,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			strictEqual(nullCount, 1, "undefined in array row must call appendNull");
 		},
 	);
-
-	// *** closeAppenderOnce coverage *** //
 
 	nodeTest(
 		`closeAppenderOnce is idempotent — closeSync called exactly once even after double invocation`,
@@ -1831,8 +1752,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			);
 		},
 	);
-
-	// *** final() coverage *** //
 
 	nodeTest(
 		`duckdbAppenderStream final calls flushSync before closing the appender`,
@@ -1935,8 +1854,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		);
 	});
 
-	// *** duckdbArrowInsertStream missing-column guard *** //
-
 	nodeTest(
 		`duckdbArrowInsertStream throws when batch.getChild returns null`,
 		async () => {
@@ -2023,8 +1940,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			strictEqual(closed, true);
 		},
 	);
-
-	// *** duckdbArrowInsertStream row/column loop counts *** //
 
 	nodeTest(
 		`duckdbArrowInsertStream writes the correct number of cells per row (colCount loop)`,
@@ -2155,8 +2070,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** createTableFromArrowSchema column separator *** //
-
 	nodeTest(
 		`createTableFromArrowSchema uses correct column separator in CREATE TABLE`,
 		async () => {
@@ -2180,7 +2093,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** named exports only *** //
 	test(`module has only named exports`, async () => {
 		const mod = await import("@datastream/duckdb");
 		deepStrictEqual(Object.keys(mod).sort(), [
@@ -2190,8 +2102,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			"duckdbQueryStream",
 		]);
 	});
-
-	// *** abort teardown — signal fires during init *** //
 
 	nodeTest(
 		`duckdbAppenderStream closes appender when AbortSignal fires after init`,
@@ -2234,8 +2144,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** ensureTableAndColumns — schema absent path *** //
-
 	nodeTest(
 		`duckdbAppenderStream with no schema and existing table skips CREATE TABLE`,
 		async () => {
@@ -2274,14 +2182,9 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** closeAppenderOnce — closeSync throws (error swallowed) *** //
-
 	nodeTest(
 		`closeAppenderOnce swallows errors thrown by closeSync on the error path`,
 		async () => {
-			// If the native appender's closeSync itself throws (e.g. already closed
-			// internally), the error must be swallowed so the original write error is
-			// what propagates to the caller.
 			const appender = {
 				__proto__: typedAppends,
 				appendValue: (v) => {
@@ -2309,7 +2212,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			} catch (e) {
 				caught = e;
 			}
-			// The WRITE error must propagate, not the closeSync error.
 			ok(caught, "write error must propagate");
 			ok(
 				caught.message.includes("write error"),
@@ -2318,21 +2220,13 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** isMissingTableError — string-thrown error fallback *** //
-
 	nodeTest(
 		`tableExists returns false when db.run throws a plain string containing "does not exist"`,
 		async () => {
-			// isMissingTableError uses (error?.message ?? error) — when the thrown value
-			// is a plain string (not an Error object), error.message is undefined and
-			// the ?? fallback path uses the string itself. This covers the right-hand
-			// side of the ?? operator.
 			let createTableCalled = false;
 			const db = {
 				run: async (sql) => {
 					if (sql.includes("LIMIT 0")) {
-						// Throw a plain string, not an Error — error.message will be undefined,
-						// triggering the ?? fallback branch in isMissingTableError.
 						throw "Table does not exist";
 					}
 					if (sql.startsWith("CREATE TABLE")) createTableCalled = true;
@@ -2360,13 +2254,9 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** abort teardown — pre-aborted signal *** //
-
 	test(`duckdbAppenderStream with pre-aborted signal closes appender when signal is already aborted at wiring time`, async () => {
-		// An ALREADY aborted signal destroys the Writable at construction, so the
-		// abort teardown runs before any appender exists and must not throw.
 		const controller = new AbortController();
-		controller.abort(); // pre-aborted BEFORE duckdbAppenderStream is called
+		controller.abort();
 		let appenderCreated = false;
 		const db = {
 			run: async () => {},
@@ -2396,15 +2286,10 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		} catch (e) {
 			caught = e;
 		}
-		// The stream construction itself must not throw — the pre-aborted signal
-		// teardown is taken at construction time and is a no-op when no appender
-		// exists yet. The pipeline may fail due to the abort, which is fine.
 		ok(
 			caught === undefined || caught instanceof Error,
 			"pre-aborted signal must not prevent stream construction",
 		);
-		// The appender was created during write (after construction), confirming the
-		// signal.aborted branch was evaluated before any write occurred.
 		strictEqual(
 			typeof appenderCreated,
 			"boolean",
@@ -2412,19 +2297,14 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		);
 	});
 
-	// *** duckdbConnect — path validation *** //
-
 	nodeTest(
 		`duckdbConnect defaults to an in-memory database and rejects an empty path`,
 		async () => {
-			// The default ":memory:" must give a working in-memory connection...
 			const db = await duckdbConnect();
 			await db.run("CREATE TABLE m (x INTEGER); INSERT INTO m VALUES (7)");
 			const reader = await db.runAndReadAll("SELECT x FROM m");
 			deepStrictEqual(reader.getRowsJS(), [[7]]);
 			db.closeSync();
-			// ...and an empty path must be rejected (so the ":memory:" default cannot be
-			// silently replaced by "").
 			let caught;
 			try {
 				await duckdbConnect("");
@@ -2436,9 +2316,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				caught.message.includes("non-empty string"),
 				`unexpected error: ${caught?.message}`,
 			);
-			// A non-string path (which has no string length) must also be rejected by the
-			// `typeof path !== "string"` half of the guard, with the SAME message — not be
-			// forwarded to DuckDBInstance.create.
 			let caughtNonString;
 			try {
 				await duckdbConnect(42);
@@ -2454,16 +2331,9 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** isMissingTableError — non-missing error must propagate AND must NOT trigger CREATE TABLE *** //
-
 	nodeTest(
 		`a non-missing probe error propagates and does NOT cause a spurious CREATE TABLE`,
 		async () => {
-			// The probe (SELECT ... LIMIT 0) fails with a NON-missing error (e.g. a lock).
-			// isMissingTableError must return false so the error propagates; CREATE TABLE
-			// must NOT be attempted. If isMissingTableError were to return true (or the
-			// substring checks degenerated to always-true, or the catch swallowed the
-			// error), the error would be hidden and CREATE TABLE would run instead.
 			let createTableCalled = false;
 			const probeError = new Error("IO Error: could not read lock on resource");
 			const db = {
@@ -2508,9 +2378,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	nodeTest(
 		`isMissingTableError requires the FULL "does not exist" phrase, not a prefix`,
 		async () => {
-			// A message that does NOT contain "does not exist"/"not found"/"catalog error"
-			// must be treated as a real error. This pins the exact literals: blanking any
-			// of them would make includes("") always true and wrongly swallow this error.
 			let createTableCalled = false;
 			const probeError = new Error("permission denied for relation t");
 			const db = {
@@ -2547,14 +2414,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	nodeTest(
 		`isMissingTableError tolerates a nullish probe error (optional chaining on error.message)`,
 		async () => {
-			// When the probe throws a nullish value (null), error?.message must short-circuit
-			// to undefined and fall back to String(error) === "null" — which is NOT a
-			// missing-table match, so tableExists re-throws the (nullish) value. A nullish
-			// stream error is treated as success by the stream layer, so the pipeline
-			// completes WITHOUT a CREATE TABLE. If the optional chaining were removed
-			// (error.message), reading .message on null would throw a TypeError — a
-			// truthy error that WOULD reject the pipeline. Asserting the pipeline does NOT
-			// reject with a TypeError pins the optional chaining.
 			let createTableCalled = false;
 			const db = {
 				run: async (sql) => {
@@ -2596,19 +2455,13 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** arrowTypeToDuckDBSQL — null/undefined field type maps to VARCHAR (optional chaining) *** //
-
 	nodeTest(
 		`arrowTypeToDuckDBSQL maps a field with no type to VARCHAR (does not crash)`,
 		async () => {
-			// A field whose .type is undefined must resolve to VARCHAR via the optional
-			// chaining on type?.constructor?.name. Dropping the chaining would throw when
-			// reading .constructor of undefined, breaking CREATE TABLE.
 			const ddl = [];
 			const db = {
 				run: async (sql) => {
 					if (sql.startsWith("CREATE TABLE")) ddl.push(sql);
-					// table-existence probe: report missing so CREATE TABLE runs
 					if (sql.includes("LIMIT 0")) throw new Error("table does not exist");
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["a", "b"] }),
@@ -2622,11 +2475,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					closeSync: () => {},
 				}),
 			};
-			// A plain schema object (passed through resolveLazy unchanged) where one field
-			// has no constructor at all (a null-prototype object: type.constructor is
-			// undefined) and one field whose type is null. Both must map to VARCHAR. The
-			// null-prototype case specifically pins the SECOND optional chaining
-			// (constructor?.name): reading `.name` off an undefined constructor would throw.
 			const schema = {
 				fields: [
 					{ name: "a", type: Object.create(null) },
@@ -2649,13 +2497,9 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** abort teardown — destroy without an error *** //
-
 	nodeTest(
 		`duckdbAppenderStream closes the appender via the stream "close" event (destroy without error)`,
 		async () => {
-			// Destroying the stream WITHOUT an error must still release the native
-			// appender: no write error, no abort signal, no final().
 			let closed = false;
 			let flushed = false;
 			const appender = {
@@ -2677,12 +2521,10 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				createAppender: async () => appender,
 			};
 			const stream = await duckdbAppenderStream({ db, table: "t" });
-			// Write one row to create the appender.
 			await new Promise((resolve, reject) =>
 				stream.write({ id: 1 }, (e) => (e ? reject(e) : resolve())),
 			);
 			strictEqual(closed, false, "appender must still be open before close");
-			// destroy() with no error: emits "close" but NOT "error", and skips final().
 			stream.destroy();
 			await new Promise((resolve) => stream.once("close", resolve));
 			strictEqual(closed, true, "destroy must release the appender");
@@ -2694,15 +2536,9 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** duckdbArrowInsertStream — schema?.fields optional chaining + Array(colCount) *** //
-
 	nodeTest(
 		`duckdbArrowInsertStream falls back to numCols when batch.schema is present but has no fields`,
 		async () => {
-			// batch.schema?.fields?.length: when schema exists but fields is undefined,
-			// the SECOND optional chaining (fields?.length) must short-circuit to undefined
-			// so the ?? falls back to batch.numCols. Removing fields?.length would throw on
-			// undefined.length. Here numCols matches the table (1) so the write succeeds.
 			const cells = [];
 			const appender = {
 				appendNull: () => {},
@@ -2721,7 +2557,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				createAppender: async () => appender,
 			};
 			const batch = {
-				schema: {}, // present, but no `fields` property
+				schema: {},
 				numCols: 1,
 				numRows: 2,
 				getChild: () => ({ get: (r) => r + 100 }),
@@ -2741,10 +2577,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	nodeTest(
 		`duckdbArrowInsertStream appends every column in order`,
 		async () => {
-			// The cols buffer is built by pushing each batch column in order; the row loop
-			// then appends cols[i].get(r). A 3-column, 1-row batch must append exactly the
-			// three column values in column order (a stray leading element would shift the
-			// values and break the .get() reads).
 			const cells = [];
 			const appender = {
 				appendNull: () => {},
@@ -2779,15 +2611,9 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** final() guard — appender exists and is not already closed *** //
-
 	nodeTest(
 		`duckdbArrowInsertStream final does NOT flush again after a write error already closed the appender`,
 		async () => {
-			// final()'s guard `state.appender && !state.closed` must be honoured. After a
-			// write error closes the appender (state.closed = true), a subsequent final()
-			// must NOT call flushSync again. Mutating the guard to `true` or `||` would
-			// re-flush a closed appender.
 			let flushCount = 0;
 			let closeCount = 0;
 			const appender = {
@@ -2831,10 +2657,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	);
 
 	test(`duckdbArrowInsertStream final does nothing when no batches were written`, async () => {
-		// With an empty source, init() never runs and state.appender stays undefined.
-		// final()'s guard `state.appender && !state.closed` must short-circuit on the
-		// undefined appender. Mutating the guard to `true` (or `&&`->`||`) would call
-		// state.appender.flushSync() on undefined and throw.
 		let flushCalled = false;
 		let closeCalled = false;
 		const db = {
@@ -2876,11 +2698,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		);
 	});
 
-	// *** write atomicity: one transaction per write stream (browser) *** //
 	{
-		// A fake duckdb-wasm connection logging statements, prepared-statement
-		// sends/closes and Arrow inserts in order. Probe/DESCRIBE queries are
-		// answered but not logged.
 		const makeWebTxDb = ({ query = async () => {} } = {}) => {
 			const calls = [];
 			const db = {
@@ -2913,7 +2731,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		}).batches[0];
 		const webWriters = [
 			["duckdbAppenderStream", "duckdbAppenderStream", row, "send", "close"],
-			// batchRows: 1 flushes every batch, so the insert lands before failing.
 			["duckdbArrowInsertStream", "duckdbArrowInsertStream", batch, "insert"],
 		];
 		const BEGIN_ERROR =
@@ -3053,7 +2870,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 						return true;
 					},
 				);
-				// Its BEGIN failed, so it must not roll back the caller's transaction.
 				deepStrictEqual(db.calls, ["BEGIN TRANSACTION"]);
 			});
 
@@ -3087,10 +2903,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		}
 	}
 
-	// *** browser build: table creation, probes, identifiers, arrays, connect *** //
 	{
-		// A fake db that answers the existence probe, records every query, reports
-		// physical columns and hands out a recording prepared statement.
 		const makeWebDb = ({
 			probeError,
 			fields = usersArrowSchema.fields,
@@ -3240,7 +3053,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					schema: usersArrowSchema,
 				}),
 			]);
-			// Existing table: probed once, never created.
 			deepStrictEqual(probed(db), ['SELECT 1 FROM "us""ers" LIMIT 0']);
 			strictEqual(created(db), undefined);
 			strictEqual(db.prepared, 1);
@@ -3297,7 +3109,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				createReadableStream([[1, "a"]]),
 				await webAppenderStream({ db, table: "users" }),
 			]);
-			// Array rows map by position; no probe, no DDL.
 			deepStrictEqual(db.sent, [[1, "a"]]);
 			deepStrictEqual(probed(db), []);
 		});
@@ -3319,7 +3130,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				caught = e;
 			}
 			ok(!(caught instanceof TypeError), `unexpected TypeError: ${caught}`);
-			// "null" is not a missing-table error, so no table is created.
 			strictEqual(created(db), undefined);
 		});
 
@@ -3363,7 +3173,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		test(`web duckdbArrowInsertStream reorders batch columns to table order by name, case-insensitively`, async () => {
 			const { duckdbArrowInsertStream: webArrowInsertStream } =
 				await importWeb();
-			// Table is (ID, name); the batch carries (name, id).
 			const db = makeWebDb({
 				fields: [new Field("ID", new Int32()), new Field("name", new Utf8())],
 			});
@@ -3451,7 +3260,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					schema: usersArrowSchema,
 				}),
 			]);
-			// Nothing written: init never ran (no batch) and nothing was inserted.
 			deepStrictEqual(db.queries, []);
 			deepStrictEqual(db.inserted, []);
 			await pipeline([
@@ -3466,7 +3274,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					schema: usersArrowSchema,
 				}),
 			]);
-			// Two batches, one init (probe + CREATE + column read), one insert.
 			strictEqual(probed(db).length, 1);
 			ok(created(db));
 			strictEqual(db.inserted.length, 1);
@@ -3474,8 +3281,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			deepStrictEqual(db.inserted[0].options, { name: "users", create: false });
 		});
 
-		// duckdbConnect wires a Worker-backed AsyncDuckDB. Neither exists in Node, so
-		// this file remaps `@duckdb/duckdb-wasm` to a recording fake and stubs Worker.
 		register(
 			`data:text/javascript,${encodeURIComponent(`
 				export async function resolve(specifier, context, nextResolve) {
@@ -3517,7 +3322,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					"main.wasm",
 					"pthread.js",
 				]);
-				// Default ":memory:" needs no open(); the instantiated db is in-memory.
 				strictEqual(connection.db.opened, undefined);
 			} finally {
 				delete globalThis.Worker;
@@ -3590,9 +3394,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		});
 	}
 
-	// *** duckdbQueryStream (node build: real in-memory DuckDB) *** //
 	{
-		// Delegates to a real connection, counting interrupt() calls.
 		const spyConnection = async () => {
 			const db = await duckdbConnect();
 			const spy = Object.create(db);
@@ -3615,7 +3417,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			deepStrictEqual(rows, [
 				{ i: 1, d: 1.5, s: "a", b: true, n: null, big: 2n },
 			]);
-			// A query that ran to completion is never interrupted.
 			strictEqual(db.interrupts, 0);
 		});
 
@@ -3635,7 +3436,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			`duckdbQueryStream yields every row across result chunks`,
 			async () => {
 				const db = await duckdbConnect();
-				// 5000 rows span three 2048-row DuckDB chunks.
 				const rows = await streamToArray(
 					duckdbQueryStream({
 						db,
@@ -3673,9 +3473,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 					break;
 				}
 				deepStrictEqual(seen, [{ i: 0 }]);
-				// Paused mid-chunk: nothing is running, so nothing is interrupted.
 				strictEqual(db.interrupts, 0);
-				// The connection stays usable after the abandoned result.
 				deepStrictEqual(
 					(await db.runAndReadAll("SELECT 3 AS a")).getRowObjectsJS(),
 					[{ a: 3 }],
@@ -3683,8 +3481,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			},
 		);
 
-		// db.interrupt() is connection-wide: it would kill another query running on
-		// the same connection, so only a stream with its own call in flight may use it.
 		const slowQuery =
 			"SELECT count(*)::INTEGER AS n FROM range(30000000) t(a) WHERE hash(a) % 7 = 0";
 
@@ -3719,8 +3515,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			},
 		);
 
-		// A fake connection whose stream() or next chunk fetch hangs until
-		// interrupt() rejects it, like node-api's "Interrupted!".
 		const hangingDb = (hangAt) => {
 			const db = { interrupts: 0 };
 			let fail;
@@ -3767,8 +3561,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				const db = await spyConnection();
 				const controller = new AbortController();
 				setTimeout(() => controller.abort(), 100);
-				// Never finishes on its own: without interrupt() the abort would wait
-				// on the native query forever.
 				await rejects(
 					streamToArray(
 						duckdbQueryStream(
@@ -3814,11 +3606,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		);
 	}
 
-	// *** duckdbQueryStream (browser build: fake duckdb-wasm connection) *** //
 	{
-		// An async reader over the given RecordBatches (duckdb-wasm hands back an
-		// AsyncRecordBatchStreamReader). `next` overrides a step to inject errors
-		// or a query that never settles.
 		const makeReader = (batches, next) => {
 			let i = 0;
 			return {
@@ -3861,7 +3649,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 
 		test(`web duckdbQueryStream streams plain row objects from every batch`, async () => {
 			const { duckdbQueryStream: webQueryStream } = await importWeb();
-			// An empty batch in the middle must be skipped, not end the stream.
 			const db = makeQueryDb(
 				batchesOf(
 					tableFromArrays({ id: Int32Array.from([1, 2]), name: ["a", "b"] }),
@@ -3877,9 +3664,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				{ id: 2, name: "b" },
 				{ id: 3, name: "c" },
 			]);
-			// Rows are plain objects (StructRow.toJSON), not arrow proxies.
 			strictEqual(Object.getPrototypeOf(rows[0]), Object.prototype);
-			// Streamed (allowStreamResult), not materialized in the worker.
 			deepStrictEqual(db.sends, [["SELECT id, name FROM users", true]]);
 			deepStrictEqual(db.prepares, []);
 			strictEqual(db.cancels, 0);
@@ -3940,16 +3725,11 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				break;
 			}
 			deepStrictEqual(seen, [{ id: 1 }]);
-			// node core tears the Readable down asynchronously after break.
 			await new Promise(setImmediate);
-			// Paused between rows: nothing is in flight, so cancelSent() (which
-			// cancels whatever the connection is running) is not called.
 			strictEqual(db.cancels, 0);
 			strictEqual(db.closed, 1);
 		});
 
-		// Direct ReadableStream control (cancel() / getReader()) is only on the
-		// browser core; the node core returns a node Readable.
 		(variant === "browser" ? test : test.skip)(
 			`web duckdbQueryStream cancelled before it is read does not cancel the connection`,
 			async () => {
@@ -3987,8 +3767,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				const read = reader.read();
 				await new Promise(setImmediate);
 				strictEqual(fetches, 2);
-				// Without a cancelSent() the fetch would never settle; end it late so a
-				// missed cancel fails the assertion below instead of hanging.
 				setTimeout(() => settle(new Error("not canceled")), 50);
 				await reader.cancel();
 				strictEqual(db.cancels, 1);
@@ -4022,9 +3800,6 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			},
 		);
 
-		// The node build of @datastream/core wraps the iterator in a generator,
-		// which queues return() behind the in-flight next(); only the browser core
-		// cancels immediately, so this runs against the browser variant.
 		(variant === "browser" ? test : test.skip)(
 			`web duckdbQueryStream abort cancels a query that is still executing`,
 			async () => {

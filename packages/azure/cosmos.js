@@ -7,12 +7,9 @@ import {
 	azureReadableStream,
 } from "./client.js";
 
-// executeBulkOperations accepts any count but this keeps per-request memory and
-// retry sets bounded.
 const COSMOS_BATCH_MAX = 100;
 const THROTTLED = 429;
 
-// client = Container
 export const azureCosmosQueryStream = async (options, streamOptions = {}) => {
 	const { client, query, ...feedOptions } = options;
 	async function* command(signal) {
@@ -30,10 +27,7 @@ export const azureCosmosQueryStream = async (options, streamOptions = {}) => {
 
 const cosmosBulkStream = (toOperation, options, streamOptions) => {
 	const { client, retryMaxCount = 10 } = options;
-	// null = retry without limit
 	const maxCount = retryMaxCount ?? Number.POSITIVE_INFINITY;
-	// Written chunks, not operations: on destroy they are handed back as
-	// err.failedMessages and can be re-written as-is.
 	let batch = [];
 	const send = async () => {
 		let operations = batch.map(toOperation);
@@ -43,8 +37,6 @@ const cosmosBulkStream = (toOperation, options, streamOptions) => {
 			const results = await client.items.executeBulkOperations(operations, {
 				abortSignal: streamOptions.signal,
 			});
-			// Status codes only: item bodies may be PII and must not leak into
-			// logged error causes.
 			const failed = [];
 			const throttled = [];
 			for (let index = 0; index < results.length; index++) {
@@ -67,8 +59,6 @@ const cosmosBulkStream = (toOperation, options, streamOptions) => {
 			operations = throttled;
 		}
 	};
-	// Returns a promise only when a batch is sent: an async write would
-	// allocate and settle a promise per chunk.
 	const write = (chunk) => {
 		batch.push(chunk);
 		if (batch.length === COSMOS_BATCH_MAX) {
@@ -83,7 +73,6 @@ const cosmosBulkStream = (toOperation, options, streamOptions) => {
 	);
 };
 
-// chunk = item; partition key is read from the item by the SDK.
 export const azureCosmosUpsertItemStream = (options, streamOptions = {}) =>
 	cosmosBulkStream(
 		(resourceBody) => ({ operationType: "Upsert", resourceBody }),
@@ -91,7 +80,6 @@ export const azureCosmosUpsertItemStream = (options, streamOptions = {}) =>
 		streamOptions,
 	);
 
-// chunk = { id, partitionKey }
 export const azureCosmosDeleteItemStream = (options, streamOptions = {}) =>
 	cosmosBulkStream(
 		({ id, partitionKey }) => ({ operationType: "Delete", id, partitionKey }),

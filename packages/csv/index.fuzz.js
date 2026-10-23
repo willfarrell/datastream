@@ -134,8 +134,6 @@ test("fuzz csvParseStream w/ csv-like input", async () => {
 	);
 });
 
-// Splitting the input into arbitrary string or byte chunks must not change
-// what the detect -> header -> parse pipeline produces.
 test("fuzz csv pipeline is independent of chunking", async () => {
 	const run = async (chunks) => {
 		const detect = csvDetectDelimitersStream();
@@ -192,8 +190,6 @@ test("fuzz csv pipeline is independent of chunking", async () => {
 				const source = asBytes ? new TextEncoder().encode(input) : input;
 				const chunks = split(source, cuts);
 				const actual = await run(chunks);
-				// Detection only sees the data buffered up to the first line, so it may
-				// legitimately differ with chunking; compare the rest only when it matches.
 				if (
 					JSON.stringify(actual.detected) !== JSON.stringify(expected.detected)
 				)

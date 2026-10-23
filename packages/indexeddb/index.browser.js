@@ -11,9 +11,7 @@ export const indexedDBReadStream = async (
 	{ db, store, index, key },
 	streamOptions = {},
 ) => {
-	// index and key are independent: key alone filters by primary key, index
-	// alone walks the index. Only treat the index as absent when it is
-	// null/undefined. IDB treats an undefined key range as "no range", so
+	// IDB treats an undefined key range as "no range", so
 	// openCursor(undefined) walks everything and needs no special case.
 	const byStore = index === null || index === undefined;
 	// A transaction auto-commits once it goes idle, so a cursor held open while
@@ -21,8 +19,6 @@ export const indexedDBReadStream = async (
 	// next step. Read eagerly in batches, each in its own short transaction, and
 	// resume after the last (key, primaryKey) position: index keys repeat, so
 	// the primary key is what makes the position unique.
-	// An AbortSignal in streamOptions is honoured by createReadableStream, which
-	// errors the stream and returns this iterator (ending the reads).
 	const records = (async function* () {
 		let last;
 		const compare = (cursor) =>
@@ -39,7 +35,6 @@ export const indexedDBReadStream = async (
 						? cursor.continue(last[0])
 						: cursor.continuePrimaryKey(...last));
 				}
-				// ... and step past it unless it was deleted meanwhile.
 				if (cursor && compare(cursor) === 0) cursor = await cursor.continue();
 			}
 			const batch = [];

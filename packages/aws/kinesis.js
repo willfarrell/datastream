@@ -19,15 +19,11 @@ const KINESIS_MAX_RECORD_BYTES = 1024 * 1024; // 1 MiB
 // 5 MiB aggregate with headroom for request framing.
 const KINESIS_MAX_BATCH_BYTES = 5 * 1024 * 1024 - 64 * 1024;
 
-// Buffer.byteLength measures strings (UTF-8) and binary Data (Uint8Array /
-// Buffer / ArrayBuffer) alike; an absent field counts as zero bytes.
 const recordByteLength = (record) =>
 	Buffer.byteLength(record.Data ?? "") +
 	Buffer.byteLength(record.PartitionKey ?? "") +
 	Buffer.byteLength(record.ExplicitHashKey ?? "");
 
-// Created on first use, so importing the module (or always passing a per-call
-// client) never constructs an unused SDK client.
 let defaultClient;
 const getDefaultClient = () =>
 	(defaultClient ??= new KinesisClient(awsClientDefaults));
@@ -71,8 +67,6 @@ export const awsKinesisGetRecordsStream = async (
 			// calls exceed Kinesis' 5 calls/s/shard limit
 			// (ProvisionedThroughputExceeded). No wait once the stream is ending.
 			if (expectMore && records.length === 0 && pollingDelay > 0) {
-				// Abortable idle wait: rejects immediately and clears the timer
-				// when the stream is destroyed or streamOptions.signal aborts mid-delay.
 				await timeout(pollingDelay, { signal });
 			}
 		}
@@ -116,7 +110,6 @@ export const awsKinesisPutRecordsStream = (options, streamOptions = {}) => {
 			if (!failed.length) {
 				return;
 			}
-			// null = retry without limit
 			if (retryCount >= (retryMaxCount ?? Number.POSITIVE_INFINITY)) {
 				throw new Error("awsKinesisPutRecords has failed records", {
 					cause: results.filter((result) => result.ErrorCode),

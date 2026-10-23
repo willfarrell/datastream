@@ -75,8 +75,6 @@ const findRowEnd = (
 	let pos = 0;
 	let nextNl = text.indexOf(newlineChar, 0);
 	for (;;) {
-		// `pos` is a field start here, or (escapeChar === quoteChar only) just past
-		// a quote where a second quote continues the field as an escaped "" pair.
 		if (text.charCodeAt(pos) === quoteCode) {
 			// Quoted field: find the matching closing quote with indexOf. A quote is
 			// escaped (does not close the field) only when the run of escapeChar
@@ -94,11 +92,6 @@ const findRowEnd = (
 			// Unterminated quote → no complete row in this buffer.
 			if (closeQ === -1) return -1;
 			pos = closeQ + 1;
-			// When escapeChar === quoteChar a quote right after this one is the second
-			// half of an escaped "" pair (the lookback only sees the run BEFORE the
-			// quote), so re-enter the quoted-field scan. Otherwise fall through: text
-			// after a closing quote (up to the next delimiter/newline) is literal, as
-			// in the parser, so a quote there does not open another quoted field.
 			if (escapeCode === quoteCode) continue;
 		}
 		// After a quoted-field skip pos can jump past the cached newline, so refresh
@@ -123,10 +116,7 @@ const findRowEnd = (
 };
 
 export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
-	const {
-		maxBufferSize = 16_777_216, // 16MB
-		resultKey,
-	} = options;
+	const { maxBufferSize = 16_777_216, resultKey } = options;
 	const bufferLimit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 
 	const value = {
@@ -143,19 +133,12 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 
 	let buffer = "";
 	let detected = false;
-	// detect() cannot succeed before the first CR/LF arrives, so it is skipped
-	// until one has been seen in a chunk. Running it (and flattening the growing
-	// `buffer` rope) on every chunk of a long first line was O(n^2).
 	let newlineSeen = false;
 	const decoder = createChunkDecoder(decoderOptions);
 
 	const detect = (text, isFlushing) => {
 		text = stripBOM(text);
-		// No newline only happens on flush (transform waits for one): the whole
-		// text is the header line and newlineChar stays undefined (default).
 		const headerMatch = text.match(headerRegExp) ?? [text, text];
-		// A bare CR at the very end of the buffer may be the first half of a CRLF
-		// split across chunks, so wait for more data unless the stream is ending.
 		if (
 			!isFlushing &&
 			headerMatch[2] === carageReturn &&
@@ -171,14 +154,6 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 				(delimiter) => headerString.indexOf(delimiter) > -1,
 			) ?? defaultDelimiterChar;
 
-		// A char is only the quote char when it actually BRACKETS a field: it
-		// opens at a field-start (line start, or right after a delimiter) AND a
-		// matching quote closes the field right before the next
-		// delimiter/newline/end. A bare apostrophe/quote inside ordinary data
-		// (e.g. "'twas the night", which opens but never closes a field) must
-		// NOT be mistaken for the quote char.
-		// Like the delimiter, the quote char is detected from the header line
-		// only: scanning the whole buffer made the result depend on chunking.
 		const line = headerMatch[0];
 		const delimiterChar = value.delimiterChar;
 		const cr = carageReturn.charCodeAt(0);
@@ -190,10 +165,6 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 			line.startsWith(delimiterChar, i) ||
 			line.charCodeAt(i) === cr ||
 			line.charCodeAt(i) === lf;
-		// Only the FIRST field-start opener needs checking: any closer that pairs
-		// with a later opener also follows (and so pairs with) the first one. One
-		// forward pass per candidate keeps this O(n); retrying every opener against
-		// every later quote was O(n^2) (a CPU DoS on a long crafted first line).
 		value.quoteChar =
 			detectQuoteChars.find((candidate) => {
 				let open = line.indexOf(candidate);
@@ -201,7 +172,6 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 					open = line.indexOf(candidate, open + 1);
 				}
 				if (open === -1) return false;
-				// Look for a closing quote that ends the field.
 				let close = line.indexOf(candidate, open + 1);
 				while (close > -1 && !isFieldEnd(close + 1)) {
 					close = line.indexOf(candidate, close + 1);
@@ -213,7 +183,6 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const transform = (chunk, enqueue) => {
-		// Downstream always receives decoded text.
 		const text = decoder.decode(chunk);
 		if (detected) {
 			enqueue(text);
@@ -221,8 +190,6 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 		}
 		buffer += text;
 		newlineSeen ||= newlineCharRegExp.test(text);
-		// detect() returns false until the buffer holds a complete first line, so
-		// no size threshold is needed.
 		if (newlineSeen && detect(buffer, false)) {
 			detected = true;
 			enqueue(buffer);
@@ -256,7 +223,7 @@ export const csvDetectDelimitersStream = (options = {}, streamOptions = {}) => {
 
 export const csvDetectHeaderStream = (options = {}, streamOptions = {}) => {
 	let {
-		maxBufferSize = 16_777_216, // 16MB
+		maxBufferSize = 16_777_216,
 		parser,
 		delimiterChar,
 		newlineChar,
@@ -272,11 +239,6 @@ export const csvDetectHeaderStream = (options = {}, streamOptions = {}) => {
 
 	let buffer = "";
 	let headerDetected = false;
-	// Buffer length at which to retry locating the header row end. Re-scanning
-	// (and flattening the growing `buffer` rope) on every chunk of a long header
-	// row was O(n^2); retrying only once the buffer has doubled since the last
-	// failed attempt is amortised O(n). Capped just past maxBufferSize so the
-	// limit is still enforced as soon as it is exceeded.
 	let nextAttempt = 0;
 	const decoder = createChunkDecoder(decoderOptions);
 
@@ -332,7 +294,6 @@ export const csvDetectHeaderStream = (options = {}, streamOptions = {}) => {
 	};
 
 	const transform = (chunk, enqueue) => {
-		// Downstream always receives decoded text.
 		const text = decoder.decode(chunk);
 		if (headerDetected) {
 			enqueue(text);
@@ -341,8 +302,6 @@ export const csvDetectHeaderStream = (options = {}, streamOptions = {}) => {
 		buffer += text;
 		if (buffer.length < nextAttempt) return;
 		resolveOptions();
-		// Process once a complete header row is buffered (a quoted newline in the
-		// header does not count); otherwise keep buffering.
 		const headerEndOfRow = headerRowEnd();
 		if (headerEndOfRow !== -1) {
 			processBuffer(enqueue, headerEndOfRow);
@@ -372,10 +331,6 @@ export const csvDetectHeaderStream = (options = {}, streamOptions = {}) => {
 	stream.result = () => ({ key: resultKey ?? "csvDetectHeader", value });
 	return stream;
 };
-
-// --- Parsers ---
-// Both return { rows: string[][], tail: string, numCols: number, idx: number, errors?: {} }
-// Options can include pre-computed char codes (from csvStreamifyParser) or raw config strings.
 
 // Inverse of csvFormatStream's custom-escape encoding (escapeChar !== quoteChar):
 // the formatter escapes escapeChar -> escapeChar+escapeChar and quoteChar ->
@@ -409,8 +364,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 	const escapeCharCode = ctx.escapeCharCode;
 	const escapeIsQuote = ctx.escapeIsQuote;
 	const maxFieldSize = ctx.maxFieldSize;
-	// Every field (quoted or not) is size-checked; unquoted fields used to rely on
-	// the 2x buffer safety limit only.
 	const sized = (field) => {
 		if (field.length > maxFieldSize) {
 			throw new RangeError(
@@ -434,16 +387,7 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 	let lastWasDelimiter = false;
 
 	let nextNl = text.indexOf(newlineChar, 0);
-	// Text after a closing quote (e.g. `"a"x,b`) is malformed. It is kept in the
-	// same field (appended to the quoted value, up to the next delimiter/newline)
-	// so the row's field count stays correct. `quotedPrefix` holds the quoted
-	// value while that trailing text is scanned as an unquoted field; null
-	// otherwise.
 	let quotedPrefix = null;
-	// Set when the current row contains text after a closing quote. The error is
-	// only recorded when the row is emitted, because an incomplete row is handed
-	// back as the tail and re-parsed with the next chunk (recording it here would
-	// count it twice).
 	let rowHasUnexpectedQuote = false;
 
 	const trackError = (id, message) => {
@@ -461,10 +405,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 	};
 
 	while (pos < len) {
-		// The outer loop is only (re)entered at a field start, so a quote here
-		// always opens a quoted field (mid-field quotes are consumed by the
-		// unquoted scan below and never reach this check) — unless it directly
-		// follows a closing quote, in which case it is part of the malformed text.
 		if (quotedPrefix === null && text.charCodeAt(pos) === quoteCharCode) {
 			// === QUOTED FIELD ===
 			lastWasDelimiter = false;
@@ -472,10 +412,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 			const contentStart = pos;
 
 			if (escapeIsQuote) {
-				// Find the closing quote with indexOf, skipping escaped "" pairs. The
-				// field value is assembled as the scan goes: each pair contributes the
-				// text up to and including its first quote, so no second pass
-				// (replaceAll) over the field is needed.
 				let field = "";
 				let segStart = contentStart;
 				let closeQ = text.indexOf(quoteChar, pos);
@@ -504,8 +440,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 				field = sized(field + text.substring(segStart, closeQ));
 				pos = closeQ + 1;
 
-				// Post-quote dispatch: delimiter, newline, end-of-input, or
-				// unexpected text after the closing quote.
 				if (text.startsWith(delimiterChar, pos)) {
 					fields.push(field);
 					pos += delimiterCharLength;
@@ -526,12 +460,10 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 					continue;
 				}
 				if (pos === len) {
-					// End of input: record the field and let the outer loop terminate.
 					fields.push(field);
 					fieldStart = pos;
 					continue;
 				}
-				// Unexpected text after closing quote: scan it as an unquoted field.
 				quotedPrefix = field;
 				rowHasUnexpectedQuote = true;
 				fieldStart = pos;
@@ -577,7 +509,6 @@ const csvParseInline = (text, ctx, isFlushing, enqueue) => {
 				);
 				pos = closeQ + 1;
 
-				// Post-quote dispatch: see the escapeIsQuote branch above.
 				if (text.startsWith(delimiterChar, pos)) {
 					fields.push(field);
 					pos += delimiterCharLength;
@@ -771,20 +702,10 @@ const csvStreamifyParser = (options = {}) => {
 	const ctx = {};
 	let buffer = "";
 	const errors = {};
-	// Byte chunks are decoded with a streaming decoder (see decoderOptions).
 	const decoder = createChunkDecoder(decoderOptions);
-	// Buffer length at which to re-parse an incomplete row (the parse tail).
-	// Re-parsing the tail from its start on every chunk of a long row was
-	// O(n^2); retrying only once the buffer has doubled is amortised O(n). A
-	// row can only complete once more data arrives, so skipping is safe; with
-	// no pending tail (0) every chunk is parsed straight away.
 	let nextParse = 0;
-	// A UTF-8 BOM is only meaningful at the very start of the stream (when
-	// csvDetectHeaderStream is not used upstream to strip it).
 	let isFirstChunk = true;
 
-	// Keeps at most maxErrorRows row indexes per error id (so the result stays
-	// bounded on large/untrusted input) while `count` tracks the true total.
 	const mergeErrors = (incoming) => {
 		for (const id in incoming) {
 			const src = incoming[id].idx;
@@ -824,13 +745,10 @@ const csvStreamifyParser = (options = {}) => {
 		// every chunk is safe and keeps lazy options deferred until upstream runs.
 		resolveOptions();
 		let chunkText = decoder.decode(chunk);
-		// An empty chunk must not consume the BOM check: the BOM is the first
-		// character of the first NON-EMPTY text.
 		if (isFirstChunk && chunkText.length > 0) {
 			isFirstChunk = false;
 			chunkText = stripBOM(chunkText);
 		}
-		// An empty buffer concatenates to just the chunk.
 		buffer += chunkText;
 		if (buffer.length < nextParse) return;
 
@@ -838,10 +756,6 @@ const csvStreamifyParser = (options = {}) => {
 		ctx.numCols = result.numCols;
 		ctx.idx = result.idx;
 		buffer = result.tail;
-		// Only the unparsed tail (an incomplete row) can grow without bound, e.g. an
-		// unterminated quote. Checking the whole chunk rejected large inputs made of
-		// small rows. Between parses growth stays bounded: the gate above re-parses
-		// once the buffer doubles past the last tail.
 		if (buffer.length > ctx.maxFieldSize * 2) {
 			throw new RangeError(
 				`CSV buffer size (${buffer.length}) exceeds safety limit, likely unterminated quoted field`,
@@ -854,10 +768,6 @@ const csvStreamifyParser = (options = {}) => {
 	};
 
 	streamFn.flush = (enqueue) => {
-		// No resolveOptions() here: buffer and the decoder can only hold data after
-		// streamFn ran (which resolves the options), so with no chunks the parse
-		// below is skipped and resolving here was an equivalent mutant.
-		// Emit any incomplete trailing byte sequence (as U+FFFD); "" otherwise.
 		buffer += decoder.flush();
 		if (buffer.length > 0) {
 			const remaining = buffer;
@@ -878,7 +788,7 @@ const csvStreamifyParser = (options = {}) => {
 
 export const csvParseStream = (options = {}, streamOptions = {}) => {
 	const {
-		maxFieldSize = 16_777_216, // 16MB
+		maxFieldSize = 16_777_216,
 		maxErrorRows = 1_000,
 		resultKey,
 		...parserOptions
@@ -904,8 +814,6 @@ export const csvParseStream = (options = {}, streamOptions = {}) => {
 	return stream;
 };
 
-// Records a failing row index, keeping at most maxErrorRows indexes (so the
-// result stays bounded on large/untrusted input); `count` is the true total.
 const recordErrorRow = (error, idx, maxErrorRows) => {
 	error.count++;
 	if (error.idx.length < maxErrorRows) error.idx.push(idx);
@@ -992,8 +900,6 @@ export const csvRemoveEmptyRowsStream = (options = {}, streamOptions = {}) => {
 };
 
 const numberRe = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
-// Only consulted for values starting with a formula trigger, so the sign is
-// required (an optional sign would be an untestable no-op).
 const signedNumberRe = /^[+-]\d+(\.\d+)?([eE][+-]?\d+)?$/;
 const iso8601Re =
 	/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
@@ -1064,8 +970,6 @@ export const csvCoerceValuesStream = (options = {}, streamOptions = {}) => {
 		? (chunk, enqueue) => {
 				const coerced = { ...chunk };
 				for (const key in coerced) {
-					// hasOwn: a column named "constructor"/"toString" must not pick up an
-					// inherited Object.prototype member as its type.
 					const type = Object.hasOwn(columns, key) ? columns[key] : undefined;
 					coerced[key] = type
 						? coerceToType(coerced[key], type)
@@ -1126,8 +1030,6 @@ export const csvFormatStream = (options = {}, streamOptions = {}) => {
 			first === 0xfeff
 		);
 	};
-	// One regexp pass finds any of the containment triggers (five separate
-	// includes() scans per field was ~2x slower).
 	const containsTriggerRe = new RegExp(
 		`${RegExp.escape(delimiterChar)}|${RegExp.escape(quoteChar)}|\r|\n|${RegExp.escape(newlineChar)}`,
 	);
@@ -1140,7 +1042,6 @@ export const csvFormatStream = (options = {}, streamOptions = {}) => {
 	// (and TAB/CR, which some strip first) even when the field is quoted, so
 	// prefix a ' to make it text. Plain signed numbers are left untouched.
 	const isFormula = (value) => {
-		// = (61) + (43) - (45) @ (64) TAB (9) CR (13)
 		const first = value.charCodeAt(0);
 		return (
 			(first === 61 ||
@@ -1172,17 +1073,12 @@ export const csvFormatStream = (options = {}, streamOptions = {}) => {
 	// Build one row string: coerce each field, quote/escape where required,
 	// then join with the delimiter (one flat string per row).
 	const formatField = (raw) => {
-		// null/undefined → empty field
 		if (raw === null || raw === undefined) return "";
-		// Strings pass through String() unchanged; Dates use ISO 8601. An empty
-		// string is never a quoting trigger, so scanNeedsQuote handles it
-		// directly without a special case.
 		let val = raw instanceof Date ? raw.toISOString() : String(raw);
 		if (escapeFormulae && isFormula(val)) val = `'${val}`;
 		return scanNeedsQuote(val) ? wrapQuote(val) : val;
 	};
 	const formatRow = (chunk) => {
-		// An empty row has no chunk[0]; formatField(undefined) is "".
 		let row = formatField(chunk[0]);
 		for (let i = 1; i < chunk.length; i++) {
 			row += delimiterChar + formatField(chunk[i]);
@@ -1213,9 +1109,6 @@ export const csvFormatStream = (options = {}, streamOptions = {}) => {
 	return createTransformStream(transform, flush, streamOptions);
 };
 
-// objectFromEntriesStream defines each column with defineProperty, so reserved
-// keys such as "__proto__" stay own data properties instead of replacing the
-// row's prototype.
 export const csvArrayToObjectStream = ({ headers }, streamOptions) =>
 	objectFromEntriesStream({ keys: headers }, streamOptions);
 export const csvObjectToArrayStream = ({ headers }, streamOptions) =>

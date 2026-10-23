@@ -13,8 +13,6 @@ import {
 	awsUnsentOnDestroy,
 } from "./client.js";
 
-// Created on first use, so importing the module (or always passing a per-call
-// client) never constructs an unused SDK client.
 let defaultClient;
 const getDefaultClient = () =>
 	(defaultClient ??= new CloudWatchLogsClient(awsClientDefaults));
@@ -48,9 +46,6 @@ export const awsCloudWatchLogsGetLogEventsStream = async (
 			if (tokenUnchanged) {
 				if (pollingActive) {
 					if (pollingDelay > 0) {
-						// Abortable idle wait: rejects immediately and clears the
-						// timer when the stream is destroyed or streamOptions.signal aborts
-						// mid-delay.
 						await timeout(pollingDelay, { signal });
 					}
 				} else {
@@ -149,8 +144,6 @@ export const awsCloudWatchLogsPutLogEventsStream = (
 	};
 	const write = async (chunk) => {
 		const { timestamp, message } = chunk;
-		// A NaN timestamp would turn the span check below into always-false
-		// comparisons, so validate before batching.
 		if (!Number.isFinite(timestamp)) {
 			throw new TypeError(
 				"awsCloudWatchLogsPutLogEvents event timestamp must be a finite number",
@@ -163,16 +156,12 @@ export const awsCloudWatchLogsPutLogEventsStream = (
 		}
 		const chunkBytes =
 			Buffer.byteLength(message) + PUT_LOG_EVENTS_EVENT_OVERHEAD_BYTES;
-		// Surface an event that can never fit a batch up front (mirroring Kinesis)
-		// instead of letting the service reject the whole request.
 		if (chunkBytes > PUT_LOG_EVENTS_MAX_BYTES) {
 			throw new RangeError(
 				"awsCloudWatchLogsPutLogEvents event exceeds 1MiB limit",
 				{ cause: { bytes: chunkBytes, limit: PUT_LOG_EVENTS_MAX_BYTES } },
 			);
 		}
-		// An empty batch never flushes here: the event alone fits (checked above)
-		// and its span is 0 against the +/-Infinity sentinels.
 		if (
 			batch.length === PUT_LOG_EVENTS_MAX_EVENTS ||
 			batchBytes + chunkBytes > PUT_LOG_EVENTS_MAX_BYTES ||

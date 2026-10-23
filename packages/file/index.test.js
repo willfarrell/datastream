@@ -25,7 +25,6 @@ import { fileReadStream, fileWriteStream } from "@datastream/file";
 import { variant } from "../variant.js";
 
 describe(`@datastream/file (${variant})`, () => {
-	// The browser build is the File System Access API; everything below is node:fs.
 	const nodeTest = variant === "node" ? test : test.skip;
 
 	const testDir = mkdtempSync(join(tmpdir(), "datastream-file-test-"));
@@ -43,38 +42,31 @@ describe(`@datastream/file (${variant})`, () => {
 	const csvTypes = [{ accept: { "text/csv": [".csv"] } }];
 	const jsonTypes = [{ accept: { "application/json": [".json"] } }];
 
-	// *** fileReadStream *** //
 	nodeTest(`fileReadStream should read a file`, async () => {
 		const stream = await fileReadStream({ path: testFile });
 		const output = await streamToString(stream);
 		strictEqual(output, testContent);
 	});
 
-	// *** fileReadStream with basePath - success case *** //
 	nodeTest(`fileReadStream with basePath should read a file`, async () => {
 		const stream = await fileReadStream({ path: testFile, basePath: testDir });
 		const output = await streamToString(stream);
 		strictEqual(output, testContent);
 	});
 
-	// *** fileReadStream without basePath should follow symlinks *** //
 	nodeTest(
 		`fileReadStream without basePath can read through symlink`,
 		async () => {
 			const linkPath = join(testDir, "sym-no-base.csv");
 			try {
 				symlinkSync(testFile, linkPath);
-			} catch (_) {
-				// already exists
-			}
-			// Without basePath, no O_NOFOLLOW - symlinks are followed (read succeeds)
+			} catch (_) {}
 			const stream = await fileReadStream({ path: linkPath });
 			const output = await streamToString(stream);
 			strictEqual(output, testContent);
 		},
 	);
 
-	// *** fileWriteStream without basePath - follows symlinks *** //
 	nodeTest(
 		`fileWriteStream without basePath can write through symlink`,
 		async () => {
@@ -83,10 +75,7 @@ describe(`@datastream/file (${variant})`, () => {
 			const writeLinkPath = join(testDir, "write-sym-no-base.csv");
 			try {
 				symlinkSync(outFile, writeLinkPath);
-			} catch (_) {
-				// already exists
-			}
-			// Without basePath: no O_NOFOLLOW - symlinks are followed (write succeeds)
+			} catch (_) {}
 			const stream = await fileWriteStream({ path: writeLinkPath });
 			await new Promise((resolve, reject) => {
 				stream.on("finish", resolve);
@@ -98,7 +87,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** fileWriteStream with basePath - success case *** //
 	nodeTest(
 		`fileWriteStream with basePath should write a new file`,
 		async () => {
@@ -117,7 +105,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** fileReadStream with basePath - streamOptions passed through *** //
 	nodeTest(`fileReadStream with basePath passes streamOptions`, async () => {
 		const stream = await fileReadStream(
 			{ path: testFile, basePath: testDir },
@@ -127,7 +114,6 @@ describe(`@datastream/file (${variant})`, () => {
 		strictEqual(output, testContent);
 	});
 
-	// *** fileWriteStream with basePath - streamOptions passed through *** //
 	nodeTest(`fileWriteStream with basePath passes streamOptions`, async () => {
 		const outFile = join(testDir, "opts.csv");
 		const stream = await fileWriteStream(
@@ -143,7 +129,6 @@ describe(`@datastream/file (${variant})`, () => {
 		strictEqual(readFileSync(outFile, "utf8"), "opts");
 	});
 
-	// *** Path traversal *** //
 	nodeTest(`fileReadStream should reject path traversal`, async () => {
 		await rejects(
 			() => fileReadStream({ path: "/etc/passwd", basePath: testDir }),
@@ -174,7 +159,6 @@ describe(`@datastream/file (${variant})`, () => {
 	});
 
 	nodeTest(`fileReadStream should reject sibling-prefix bypass`, async () => {
-		// basePath '/tmp/foo' must not contain '/tmp/foobar/secret'
 		await rejects(
 			() =>
 				fileReadStream({ path: `${testDir}-sibling/x.csv`, basePath: testDir }),
@@ -182,7 +166,6 @@ describe(`@datastream/file (${variant})`, () => {
 		);
 	});
 
-	// *** Path traversal - basePath itself (rel === '') *** //
 	nodeTest(`fileReadStream rejects when path equals basePath`, async () => {
 		await rejects(() => fileReadStream({ path: testDir, basePath: testDir }), {
 			message: "Path traversal detected",
@@ -195,8 +178,6 @@ describe(`@datastream/file (${variant})`, () => {
 		});
 	});
 
-	// A symlinked basePath (e.g. macOS /tmp) is allowed; path === basePath must
-	// still fail as traversal, not fall through to the symlink check.
 	nodeTest(
 		`fileReadStream and fileWriteStream reject path equal to a symlinked basePath`,
 		async () => {
@@ -220,14 +201,11 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** Symlink rejection *** //
 	nodeTest(`fileReadStream should reject symlinks`, async () => {
 		const linkPath = join(testDir, "link.csv");
 		try {
 			symlinkSync(testFile, linkPath);
-		} catch (_) {
-			// already exists
-		}
+		} catch (_) {}
 		await rejects(() => fileReadStream({ path: linkPath, basePath: testDir }), {
 			message: "Symbolic links are not allowed",
 		});
@@ -237,9 +215,7 @@ describe(`@datastream/file (${variant})`, () => {
 		const linkPath = join(testDir, "write-link.csv");
 		try {
 			symlinkSync(testFile, linkPath);
-		} catch (_) {
-			// already exists
-		}
+		} catch (_) {}
 		await rejects(
 			() => fileWriteStream({ path: linkPath, basePath: testDir }),
 			{
@@ -248,7 +224,6 @@ describe(`@datastream/file (${variant})`, () => {
 		);
 	});
 
-	// *** Extension enforcement *** //
 	nodeTest(`fileReadStream should accept matching extension`, async () => {
 		const stream = await fileReadStream({ path: testFile, types: csvTypes });
 		await streamToString(stream);
@@ -268,8 +243,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// Extensions are case-insensitive on the file systems users pick from, so
-	// "REPORT.CSV" is a .csv file (and a ".JSON" accept entry matches ".json").
 	nodeTest(`extension check is case-insensitive`, async () => {
 		const upperFile = join(testDir, "UPPER.CSV");
 		writeFileSync(upperFile, testContent);
@@ -301,7 +274,6 @@ describe(`@datastream/file (${variant})`, () => {
 		);
 	});
 
-	// *** ENOENT is allowed (new file for write) *** //
 	nodeTest(
 		`fileWriteStream with basePath allows new file (ENOENT ok)`,
 		async () => {
@@ -320,11 +292,9 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** Path not found for non-ENOENT stat errors *** //
 	nodeTest(
 		`fileReadStream throws Path not found for non-ENOENT stat error`,
 		async () => {
-			// testFile is a regular file, not a directory - accessing subpath causes ENOTDIR
 			const notDir = join(testFile, "inside.csv");
 			await rejects(() => fileReadStream({ path: notDir, basePath: testDir }), {
 				message: "Path not found",
@@ -332,7 +302,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** Path not found error has a cause *** //
 	nodeTest(`fileReadStream Path not found error carries cause`, async () => {
 		const notDir = join(testFile, "inside.csv");
 		await rejects(
@@ -345,20 +314,17 @@ describe(`@datastream/file (${variant})`, () => {
 		);
 	});
 
-	// *** No basePath = no path checks *** //
 	nodeTest(`fileReadStream allows any path without basePath`, async () => {
 		const stream = await fileReadStream({ path: testFile });
 		await streamToString(stream);
 	});
 
-	// *** fileWriteStream with basePath: failed constructor leaves existing file intact *** //
 	nodeTest(
 		`fileWriteStream with basePath preserves existing file when stream constructor fails`,
 		async () => {
 			const guardFile = join(testDir, "guard.csv");
 			const originalContent = "important,data\n1,2,3\n";
 			writeFileSync(guardFile, originalContent);
-			// {highWaterMark:-1} is an invalid option that makes createWriteStream throw synchronously
 			await rejects(
 				() =>
 					fileWriteStream(
@@ -367,17 +333,10 @@ describe(`@datastream/file (${variant})`, () => {
 					),
 				(e) => typeof e === "object" && e !== null,
 			);
-			// The file must still contain its original content — not be wiped to zero bytes
 			strictEqual(readFileSync(guardFile, "utf8"), originalContent);
 		},
 	);
 
-	// *** fd-based streams when basePath is provided *** //
-	// When basePath is set, fileReadStream must use openSync+O_NOFOLLOW and pass the
-	// resulting fd to createReadStream (not the file path).  The returned stream's .fd
-	// property is already a number in that case, whereas a path-based stream has .fd===null
-	// until the OS opens it.  Mutants that skip the if(basePath!=null) block would produce
-	// a path-based stream whose .fd is null at construction time.
 	nodeTest(
 		`fileReadStream with basePath returns an fd-based stream`,
 		async () => {
@@ -404,7 +363,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** Symlinked parent directory must not escape basePath *** //
 	nodeTest(
 		`fileReadStream and fileWriteStream reject a path through a symlinked directory`,
 		async () => {
@@ -437,7 +395,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** Names that merely start with ".." stay inside basePath *** //
 	nodeTest(
 		`fileReadStream and fileWriteStream accept names starting with ".."`,
 		async () => {
@@ -459,7 +416,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** A symlinked directory resolving to exactly the parent of basePath *** //
 	nodeTest(
 		`fileReadStream rejects a symlinked directory pointing at the parent of basePath`,
 		async () => {
@@ -477,7 +433,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** Missing parent directory is wrapped like other stat errors *** //
 	nodeTest(
 		`fileWriteStream with a missing parent directory throws Path not found`,
 		async () => {
@@ -496,7 +451,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** fileWriteStream with basePath truncates an existing file *** //
 	nodeTest(
 		`fileWriteStream with basePath replaces a longer existing file`,
 		async () => {
@@ -510,7 +464,6 @@ describe(`@datastream/file (${variant})`, () => {
 		},
 	);
 
-	// *** fs streams are byte streams, not objectMode *** //
 	nodeTest(
 		`fileWriteStream accepts string chunks from a pipeline`,
 		async () => {
@@ -571,8 +524,6 @@ describe(`@datastream/file (${variant})`, () => {
 					{ path: make === fileReadStream ? testFile : outFile, basePath },
 					{ signal: controller.signal },
 				);
-				// Deadline so a dropped signal fails fast instead of hanging; the
-				// sentinel reason proves the error came from our signal, not the timer.
 				const error = once(stream, "error", {
 					signal: AbortSignal.timeout(1000),
 				});
@@ -585,7 +536,6 @@ describe(`@datastream/file (${variant})`, () => {
 		}
 	});
 
-	// *** fs-specific streamOptions pass through (flags, encoding, start, mode) *** //
 	nodeTest(`fileWriteStream with flags "a" appends`, async () => {
 		for (const basePath of [undefined, testDir]) {
 			const outFile = join(testDir, `append-${basePath ? "base" : "path"}.csv`);
@@ -647,8 +597,6 @@ describe(`@datastream/file (${variant})`, () => {
 	});
 
 	nodeTest(`fileWriteStream with basePath honours start`, async () => {
-		// Pins that O_APPEND is set only for "a" flags: an appending fd ignores
-		// the write position, so the leading gap would be missing.
 		const outFile = join(testDir, "start.csv");
 		writeFileSync(outFile, "abcdef");
 		await pipeline([
@@ -692,7 +640,6 @@ describe(`@datastream/file (${variant})`, () => {
 	);
 
 	nodeTest(`fileWriteStream with flags "r+" updates in place`, async () => {
-		// "r+" must neither truncate nor create, with or without basePath.
 		for (const basePath of [undefined, testDir]) {
 			const outFile = join(testDir, `update-${basePath ? "base" : "path"}.csv`);
 			writeFileSync(outFile, "hello world");
@@ -732,7 +679,6 @@ describe(`@datastream/file (${variant})`, () => {
 		}
 	});
 
-	// *** Major: both builds are async and export named functions only *** //
 	nodeTest(`fileReadStream and fileWriteStream return a Promise`, async () => {
 		const read = fileReadStream({ path: testFile });
 		strictEqual(read instanceof Promise, true);
@@ -763,7 +709,6 @@ describe(`@datastream/file (${variant})`, () => {
 		]);
 	});
 
-	// *** browser build: File System Access API, stubbed on globalThis.window *** //
 	if (variant === "browser") {
 		const written = [];
 		let pickedName = "in.csv";

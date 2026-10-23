@@ -1,10 +1,6 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-// Platform-neutral declarations shared by index.d.ts (node) and
-// index.browser.d.ts (web). No node:* imports or Node globals (Buffer) here, so
-// browser projects type-check without @types/node.
 
-// Core types used across all packages
 export interface StreamOptions {
 	highWaterMark?: number;
 	chunkSize?: number;
@@ -21,7 +17,6 @@ export interface ResultStream<T = unknown> {
 	result: () => StreamResult<T> | Promise<StreamResult<T>>;
 }
 
-// Stream converters
 export interface StreamCollectorOptions {
 	/** Unlimited when undefined or null; exceeding it rejects with a RangeError. */
 	maxBufferSize?: number | null;
@@ -37,7 +32,6 @@ export interface WritableStreamOptions extends StreamOptions {
 	abort?: (reason: unknown) => void | Promise<void>;
 }
 
-// Accepted by createReadableStream in both builds.
 export type ReadableInput<T> =
 	| string
 	| ArrayBufferLike
@@ -46,16 +40,13 @@ export type ReadableInput<T> =
 	| Iterable<T>
 	| AsyncIterable<T>;
 
-// Options helper
 export function makeOptions(options?: StreamOptions): Record<string, unknown>;
 
-// Timeout
 export function timeout(
 	ms: number,
 	options?: { signal?: AbortSignal },
 ): Promise<void>;
 
-// Shared helpers
 export function resolveLazy<T>(value: T | (() => T)): T;
 // Streaming UTF-8 decode: byte chunks keep multi-byte chars split across
 // chunks intact, string chunks pass through; flush() emits trailing bytes.

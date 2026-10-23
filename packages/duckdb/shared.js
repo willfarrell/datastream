@@ -3,8 +3,7 @@
 import { createWritableStream } from "@datastream/core";
 
 // DuckDB has no parameter binding for identifiers, so table/column names are
-// interpolated into SQL. Double the embedded quotes and require a non-empty
-// string so a crafted name can't break out of the quoted identifier.
+// interpolated into SQL.
 export const quoteIdent = (name) => {
 	if (typeof name !== "string" || name.length === 0) {
 		throw new TypeError("duckdb: identifier must be a non-empty string");
@@ -12,10 +11,6 @@ export const quoteIdent = (name) => {
 	return `"${name.replaceAll('"', '""')}"`;
 };
 
-// A failed existence probe should only be read as "table does not exist" when
-// the error is a missing-table/catalog error. Any other failure (lock,
-// permission, column read error, ...) must propagate so it is not masked by a
-// confusing downstream "table already exists" from CREATE TABLE.
 const isMissingTableError = (error) => {
 	const message = String(error?.message ?? error).toLowerCase();
 	return (
@@ -49,7 +44,6 @@ const arrowTypeToDuckDBSQL = (type) => {
 		case ARROW_INT:
 			return `${type.isSigned ? "" : "U"}${INT_SQL[type.bitWidth]}`;
 		case ARROW_FLOAT:
-			// Precision.DOUBLE is 2; HALF (0) and SINGLE (1) both fit in REAL.
 			return type.precision === 2 ? "DOUBLE" : "REAL";
 		case ARROW_DATE:
 			return "DATE";
@@ -77,8 +71,6 @@ const createTableFromArrowSchema = async (run, table, schema) => {
 	await run(`CREATE TABLE ${quoteIdent(table)} (${cols})`);
 };
 
-// `run(sql)` executes a statement; `readColumnNames(sql)` runs a query and
-// returns its column names. They wrap the node-api / duckdb-wasm connection.
 export const ensureTableAndColumns = async (
 	{ run, readColumnNames },
 	table,
@@ -97,12 +89,8 @@ export const ensureTableAndColumns = async (
 // Runs a write stream inside one transaction on the connection, so a failed or
 // aborted pipeline commits nothing (node's appender auto-flushes every 204,800
 // rows, which its clear() can't undo; the browser build inserts as it goes).
-// BEGIN runs on the first write, before the table is created, and COMMIT after
-// final(). Any failure releases the stream's handles, then rolls back. DuckDB
-// has no nested transactions, so a connection that already has one open is
-// refused (its failed BEGIN also aborts the caller's transaction).
-// `run(sql)` executes a statement, `init()` runs once inside the transaction,
-// and `release()` must be safe to call more than once.
+// DuckDB has no nested transactions, so a connection that already has one open
+// is refused (its failed BEGIN also aborts the caller's transaction).
 export const createTransactionStream = (
 	{ run, init, write, final, release = () => {} },
 	streamOptions,
@@ -121,9 +109,6 @@ export const createTransactionStream = (
 		open = true;
 		await init();
 	};
-	// Waits out a begin() still in flight, so an abort during it can't leave its
-	// transaction open. A failed ROLLBACK is dropped: the stream is already
-	// failing with the error that matters.
 	const rollback = async () => {
 		await ready?.catch(() => {});
 		await release();
@@ -155,9 +140,6 @@ export const createTransactionStream = (
 		}),
 		{
 			...streamOptions,
-			// An abort (upstream error, signal, destroy) skips write()/final(), so
-			// roll back here too, before the caller's hook so a failure can't hide
-			// behind it (runAbort swallows throws).
 			abort: async (reason) => {
 				await rollback();
 				await abort(reason);

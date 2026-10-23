@@ -5,8 +5,6 @@ import { join } from "node:path";
 import { pipeline, streamToString } from "@datastream/core";
 import { fileReadStream, fileWriteStream } from "@datastream/file";
 
-// -- Setup --
-
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
 
@@ -19,8 +17,6 @@ const bigString = Array.from(
 writeFileSync(tmpFile, bigString);
 
 const tmpOutFile = join(tmpDir, "test-out.csv");
-
-// -- Tests --
 
 suite("fileReadStream", () => {
 	bench("10K row CSV file", options, async (b) => {
@@ -57,7 +53,6 @@ suite("file roundtrip", () => {
 	});
 });
 
-// Cleanup
 after(() => {
 	try {
 		rmSync(tmpDir, { recursive: true });

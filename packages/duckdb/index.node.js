@@ -27,12 +27,7 @@ export const duckdbConnect = async (path = ":memory:", options) => {
 	return await instance.connect();
 };
 
-// Rows come out as plain JS via node-api's JS converter (BIGINT -> bigint,
-// DATE/TIMESTAMP -> Date, DECIMAL -> number). The result is pulled one
-// DuckDB chunk (up to 2048 rows) at a time.
 export const duckdbQueryStream = ({ db, sql, params }, streamOptions) => {
-	// True only while this stream's own stream()/chunk fetch is in flight: not
-	// before the first read, not while paused between rows, not once finished.
 	let busy = false;
 	const rows = async function* () {
 		busy = true;
@@ -64,9 +59,6 @@ export const duckdbQueryStream = ({ db, sql, params }, streamOptions) => {
 
 const MS_PER_DAY = 86400000;
 
-// Target column types that take a wrapped DuckDB DATE/TIMESTAMP value (the
-// appender casts between them). Any other target keeps arrow's raw epoch-ms
-// number, e.g. a Timestamp into BIGINT stores the milliseconds.
 const TEMPORAL_TARGETS = new Set([
 	DuckDBTypeId.DATE,
 	DuckDBTypeId.TIMESTAMP,
@@ -80,10 +72,6 @@ const TEMPORAL_TARGETS = new Set([
 // numbers, which the appender would bind as BIGINT (no BIGINT -> DATE/TIMESTAMP
 // cast). Wrap them in DuckDB values; the appender casts TIMESTAMP (µs) to the
 // column's own unit. Sub-microsecond nanos are already lost by arrow's get().
-// Keyed by Arrow Date/Timestamp id (a lookup, not a branch: a TIMESTAMP value
-// cast to a DATE column stores the same day, so a flipped branch would be an
-// unobservable mutant). Only used for a Date/Timestamp column whose target is
-// temporal.
 const toDuckDBValue = {
 	[ARROW_DATE]: (value) => new DuckDBDateValue(Math.floor(value / MS_PER_DAY)),
 	[ARROW_TIMESTAMP]: (value) =>
@@ -101,13 +89,6 @@ const ensureTable = (db, table, schema) =>
 		schema,
 	);
 
-// typeId is an Arrow Date/Timestamp id to convert, else undefined (plain rows,
-// non-temporal columns, or a non-temporal target column).
-// Primitives take the typed append methods, mirroring node-api's own
-// typeForValue(): appendValue() detects the type per cell and builds a DuckDB
-// value object first, ~3x the cost. The appender casts a typed append to the
-// column type exactly as it casts appendValue (same results, same failures),
-// and the binding rejects a non-int32 appendInteger itself.
 const appendCell = (appender, value, typeId) => {
 	if (value === null || value === undefined) {
 		appender.appendNull();
@@ -128,10 +109,6 @@ const appendCell = (appender, value, typeId) => {
 	}
 };
 
-// Release a native appender handle exactly once (final() and every failure
-// path call it). closeSync() flushes buffered rows into the stream's
-// transaction, which a failure then rolls back. A close error on a failure path
-// is dropped: the handle is being torn down and the original error matters.
 const closeAppenderOnce = (state) => {
 	if (!state.appender || state.closed) return;
 	state.closed = true;
@@ -140,10 +117,7 @@ const closeAppenderOnce = (state) => {
 	} catch (_error) {}
 };
 
-// `append(state, chunk)` writes one chunk into state.appender, laid out by
-// state.columnNames (the table's physical columns).
 const appenderStream = ({ db, table, schema }, append, streamOptions) => {
-	// appender/closed are only read for truthiness, so an empty object suffices.
 	const state = {};
 	return createTransactionStream(
 		{
@@ -153,7 +127,6 @@ const appenderStream = ({ db, table, schema }, append, streamOptions) => {
 				state.appender = await db.createAppender(table);
 			},
 			write: (chunk) => append(state, chunk),
-			// flushSync() surfaces a flush error, which closeSync() would drop.
 			final: () => {
 				state.appender.flushSync();
 				closeAppenderOnce(state);
@@ -195,9 +168,7 @@ export const duckdbArrowInsertStream = async (options, streamOptions = {}) =>
 			// Look each table column up by NAME: the appender is positional over the
 			// table's physical columns, but a batch's field order is arbitrary.
 			// DuckDB identifiers are case-insensitive (table "ID" vs Arrow "id"), so
-			// match case-insensitively. Table columns are unique ignoring case and
-			// the counts match, so a batch with fields differing only by case always
-			// leaves some table column unmatched and is rejected below.
+			// match case-insensitively.
 			const fieldNames = new Map(
 				(batch.schema?.fields ?? []).map((f) => [f.name.toLowerCase(), f.name]),
 			);
@@ -212,7 +183,6 @@ export const duckdbArrowInsertStream = async (options, streamOptions = {}) =>
 					);
 				}
 				cols.push(col);
-				// Convert Date/Timestamp only when the TARGET column is temporal.
 				const typeId = col.type?.typeId;
 				typeIds.push(
 					(typeId === ARROW_DATE || typeId === ARROW_TIMESTAMP) &&

@@ -12,8 +12,6 @@ import {
 } from "@datastream/core";
 import { Field, Int32, Schema, Utf8 } from "apache-arrow";
 
-// -- Data generators --
-
 const ITEMS = 10_000;
 const OPS = 10;
 const options = { warmup: 2, samples: 30 };
@@ -27,8 +25,6 @@ const objects = Array.from({ length: ITEMS }, (_, i) => ({
 	id: i,
 	name: `user_${i}`,
 }));
-
-// -- Tests --
 
 suite("arrowDetectSchemaStream", () => {
 	bench(`${ITEMS} objects`, options, async (b) => {

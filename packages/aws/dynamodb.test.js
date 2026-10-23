@@ -126,7 +126,7 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		const options = {
 			TableName: "TableName",
 			Keys: [{ key: "a" }, { key: "b" }, { key: "c" }],
-			retryMaxCount: 0, // force
+			retryMaxCount: 0,
 		};
 		const stream = await awsDynamoDBGetItemStream(options);
 		await rejects(() => streamToArray(stream), {
@@ -291,7 +291,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 					],
 				},
 			})
-			// y failed, retry
 			.on(BatchWriteItemCommand, {
 				RequestItems: {
 					TableName: [
@@ -307,7 +306,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 				},
 			})
 			.resolves({ UnprocessedItems: {} })
-			// final
 			.on(BatchWriteItemCommand, {
 				RequestItems: {
 					TableName: [
@@ -403,7 +401,7 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		const input = [{ key: "a", value: 0 }];
 		const options = {
 			TableName: "TableName",
-			retryMaxCount: 0, // force
+			retryMaxCount: 0,
 		};
 		const stream = [
 			createReadableStream(input),
@@ -454,7 +452,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 				},
 			})
 			.resolves({ UnprocessedItems: {} })
-			// final
 			.on(BatchWriteItemCommand, {
 				RequestItems: {
 					TableName: [
@@ -565,7 +562,7 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		const input = [{ key: "a" }];
 		const options = {
 			TableName: "TableName",
-			retryMaxCount: 0, // force
+			retryMaxCount: 0,
 		};
 		const stream = [
 			createReadableStream(input),
@@ -596,7 +593,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
 	});
 
-	// *** options mutation *** //
 	test(`awsDynamoDBQueryStream should not mutate caller options`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
@@ -630,14 +626,12 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		});
 	});
 
-	// *** empty-page / fully-throttled guards *** //
 	test(`awsDynamoDBQueryStream should handle a page with no Items`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
 		client
 			.on(QueryCommand, { TableName: "TableName" })
 			.resolvesOnce({
-				// filtered page: no Items but still paginating
 				Count: 0,
 				LastEvaluatedKey: { key: "a" },
 			})
@@ -680,7 +674,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 				RequestItems: { TableName: { Keys: [{ key: "a" }] } },
 			})
 			.resolvesOnce({
-				// entire batch throttled: Responses has no entry for the table
 				Responses: {},
 				UnprocessedKeys: { TableName: { Keys: [{ key: "a" }] } },
 			})
@@ -696,12 +689,10 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(output, [{ key: "a", value: 1 }]);
 	});
 
-	// *** backoff is abortable: aborting during the backoff wait rejects *** //
 	test(`awsDynamoDBGetItemStream aborts during retry backoff`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
-		// Always throttled so the stream enters the backoff wait.
 		let sends = 0;
 		client.on(BatchGetItemCommand).callsFake(() => {
 			sends++;
@@ -717,28 +708,20 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 			signal: controller.signal,
 		});
 
-		// Capture the rejection up front: it lands before the assertions below.
 		const consuming = streamToArray(stream).then(
 			() => undefined,
 			(error) => error,
 		);
-		// Let the first throttled batch settle and enter the backoff timer, then
-		// abort. The backoff timeout was given `{ signal }`, so it rejects at once.
-		// A `{}` mutant (dropping the signal) leaves the timer pending: advancing
-		// the mocked clock wakes it and retries. Sends are checked before awaiting
-		// the rejection so the mutant fails fast instead of hanging.
 		await new Promise((resolve) => setImmediate(resolve));
 		controller.abort();
 		t.mock.timers.tick(60_000);
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(sends, 1);
 
-		// streamOptions.signal destroys the stream with an AbortError.
 		const error = await consuming;
 		deepStrictEqual(error.name, "AbortError");
 	});
 
-	// *** backoff floor: the first retry waits at least 50ms (not 3^0 == 1ms) *** //
 	test(`awsDynamoDBGetItemStream first retry backoff is floored at 50ms`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 
@@ -759,11 +742,7 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		const stream = await awsDynamoDBGetItemStream(options);
 		const consuming = streamToArray(stream);
 
-		// Let the first (throttled) batch settle and enter the backoff timer.
 		await new Promise((resolve) => setImmediate(resolve));
-		// 3^0 == 1ms would already fire; the 50ms floor means the retry must still be
-		// pending at 1ms (kills the Math.max -> Math.min floor mutant and the
-		// arrow-body removal).
 		t.mock.timers.tick(1);
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(client.commandCalls(BatchGetItemCommand).length, 1);
@@ -774,8 +753,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchGetItemCommand).length, 2);
 	});
 
-	// A per-call `client` option must route that call's sends to it (not the
-	// module client) and must not be forwarded into the command input.
 	test(`awsDynamoDB streams use the per-call client option and do not forward it`, async (_t) => {
 		awsDynamoDBSetClient({
 			send: async () => {
@@ -836,7 +813,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		]);
 	});
 
-	// *** setClient swap *** //
 	test(`awsDynamoDBSetClient routes subsequent sends to the new client`, async (_t) => {
 		const first = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(first);
@@ -874,7 +850,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(calls, 1);
 	});
 
-	// *** abortSignal forwarding on each read command (kills the `{}` options mutant) *** //
 	test(`awsDynamoDBQueryStream forwards abortSignal to client.send`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
@@ -888,8 +863,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(QueryCommand);
-		// Forwarded as a signal that follows streamOptions.signal (and also
-		// aborts when the stream is destroyed early).
 		const sent = calls[0].args[1]?.abortSignal;
 		deepStrictEqual(sent.aborted, false);
 		controller.abort();
@@ -909,8 +882,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(ScanCommand);
-		// Forwarded as a signal that follows streamOptions.signal (and also
-		// aborts when the stream is destroyed early).
 		const sent = calls[0].args[1]?.abortSignal;
 		deepStrictEqual(sent.aborted, false);
 		controller.abort();
@@ -930,8 +901,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(ExecuteStatementCommand);
-		// Forwarded as a signal that follows streamOptions.signal (and also
-		// aborts when the stream is destroyed early).
 		const sent = calls[0].args[1]?.abortSignal;
 		deepStrictEqual(sent.aborted, false);
 		controller.abort();
@@ -953,20 +922,15 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(BatchGetItemCommand);
-		// Forwarded as a signal that follows streamOptions.signal (and also
-		// aborts when the stream is destroyed early).
 		const sent = calls[0].args[1]?.abortSignal;
 		deepStrictEqual(sent.aborted, false);
 		controller.abort();
 		deepStrictEqual(sent.aborted, true);
 	});
 
-	// *** executeStatement yields nothing when the response has no Items field *** //
 	test(`awsDynamoDBExecuteStatementStream yields nothing for a response without Items`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
-		// No Items field at all: the `response.Items ?? []` default must be an EMPTY
-		// array. A `["Stryker was here"]` mutant would yield that sentinel.
 		client.on(ExecuteStatementCommand).resolves({});
 
 		const stream = await awsDynamoDBExecuteStatementStream({
@@ -977,7 +941,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(output, []);
 	});
 
-	// *** Keys boundary: exactly 100 is allowed (strict `>`) *** //
 	test(`awsDynamoDBGetItemStream allows exactly 100 Keys`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
@@ -985,14 +948,12 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 			.on(BatchGetItemCommand)
 			.resolves({ Responses: { T: [] }, UnprocessedKeys: {} });
 
-		// Exactly 100 must NOT throw (strict `>`); a `>=` mutant would reject it.
 		const options = { TableName: "T", Keys: new Array(100).fill({ key: "x" }) };
 		const stream = await awsDynamoDBGetItemStream(options);
 		const output = await streamToArray(stream);
 		deepStrictEqual(output, []);
 	});
 
-	// *** getItem with no Keys (optional chaining on options.Keys) *** //
 	test(`awsDynamoDBGetItemStream tolerates options without Keys`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
@@ -1000,21 +961,14 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 			.on(BatchGetItemCommand)
 			.resolves({ Responses: { T: [{ key: "a" }] }, UnprocessedKeys: {} });
 
-		// No Keys property: the `options.Keys?.length > 100` guard must short-circuit
-		// via the optional chain. A non-optional `options.Keys.length` mutant throws.
 		const stream = await awsDynamoDBGetItemStream({ TableName: "T" });
 		const output = await streamToArray(stream);
 		deepStrictEqual(output, [{ key: "a" }]);
 	});
 
-	// *** getItem tolerates a response missing Responses / UnprocessedKeys *** //
 	test(`awsDynamoDBGetItemStream tolerates a response with neither Responses nor UnprocessedKeys`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
-		// Bare response: `response.Responses?.[T]` and `response?.UnprocessedKeys?.[T]?.Keys`
-		// optional chains must yield [] (no items, no retry). Non-optional mutants
-		// (`response.Responses[T]`, `response.UnprocessedKeys`, `response?.UnprocessedKeys[T]`)
-		// would throw a TypeError reading a property of undefined.
 		client.on(BatchGetItemCommand).resolves({});
 
 		const stream = await awsDynamoDBGetItemStream({
@@ -1025,9 +979,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(output, []);
 	});
 
-	// BatchGetItem's per-table KeysAndAttributes (ConsistentRead, projection) must
-	// reach every request, including retries of UnprocessedKeys; the stream's own
-	// options (TableName, retryMaxCount) must not.
 	test(`awsDynamoDBGetItemStream forwards ConsistentRead and projection options`, async (_t) => {
 		const requests = [];
 		const responses = [
@@ -1068,9 +1019,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		]);
 	});
 
-	// Only KeysAndAttributes fields belong in the per-table entry; request-level
-	// fields (ReturnConsumedCapacity) must be sent at the request level, where
-	// BatchGetItem reads them, on the first request and every retry.
 	test(`awsDynamoDBGetItemStream sends ReturnConsumedCapacity at the request level`, async (_t) => {
 		const inputs = [];
 		const responses = [
@@ -1115,14 +1063,9 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		]);
 	});
 
-	// *** getItem retry accounting: retryMaxCount honoured, error cause populated *** //
 	test(`awsDynamoDBGetItemStream throws after exactly retryMaxCount retries with cause`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
-		// Always throttled. retryMaxCount 1: attempt #1 (retryCount 0, 0 >= 1 false ->
-		// backoff, retryCount -> 1), attempt #2 (1 >= 1 true -> throw). Exactly 2 calls.
-		// A `>` mutant would need retryCount > 1 (3 calls); a `--` mutant on the
-		// counter would never reach the cap (retry forever -> timeout).
 		client.on(BatchGetItemCommand).resolves({
 			Responses: {},
 			UnprocessedKeys: { T: { Keys: [{ key: "a" }] } },
@@ -1142,8 +1085,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 					error.message,
 					"awsDynamoDBBatchGetItem has UnprocessedKeys",
 				);
-				// Exact cause: only non-data fields. Keys (and their values) may be
-				// PII and must not leak into logged error causes.
 				deepStrictEqual(error.cause, {
 					TableName: "T",
 					UnprocessedKeysCount: 1,
@@ -1154,13 +1095,9 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchGetItemCommand).length, 2);
 	});
 
-	// *** getItem: retryMaxCount ?? 10 must use nullish coalescing (not &&) *** //
 	test(`awsDynamoDBGetItemStream honours an explicit retryMaxCount of 2`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
-		// retryMaxCount 2: `2 ?? 10` === 2 (throw after 3 calls). A `2 && 10` mutant
-		// yields 10 -> 11 calls (and a huge cumulative backoff -> timeout). Assert the
-		// exact call count pins the coalescing operator.
 		client.on(BatchGetItemCommand).resolves({
 			Responses: {},
 			UnprocessedKeys: { T: { Keys: [{ key: "a" }] } },
@@ -1180,12 +1117,9 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchGetItemCommand).length, 3);
 	});
 
-	// *** batchWrite: response with no UnprocessedItems is a success *** //
 	test(`awsDynamoDBPutItemStream treats a response without UnprocessedItems as success`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
-		// Bare response (no UnprocessedItems): the `UnprocessedItems?.[T]?.length`
-		// optional chain must be falsy (no retry). A non-optional mutant throws.
 		client.on(BatchWriteItemCommand).resolves({});
 
 		const output = await pipeline([
@@ -1196,14 +1130,9 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 1);
 	});
 
-	// *** batchWrite retry accounting: retryMaxCount honoured, counter increments,
-	// error cause populated, recursion uses retryCount + 1 *** //
 	test(`awsDynamoDBPutItemStream throws after exactly retryMaxCount retries with cause`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
-		// Always returns UnprocessedItems. retryMaxCount 1 -> throw after 2 calls.
-		// `>` mutant -> 3 calls; `retryCount + 1` -> `- 1` mutant never reaches the cap
-		// (recurses forever -> timeout).
 		client.on(BatchWriteItemCommand).resolves({
 			UnprocessedItems: { T: [{ PutRequest: { Item: { key: "a" } } }] },
 		});
@@ -1230,8 +1159,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 	test(`awsDynamoDBPutItemStream honours an explicit retryMaxCount of 2`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
-		// retryMaxCount 2: `2 ?? 10` === 2 -> throw after 3 calls. A `2 && 10` mutant
-		// yields 10 -> many more calls (huge backoff -> timeout).
 		client.on(BatchWriteItemCommand).resolves({
 			UnprocessedItems: { T: [{ PutRequest: { Item: { key: "a" } } }] },
 		});
@@ -1247,9 +1174,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 3);
 	});
 
-	// *** batchWrite: request-level fields (ReturnConsumedCapacity,
-	// ReturnItemCollectionMetrics) go on every BatchWriteItem request; stream
-	// options (TableName, retryMaxCount, client) do not *** //
 	test(`awsDynamoDBPutItemStream forwards request-level BatchWriteItem options, including on retry`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
@@ -1318,7 +1242,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		});
 	});
 
-	// *** retryMaxCount: null = unlimited retries (undefined keeps the default) *** //
 	test(`awsDynamoDBGetItemStream retries without limit when retryMaxCount is null`, async (t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
@@ -1326,8 +1249,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 			Responses: {},
 			UnprocessedKeys: { T: { Keys: [{ key: "a" }] } },
 		};
-		// 11 failures: one more than the default retryMaxCount of 10. Backoff
-		// timers fire on the next macrotask so the retries take no real time.
 		t.mock.method(globalThis, "setTimeout", (fn) => setImmediate(fn));
 		const mock = client.on(BatchGetItemCommand);
 		for (let i = 0; i < 11; i++) mock.resolvesOnce(throttled);
@@ -1350,8 +1271,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		const unprocessed = {
 			UnprocessedItems: { T: [{ PutRequest: { Item: { key: "a" } } }] },
 		};
-		// 11 failures: one more than the default retryMaxCount of 10. Backoff
-		// timers fire on the next macrotask so the retries take no real time.
 		t.mock.method(globalThis, "setTimeout", (fn) => setImmediate(fn));
 		const mock = client.on(BatchWriteItemCommand);
 		for (let i = 0; i < 11; i++) mock.resolvesOnce(unprocessed);
@@ -1365,8 +1284,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 12);
 	});
 
-	// The read factories resolve to a Readable (not a bare async generator), so
-	// they compose with pipejoin like any other datastream source.
 	test(`awsDynamoDB read streams are Readables that pipejoin accepts`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
@@ -1396,8 +1313,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		]);
 	});
 
-	// Destroying the stream mid-request aborts the in-flight send: a generator's
-	// return() would otherwise wait for the next page.
 	test(`awsDynamoDBScanStream destroy aborts the in-flight request`, async (_t) => {
 		let sent;
 		awsDynamoDBSetClient({
@@ -1419,15 +1334,10 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		strictEqual(sent.aborted, true);
 	});
 
-	// Named exports are canonical; a default export must not come back.
 	test(`dynamodb has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
 	});
 
-	// --- buffered entries on destroy / abort ---
-	// final() never runs on destroy() or an abort, so entries still buffered
-	// below the batch limit are handed to the teardown error as failedMessages
-	// (the kafkaProduceStream contract) and nothing is sent.
 	const writeEach = async (stream, chunks) => {
 		for (const chunk of chunks) {
 			await new Promise((resolve, reject) =>
@@ -1435,7 +1345,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 			);
 		}
 	};
-	// Resolves stream.errored once closed (null when no error was raised).
 	const destroyedWith = async (stream, error) => {
 		const closed = new Promise((resolve) => stream.once("close", resolve));
 		stream.once("error", () => {});
@@ -1614,8 +1523,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 0);
 	});
 
-	// The buffer is cleared before each request, so a failed request surfaces
-	// its own error without its items being reported as unsent.
 	test(`awsDynamoDBPutItemStream does not report a failed request as unsent`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);
@@ -1639,7 +1546,6 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 1);
 	});
 
-	// retryCount was internal retry state: retries always start from zero.
 	test(`awsDynamoDBGetItemStream ignores a retryCount option`, async (_t) => {
 		const client = mockClient(DynamoDBClient);
 		awsDynamoDBSetClient(client);

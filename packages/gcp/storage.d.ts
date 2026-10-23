@@ -16,7 +16,6 @@ export interface GcpStorageFile {
 /** The parts of an @google-cloud/storage `Bucket` the streams use. */
 export interface GcpStorageBucket {
 	file(name: string): GcpStorageFile;
-	// Resolves [files, nextQuery, apiResponse]; nextQuery is null on the last page.
 	getFiles(query: object): Promise<[unknown[], ...unknown[]]>;
 }
 

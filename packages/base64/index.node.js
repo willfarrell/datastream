@@ -10,29 +10,19 @@ const toBuffer = (chunk) =>
 			? Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
 			: Buffer.from(chunk);
 
-// Valid base64 requires length to be a multiple of 4 and only valid alphabet
-// chars, with at most 2 trailing '=' padding characters.  This rejects short
-// fragments like "YQ=" (length 3) and standalone padding like "==" (length 2)
-// that Buffer.from leniently accepts but atob() in the Web build rejects.
-// A single anchored /^[alphabet]*={0,2}$/ costs a backtrack entry per char
-// (~80% of decode time); a negative-class scan plus an indexOf() padding
-// check accepts exactly the same strings in a fraction of the time.
+// Buffer.from leniently accepts short fragments like "YQ=" (length 3) and
+// standalone padding like "==" (length 2) that atob() in the Web build rejects.
 const INVALID_BASE64_CHAR_RE = /[^A-Za-z0-9+/=]/;
-// Quote at most 32 chars of the offending input: a multi-megabyte bad chunk
-// must not be copied into the error message (and on into logs).
 const quote = (s) => JSON.stringify(s.length > 32 ? `${s.slice(0, 32)}…` : s);
 const assertValidBase64 = (s) => {
 	if (s.length % 4 !== 0 || INVALID_BASE64_CHAR_RE.test(s)) {
 		throw new Error(`Invalid base64 string: ${quote(s)}`);
 	}
-	// "=" may only appear as the final one or two characters.
 	const pad = s.indexOf("=");
 	if (pad !== -1 && s.length - pad > 2) {
 		throw new Error(`Invalid base64 string: ${quote(s)}`);
 	}
 };
-// A padded quartet split from the data after it (["YQ==", "YWJj"]) must fail
-// like the same text in one chunk ("YQ==YWJj") does.
 const assertNotAfterPadding = (padded, s) => {
 	if (padded) {
 		throw new Error(`Invalid base64 string: ${quote(s)} follows "=" padding`);
@@ -64,14 +54,10 @@ export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
 
 export const base64DecodeStream = (_options = {}, streamOptions = {}) => {
 	let extra = "";
-	// "=" ends a base64 stream; set once a quartet with padding is decoded.
 	let padded = false;
 	const transform = (chunk, enqueue) => {
-		// Base64's alphabet is pure ASCII, so a string chunk and the byte view of
-		// a Buffer/Uint8Array chunk are interchangeable. Normalising every chunk
-		// through toBuffer().toString("latin1") keeps a single code path; latin1
-		// (not "ascii", which strips the high bit: 0xD9 -> "Y") keeps non-ASCII
-		// bytes non-ASCII so validation rejects them.
+		// latin1, not "ascii": Node's "ascii" decoding strips the high bit
+		// (0xD9 -> "Y"), which would let non-ASCII bytes pass validation.
 		const str = toBuffer(chunk).toString("latin1");
 		const s0 = extra + str;
 		const remaining = s0.length % 4;

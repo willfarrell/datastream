@@ -30,8 +30,6 @@ const neverResolves = () => new Promise(() => {});
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Plain stub client recording each PutLogEvents request (and its send options)
-// at send time.
 const putLogEventsClient = (response = {}) => {
 	const calls = [];
 	return {
@@ -57,8 +55,6 @@ const batchTimestamps = (client) =>
 	);
 
 describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
-	// --- GetLogEventsStream ---
-
 	test(`awsCloudWatchLogsGetLogEventsStream should get events`, async (_t) => {
 		const client = mockClient(CloudWatchLogsClient);
 		awsCloudWatchLogsSetClient(client);
@@ -200,7 +196,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		const client = mockClient(CloudWatchLogsClient);
 		awsCloudWatchLogsSetClient(client);
 
-		// Same token every call => tokenUnchanged => enters the idle poll delay.
 		client.on(GetLogEventsCommand).resolves({
 			events: [],
 			nextForwardToken: "same-token",
@@ -219,7 +214,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 
 		const consuming = (async () => {
 			for await (const _item of stream) {
-				// no events ever arrive
 			}
 		})();
 
@@ -230,8 +224,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 			return error.cause?.code === "AbortError" || /Abort/i.test(error.message);
 		});
 	});
-
-	// --- FilterLogEventsStream ---
 
 	test(`awsCloudWatchLogsFilterLogEventsStream should get events`, async (_t) => {
 		const client = mockClient(CloudWatchLogsClient);
@@ -282,7 +274,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		deepStrictEqual(output, []);
 	});
 
-	// *** AbortSignal *** //
 	test(`awsCloudWatchLogsGetLogEventsStream should pass signal to client`, async (_t) => {
 		const client = mockClient(CloudWatchLogsClient);
 		awsCloudWatchLogsSetClient(client);
@@ -299,15 +290,12 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(GetLogEventsCommand);
-		// Forwarded as a signal that follows streamOptions.signal (and also
-		// aborts when the stream is destroyed early).
 		const sent = calls[0].args[1]?.abortSignal;
 		deepStrictEqual(sent.aborted, false);
 		controller.abort();
 		deepStrictEqual(sent.aborted, true);
 	});
 
-	// *** startFromHead default & options passthrough *** //
 	test(`awsCloudWatchLogsGetLogEventsStream defaults startFromHead to true`, async (_t) => {
 		const client = mockClient(CloudWatchLogsClient);
 		awsCloudWatchLogsSetClient(client);
@@ -320,10 +308,7 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		await streamToArray(stream);
 
 		const input = client.commandCalls(GetLogEventsCommand)[0].args[0].input;
-		// Defaulted via `??=`: a `&&=` mutant would leave it undefined (because
-		// undefined &&= true stays undefined).
 		deepStrictEqual(input.startFromHead, true);
-		// Caller options are passed through to the command.
 		deepStrictEqual(input.logGroupName, "g");
 		deepStrictEqual(input.logStreamName, "s");
 	});
@@ -343,8 +328,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		const stream = await awsCloudWatchLogsGetLogEventsStream(options);
 		await streamToArray(stream);
 
-		// `??=` must NOT overwrite an explicit false. A plain `=` mutant would force
-		// it back to true.
 		const input = client.commandCalls(GetLogEventsCommand)[0].args[0].input;
 		deepStrictEqual(input.startFromHead, false);
 	});
@@ -363,11 +346,7 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 
 		deepStrictEqual(output, [{ message: "a" }, { message: "b" }]);
 		const calls = client.commandCalls(FilterLogEventsCommand);
-		// Two calls: pagination continued because the first response had a nextToken
-		// (kills the `expectMore = !!nextToken` related behavior) and stopped when the
-		// second had none.
 		deepStrictEqual(calls.length, 2);
-		// Options spread through to the command (kills the `command({})` mutant).
 		deepStrictEqual(calls[0].args[0].input.logGroupName, "g");
 		deepStrictEqual(calls[0].args[0].input.filterPattern, "ERROR");
 	});
@@ -375,7 +354,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 	test(`awsCloudWatchLogsFilterLogEventsStream stops after a single page when no nextToken`, async (_t) => {
 		const client = mockClient(CloudWatchLogsClient);
 		awsCloudWatchLogsSetClient(client);
-		// No nextToken on the only response => exactly one call.
 		client.on(FilterLogEventsCommand).resolves({ events: [{ message: "a" }] });
 
 		const stream = await awsCloudWatchLogsFilterLogEventsStream({
@@ -400,16 +378,12 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(FilterLogEventsCommand);
-		// Forwarded as a signal that follows streamOptions.signal (and also
-		// aborts when the stream is destroyed early).
 		const sent = calls[0].args[1]?.abortSignal;
 		deepStrictEqual(sent.aborted, false);
 		controller.abort();
 		deepStrictEqual(sent.aborted, true);
 	});
 
-	// A per-call `client` option must route that call's sends to it (not the
-	// module client) and must not be forwarded into the command input.
 	test(`awsCloudWatchLogs streams use the per-call client option and do not forward it`, async (_t) => {
 		awsCloudWatchLogsSetClient({
 			send: async () => {
@@ -442,7 +416,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		]);
 	});
 
-	// *** setClient swap *** //
 	test(`awsCloudWatchLogsSetClient routes to the new client`, async (_t) => {
 		const first = mockClient(CloudWatchLogsClient);
 		awsCloudWatchLogsSetClient(first);
@@ -483,14 +456,9 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		deepStrictEqual(calls, 1);
 	});
 
-	// GetLogEvents stops as soon as nextForwardToken equals the token that was sent
-	// (opts.nextToken), even on the very first call when the caller resumes from a
-	// known token. Pins `nextForwardToken === opts.nextToken` (a `false`/always-loop
-	// mutant would never stop; this also kills the unchanged-token guard).
 	test(`awsCloudWatchLogsGetLogEventsStream stops when the echoed token equals the sent token`, async (_t) => {
 		const client = mockClient(CloudWatchLogsClient);
 		awsCloudWatchLogsSetClient(client);
-		// Caller resumes from "tokenX"; CloudWatch immediately echoes it back -> done.
 		client.on(GetLogEventsCommand).resolves({
 			events: [{ message: "log1" }],
 			nextForwardToken: "tokenX",
@@ -505,23 +473,15 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		const output = await streamToArray(stream);
 
 		deepStrictEqual(output, [{ message: "log1" }]);
-		// Exactly one call: the echoed token matched the sent token on the first page.
 		deepStrictEqual(client.commandCalls(GetLogEventsCommand).length, 1);
 	});
 
-	// pollingActive with pollingDelay === 0 must NOT schedule a timer: the
-	// `pollingDelay > 0` guard is false. A `true` or `>= 0` mutant would await
-	// timeout(0); under un-ticked mock timers the consumer would never reach the
-	// later (changed-token) event.
 	test(`awsCloudWatchLogsGetLogEventsStream pollingDelay 0 schedules no timer`, async (t) => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		const client = mockClient(CloudWatchLogsClient);
 		awsCloudWatchLogsSetClient(client);
 		client
 			.on(GetLogEventsCommand)
-			// caught-up page: token unchanged from the (undefined) sent token? No -
-			// send a repeated token so tokenUnchanged is true and we enter the polling
-			// branch, then a fresh token + event without any timer tick.
 			.resolvesOnce({ events: [], nextForwardToken: "t1" })
 			.resolvesOnce({ events: [], nextForwardToken: "t1" })
 			.resolvesOnce({ events: [{ message: "log1" }], nextForwardToken: "t2" })
@@ -566,8 +526,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		]);
 	});
 
-	// A generator's return() only lands at its next yield; destroying the stream
-	// must also abort the idle poll wait so polling stops and 'close' fires.
 	test(`awsCloudWatchLogsGetLogEventsStream destroy stops an idle poll`, {
 		timeout: 1000,
 	}, async (_t) => {
@@ -591,8 +549,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(GetLogEventsCommand).length, 1);
 	});
 
-	// --- PutLogEventsStream ---
-
 	test(`awsCloudWatchLogsPutLogEventsStream sends one batch sorted by timestamp`, async (_t) => {
 		const client = putLogEventsClient();
 		const events = [
@@ -603,7 +559,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		const result = await putLogEvents(events, { client });
 
 		deepStrictEqual(result, {});
-		// No sequenceToken: PutLogEvents ignores it since 2023.
 		deepStrictEqual(client.calls, [
 			{
 				input: {
@@ -640,8 +595,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		);
 	});
 
-	// Each event counts its UTF-8 message bytes plus 26. "é" is 2 bytes, so two
-	// 524,262-byte messages fill the 1,048,576-byte batch exactly.
 	test(`awsCloudWatchLogsPutLogEventsStream keeps a batch of exactly 1,048,576 bytes`, async (_t) => {
 		const client = putLogEventsClient();
 		const message = "é".repeat(262_131);
@@ -683,8 +636,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		deepStrictEqual(batchTimestamps(client), [[1000, 1000 + DAY_MS]]);
 	});
 
-	// The span is measured against both the earliest and the latest timestamp
-	// seen so far, whatever order the events arrive in.
 	test(`awsCloudWatchLogsPutLogEventsStream flushes before an event below the 24 hour span`, async (_t) => {
 		const client = putLogEventsClient();
 		await putLogEvents(
@@ -725,8 +676,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		deepStrictEqual(client.calls.length, 1);
 	});
 
-	// Mirrors the Kinesis/SNS/SQS writers: an event that can never fit a batch
-	// fails up front instead of having the service reject the whole request.
 	test(`awsCloudWatchLogsPutLogEventsStream rejects an oversize event with RangeError`, async (_t) => {
 		const client = putLogEventsClient();
 		await rejects(
@@ -751,11 +700,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		deepStrictEqual(client.calls, []);
 	});
 
-	// Events too old / too new / past retention are dropped while the rest are
-	// accepted: surface that instead of losing them silently. The indexes refer
-	// to the sorted batch the stream sent, so the rejected events themselves are
-	// attached (tooNew from its inclusive start index, tooOld / expired up to
-	// their exclusive end index) for the caller to inspect or re-route.
 	test(`awsCloudWatchLogsPutLogEventsStream attaches the rejected events to the error`, async (_t) => {
 		const rejectedLogEventsInfo = {
 			tooOldLogEventEndIndex: 1,
@@ -801,7 +745,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		);
 	});
 
-	// Absent indexes reject nothing of that kind.
 	test(`awsCloudWatchLogsPutLogEventsStream attaches only the too-new events`, async (_t) => {
 		const rejectedLogEventsInfo = { tooNewLogEventStartIndex: 1 };
 		const client = putLogEventsClient({ rejectedLogEventsInfo });
@@ -854,10 +797,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		);
 	});
 
-	// --- event validation ---
-	// A non-finite timestamp would turn the 24 hour span check into NaN
-	// comparisons (always false) and a non-string message cannot be measured, so
-	// both fail up front with nothing sent.
 	for (const [label, event, message] of [
 		[
 			"NaN timestamp",
@@ -904,7 +843,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		});
 	}
 
-	// A NaN timestamp after valid events must not slip past the span check.
 	test(`awsCloudWatchLogsPutLogEventsStream rejects a NaN timestamp after valid events`, async (_t) => {
 		const client = putLogEventsClient();
 		await rejects(
@@ -954,15 +892,10 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		deepStrictEqual(options, optionsCopy);
 	});
 
-	// Named exports are canonical; a default export must not come back.
 	test(`cloudwatch-logs has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
 	});
 
-	// --- buffered entries on destroy / abort ---
-	// final() never runs on destroy() or an abort, so entries still buffered
-	// below the batch limit are handed to the teardown error as failedMessages
-	// (the kafkaProduceStream contract) and nothing is sent.
 	const writeEach = async (stream, chunks) => {
 		for (const chunk of chunks) {
 			await new Promise((resolve, reject) =>
@@ -970,7 +903,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 			);
 		}
 	};
-	// Resolves stream.errored once closed (null when no error was raised).
 	const destroyedWith = async (stream, error) => {
 		const closed = new Promise((resolve) => stream.once("close", resolve));
 		stream.once("error", () => {});
@@ -1080,8 +1012,6 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(PutLogEventsCommand).length, 0);
 	});
 
-	// An invalid event fails the write; the events buffered before it were never
-	// sent, so they ride on that error.
 	test(`awsCloudWatchLogsPutLogEventsStream attaches buffered events to a validation error`, async (_t) => {
 		const client = putLogEventsClient();
 		const buffered = [{ timestamp: 1, message: "a" }];

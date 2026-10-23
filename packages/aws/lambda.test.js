@@ -135,17 +135,12 @@ describe(`@datastream/aws/lambda (${variant})`, async () => {
 			}
 
 			const calls = client.commandCalls(InvokeWithResponseStreamCommand);
-			// Forwarded as a signal that follows streamOptions.signal (and also
-			// aborts when the stream is destroyed early).
 			const sent = calls[0].args[1]?.abortSignal;
 			deepStrictEqual(sent.aborted, false);
 			controller.abort();
 			deepStrictEqual(sent.aborted, true);
 		});
 
-		// Destroying the stream mid-request aborts the in-flight
-		// InvokeWithResponseStream: a generator's return() would otherwise wait for
-		// the response.
 		test(`awsLambdaReadableStream destroy aborts the in-flight request`, {
 			timeout: 1000,
 		}, async (_t) => {
@@ -170,7 +165,6 @@ describe(`@datastream/aws/lambda (${variant})`, async () => {
 		});
 
 		test(`awsLambdaReadableStream should use per-call client option`, async (_t) => {
-			// default client must NOT be used when options.client is supplied
 			const defaultClientMock = mockClient(LambdaClient);
 			awsLambdaSetClient(defaultClientMock);
 			defaultClientMock
@@ -218,7 +212,6 @@ describe(`@datastream/aws/lambda (${variant})`, async () => {
 				FunctionName: "f",
 				client: perCallClient,
 			})) {
-				// consume
 			}
 
 			const calls = perCallClient.commandCalls(InvokeWithResponseStreamCommand);
@@ -247,7 +240,6 @@ describe(`@datastream/aws/lambda (${variant})`, async () => {
 				for await (const _chunk of await awsLambdaReadableStream([
 					{ FunctionName: "fn1" },
 				])) {
-					// consume
 				}
 				strictEqual(true, false);
 			} catch (e) {
@@ -258,24 +250,16 @@ describe(`@datastream/aws/lambda (${variant})`, async () => {
 			}
 		});
 
-		// Named exports are canonical; a default export must not come back.
 		test(`lambda has no default export`, (_t) => {
 			strictEqual(Object.hasOwn(lambdaModule, "default"), false);
 		});
 
-		// A non-payload, non-complete event must be silently skipped: neither yielded
-		// nor treated as an error. Pins the `chunk?.PayloadChunk?.Payload` /
-		// `chunk?.InvokeComplete?.ErrorCode` guards and the `else if (...)` condition
-		// (an `else if (true)` mutant would throw on the empty frame).
 		test(`awsLambdaReadableStream skips frames with neither PayloadChunk nor InvokeComplete`, async (_t) => {
 			const client = mockClient(LambdaClient);
 			awsLambdaSetClient(client);
 
 			const encoder = new TextEncoder();
 			const decoder = new TextDecoder();
-			// A null/undefined frame must be tolerated by the leading `chunk?.` guards:
-			// dropping the optional chain (`chunk.PayloadChunk` / `chunk.InvokeComplete`)
-			// would throw a TypeError on these frames.
 			// Frames come from an async generator, not createReadableStream: Node 26
 			// object-mode Readable async-iteration breaks on null/undefined values.
 			async function* eventStream() {
@@ -299,8 +283,6 @@ describe(`@datastream/aws/lambda (${variant})`, async () => {
 			deepStrictEqual(result, "ok");
 		});
 
-		// An InvokeComplete WITHOUT an ErrorCode must NOT throw (success completion).
-		// Kills the `else if (true)` mutant which would throw on every complete.
 		test(`awsLambdaReadableStream treats InvokeComplete without ErrorCode as success`, async (_t) => {
 			const client = mockClient(LambdaClient);
 			awsLambdaSetClient(client);
@@ -354,7 +336,6 @@ describe(`@datastream/aws/lambda (${variant})`, async () => {
 			deepStrictEqual(calls, 1);
 		});
 
-		// setClient swaps the module default used when no per-call client is given.
 		test(`awsLambdaSetClient routes to the newly set default client`, async (_t) => {
 			const first = mockClient(LambdaClient);
 			awsLambdaSetClient(first);

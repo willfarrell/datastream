@@ -24,8 +24,6 @@ const settle = async () => {
 const write = (stream, chunk) =>
 	new Promise((resolve) => stream.write(chunk, resolve));
 
-// Topic whose publishes stay outstanding until the test settles them, like the
-// SDK's batched publishMessage (a Promise<messageId> per message).
 const deferredTopic = () => {
 	const topic = {
 		published: [],
@@ -123,7 +121,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		]);
 	});
 
-	// *** gcpPubSubPublishStream *** //
 	test("gcpPubSubPublishStream requires a topic", () => {
 		throws(() => gcpPubSubPublishStream(), {
 			name: "TypeError",
@@ -158,7 +155,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 			gcpPubSubPublishStream({ topic }),
 		]);
 		strictEqual(topic.published.length, 3);
-		// Passed through untouched (the SDK copies it).
 		strictEqual(topic.published[0], a);
 		strictEqual(topic.published[1], b);
 		strictEqual(topic.published[2], c);
@@ -176,7 +172,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 			{ data: Buffer.from("héllo"), attributes: { k: "v" } },
 		]);
 		strictEqual(Buffer.isBuffer(topic.published[0].data), true);
-		// The caller's chunk is not mutated.
 		strictEqual(chunk.data, "héllo");
 	});
 
@@ -189,7 +184,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		);
 		await settle();
 		strictEqual(topic.published.length, 2);
-		// A newer publish confirming does not free the slot the oldest holds.
 		topic.deferreds[1].resolve("id-2");
 		await settle();
 		strictEqual(topic.published.length, 2);
@@ -244,7 +238,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		await settle();
 		topic.deferreds[0].resolve("id-a");
 		const error = new Error("publish failed");
-		// Not the oldest outstanding: the stream must not wait for it to be.
 		topic.deferreds[2].reject(error);
 		const err = await new Promise((resolve) => stream.on("error", resolve));
 		strictEqual(err, error);
@@ -324,7 +317,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 			"gcpPubSubPublishStream: destroyed with unconfirmed publishes",
 		);
 		deepStrictEqual(err.failedMessages, [chunks[1]]);
-		// Can't be cancelled: a late outcome is ignored, not unhandled.
 		topic.deferreds[1].reject(new Error("late"));
 		await settle();
 	});
@@ -377,7 +369,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		strictEqual(topic.flushes, 0);
 	});
 
-	// *** gcpPubSubSubscribeStream *** //
 	test("gcpPubSubSubscribeStream requires a subscription", () => {
 		throws(() => gcpPubSubSubscribeStream(), {
 			name: "TypeError",
@@ -393,7 +384,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		const log = [];
 		const subscription = new FakeSubscription({ log });
 		const stream = gcpPubSubSubscribeStream({ subscription });
-		// Already closed: stop() must not wait for it.
 		gcpPubSubAckStream({ subscription }).destroy();
 		await settle();
 		strictEqual(subscription.opens, 1);
@@ -412,7 +402,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		strictEqual(subscription.isOpen, false);
 		deepStrictEqual(subscription.listeners3(), [0, 0, 0]);
 		deepStrictEqual(log, [["close"]]);
-		// Idempotent.
 		await stream.stop();
 		strictEqual(subscription.closes, 1);
 	});
@@ -432,8 +421,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		const stopped = stream.stop();
 		subscription.emit("message", fakeMessage("late", log));
 		await settle();
-		// Still listening (removing the last 'message' listener would make the
-		// SDK close and nack everything) until close() has resolved.
 		deepStrictEqual(subscription.listeners3(), [1, 1, 1]);
 		close.resolve();
 		await stopped;
@@ -464,7 +451,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		await stopped;
 		strictEqual(resolved, true);
 		deepStrictEqual(log, [["ack", "a"], ["nack", "b"], ["close"]]);
-		// otherStream (another subscription) never closed and did not block.
 		strictEqual(otherStream.closed, false);
 		otherStream.destroy();
 	});
@@ -499,7 +485,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		subscription.emit("error", error);
 		await settle();
 		strictEqual(subscription.closes, 1);
-		// Torn down only once the subscription has closed.
 		strictEqual(closed, false);
 		deepStrictEqual(subscription.listeners3(), [1, 1, 1]);
 		subscription.emit("message", fakeMessage("late", log));
@@ -647,8 +632,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		deepStrictEqual(log, [["close"], ["close"]]);
 	});
 
-	// push(null) on a destroyed readable marks it ended, so finished() would
-	// treat the teardown as a clean end and the pipeline would never settle.
 	test("gcpPubSubSubscribeStream stop() after destroy() still rejects the pipeline", async () => {
 		const subscription = new FakeSubscription();
 		const stream = gcpPubSubSubscribeStream({ subscription });
@@ -660,13 +643,9 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		strictEqual(subscription.closes, 1);
 	});
 
-	// Node's finished() counts an ended readable with an empty buffer as done,
-	// but pipe only ends the destination on 'end': destroying in between would
-	// leave the pipeline pending forever.
 	test("gcpPubSubSubscribeStream destroy() right after stop() lets the drained readable end", async () => {
 		const log = [];
 		const subscription = new FakeSubscription({ log });
-		// Already closed elsewhere: close() resolves at once.
 		subscription.close = () => {
 			subscription.isOpen = false;
 			log.push(["close"]);
@@ -675,12 +654,10 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		const stream = gcpPubSubSubscribeStream({ subscription });
 		const done = pipeline([stream, gcpPubSubAckStream({ subscription })]);
 		subscription.emit("message", fakeMessage("a", log));
-		// Before the pipeline has started flowing.
 		const stopped = stream.stop();
 		stream.destroy();
 		await done;
 		await stopped;
-		// Closed at once (hard stop); the SDK ignores the later ack.
 		deepStrictEqual(log, [["close"], ["ack", "a"]]);
 	});
 
@@ -702,7 +679,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		const log = [];
 		const stream = gcpPubSubSubscribeStream({ subscription });
 		const output = streamToArray(stream);
-		// The SDK emitted 'close' itself (a failed stream start closes it).
 		subscription.emit("close");
 		subscription.emit("message", fakeMessage("late", log));
 		deepStrictEqual(await output, []);
@@ -712,7 +688,6 @@ describe(`@datastream/gcp/pubsub (${variant})`, () => {
 		deepStrictEqual(subscription.listeners3(), [0, 0, 0]);
 	});
 
-	// *** gcpPubSubAckStream / gcpPubSubNackStream *** //
 	test("gcpPubSubAckStream / gcpPubSubNackStream require a subscription", () => {
 		throws(() => gcpPubSubAckStream(), {
 			name: "TypeError",

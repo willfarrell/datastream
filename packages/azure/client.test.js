@@ -4,7 +4,6 @@ import { createReadableStream, pipeline } from "@datastream/core";
 import { variant } from "../variant.js";
 import { azureBackoff, azureBatchStream } from "./client.js";
 
-// Fake SDK batch: holds at most `max` entries; entries named "big" never fit.
 const fakeBatches = (max) => {
 	const sent = [];
 	return {
@@ -64,7 +63,6 @@ describe(`@datastream/azure/client (${variant})`, () => {
 			pipeline([createReadableStream(["big"]), azureBatchStream(batches, {})]),
 			(e) => e instanceof RangeError && e.cause.limit === 1024,
 		);
-		// The batch was empty: nothing to flush before failing.
 		deepStrictEqual(batches.sent, []);
 	});
 
@@ -80,8 +78,6 @@ describe(`@datastream/azure/client (${variant})`, () => {
 		deepStrictEqual(batches.sent, [["a"]]);
 	});
 
-	// final() never runs on destroy/abort: the unsent entries must surface on
-	// the error (kafkaProduceStream's err.failedMessages contract), not vanish.
 	test(`azureBatchStream destroy attaches buffered entries as failedMessages`, async () => {
 		const batches = fakeBatches(2);
 		const stream = azureBatchStream(batches, {});
@@ -90,7 +86,6 @@ describe(`@datastream/azure/client (${variant})`, () => {
 		stream.destroy();
 		const e = await error;
 		strictEqual(e.message, "destroyed with a buffered batch");
-		// Only the entry not yet sent; nothing is sent on destroy.
 		deepStrictEqual(e.failedMessages, ["c"]);
 		deepStrictEqual(batches.sent, [["a", "b"]]);
 	});
@@ -128,7 +123,6 @@ describe(`@datastream/azure/client (${variant})`, () => {
 		});
 		await writeAll(stream, ["a", "b", "c", "d"]);
 		const closed = new Promise((resolve) => stream.once("close", resolve));
-		// final() flushes [c, d]: nothing is left buffered for the auto-destroy.
 		await new Promise((resolve) => stream.end(resolve));
 		await closed;
 		strictEqual(errored, false);

@@ -33,7 +33,6 @@ describe("deflate", () => {
 		expect(deflateCompressStream()).type.not.toBeAssignableTo<never>();
 	});
 
-	// deflate.node.js and gzip.node.js both read `level ?? quality`.
 	test("deflateCompressStream and gzipCompressStream accept level", () => {
 		expect(deflateCompressStream).type.toBeCallableWith({ level: 9 });
 		expect(gzipCompressStream).type.toBeCallableWith({ level: 9 });
@@ -66,7 +65,6 @@ describe("zstd", () => {
 	});
 });
 
-// maxOutputSize: null disables the limit (including the 256 MiB decompress default).
 describe("maxOutputSize", () => {
 	test("gzipCompressStream accepts a number or null", () => {
 		expect(gzipCompressStream).type.toBeCallableWith({ maxOutputSize: 1024 });

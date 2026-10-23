@@ -1,13 +1,8 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 
-// Azure namespace naming rules. The name becomes the token scope's host, so
-// anything else (dots, slashes, ...) could redirect the scope to another host.
 const NAMESPACE = /^[A-Za-z][A-Za-z0-9-]{4,48}[A-Za-z0-9]$/;
 
-// Event Hubs Kafka endpoint (<namespace>.servicebus.windows.net:9093) with
-// Microsoft Entra ID: SASL OAUTHBEARER using a token for the namespace.
-// credential = any @azure/identity TokenCredential (DefaultAzureCredential, ...).
 export const azureEventHubsKafkaMechanism = ({
 	credential,
 	namespace,

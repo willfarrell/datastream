@@ -76,20 +76,12 @@ const name = fc.oneof(
 	fc.string({ unit: "binary", maxLength: 40 }),
 	fc.anything(),
 );
-// Read/write options; bucket and name are taken out before they reach the SDK.
 const extraOptions = fc.dictionary(
 	fc.string({ maxLength: 10 }).filter((k) => k !== "bucket" && k !== "name"),
 	fc.anything(),
 	{ maxKeys: 5 },
 );
 
-// ---------------------------------------------------------------------------
-// fuzz: gcpStorageReadStream / gcpStorageWriteStream name + options
-// ---------------------------------------------------------------------------
-
-// Any non-empty string name reaches bucket.file() unchanged (object names are
-// arbitrary UTF-8; the service validates them), everything else is rejected
-// before the SDK is touched. The remaining options are handed over as is.
 test("fuzz gcpStorageReadStream w/ random name and options", async () => {
 	await fc.assert(
 		fc.asyncProperty(name, extraOptions, async (name, options) => {
@@ -141,12 +133,6 @@ test("fuzz gcpStorageWriteStream w/ random name and options", async () => {
 	);
 });
 
-// ---------------------------------------------------------------------------
-// fuzz: gcpStorageWriteStream chunks / backpressure / commit failure
-// ---------------------------------------------------------------------------
-
-// Every chunk reaches the SDK in order, and the pipeline resolves only when
-// the object is committed, otherwise it rejects with the SDK error.
 test("fuzz gcpStorageWriteStream w/ random chunks", async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -177,11 +163,6 @@ test("fuzz gcpStorageWriteStream w/ random chunks", async () => {
 	);
 });
 
-// ---------------------------------------------------------------------------
-// fuzz: gcpStorageListStream paging
-// ---------------------------------------------------------------------------
-
-// getFiles({ autoPaginate: false }) fake: [files, nextQuery, apiResponse].
 const pagedBucket = (pages) => {
 	const bucket = {
 		queries: [],
@@ -197,8 +178,6 @@ const pagedBucket = (pages) => {
 	return bucket;
 };
 
-// Every listed object is yielded once, in order, one request per page; a
-// destroy stops paging (at most the page being consumed plus one ahead).
 test("fuzz gcpStorageListStream w/ random pages and destroy", async () => {
 	await fc.assert(
 		fc.asyncProperty(

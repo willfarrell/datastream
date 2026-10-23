@@ -28,30 +28,15 @@ export interface FetchOptions {
 	offsetParam?: string;
 	offsetAmount?: number;
 	rateLimitTimestamp?: number;
-	// Max array items fetched concurrently (default 1 = sequential). Read from
-	// the first item of an array; items are yielded in array order and request
-	// starts are spaced by rateLimit.
 	concurrency?: number;
-	// Limits: undefined = default, null = unlimited. Exceeding one throws a
-	// RangeError.
-	// Max attempts before throwing (default 10); resets after a success.
-	// Retried: 429 (any method), and 500/502/503/504 or a network error for
-	// GET/HEAD/OPTIONS/PUT/DELETE without a streamed body.
 	retryMaxCount?: number | null;
-	// Upper bound in ms for a Retry-After wait (default 60_000); null = no
-	// cap (still bounded by 2^31-1, the largest delay setTimeout supports).
 	retryAfterMax?: number | null;
-	// Per attempt, in ms, body included: aborts with a TimeoutError (not
-	// retried). undefined / null (default) = no timeout.
 	timeout?: number | null;
-	// Max JSON pages fetched per request config before throwing (default 10_000).
 	maxPages?: number | null;
-	// Max bytes of a JSON response body (default 16_777_216).
 	maxBodySize?: number | null;
 }
 
 export interface FetchWritableOptions extends FetchOptions {
-	// Key of the response in pipeline results (default "output").
 	resultKey?: string;
 }
 

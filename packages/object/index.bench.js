@@ -19,8 +19,6 @@ import {
 	objectValueMapStream,
 } from "@datastream/object";
 
-// -- Data generators --
-
 const ITEMS = 100_000;
 const COLS = 10;
 const OPS = 1;
@@ -36,8 +34,6 @@ const generateObjects = (rows, cols) =>
 	});
 
 const objects = generateObjects(ITEMS, COLS);
-
-// -- Tests --
 
 suite("objectCountStream", () => {
 	bench(`${ITEMS} objects`, options, async (b) => {
@@ -165,7 +161,6 @@ suite("objectFromEntriesStream", () => {
 });
 
 suite("objectBatchStream", () => {
-	// Add a group key so batching has ~100 groups
 	const groupedObjects = objects.map((obj, i) => ({
 		...obj,
 		group: `group_${Math.floor(i / (ITEMS / 100))}`,

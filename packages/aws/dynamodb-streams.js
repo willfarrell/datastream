@@ -7,8 +7,6 @@ import {
 import { timeout } from "@datastream/core";
 import { awsClientDefaults, awsReadableStream } from "./client.js";
 
-// Created on first use, so importing the module (or always passing a per-call
-// client) never constructs an unused SDK client.
 let defaultClient;
 const getDefaultClient = () =>
 	(defaultClient ??= new DynamoDBStreamsClient(awsClientDefaults));
@@ -43,8 +41,6 @@ export const awsDynamoDBStreamsGetRecordsStream = async (
 			expectMore =
 				opts.ShardIterator !== null && (pollingActive || records.length > 0);
 			if (pollingActive && records.length === 0 && pollingDelay > 0) {
-				// Abortable idle wait: rejects immediately and clears the timer
-				// when the stream is destroyed or streamOptions.signal aborts mid-delay.
 				await timeout(pollingDelay, { signal });
 			}
 		}

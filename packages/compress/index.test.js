@@ -32,7 +32,6 @@ import {
 import { variant } from "../variant.js";
 
 describe(`@datastream/compress (${variant})`, async () => {
-	// guard.node.js (push/on) is node-only; the browser build guards in native.browser.js.
 	const nodeTest = variant === "node" ? test : test.skip;
 
 	const compressibleBody = JSON.stringify(new Array(1024).fill(0));
@@ -69,7 +68,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			"@datastream/compress/zstd"
 		));
 
-		// *** zstd *** //
 		test(`zstdCompressStream should compress`, async (_t) => {
 			const input = compressibleBody;
 			const streams = [createReadableStream(input), zstdCompressStream()];
@@ -86,7 +84,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** brotli *** //
 	test(`brotliCompressStream should compress`, async (_t) => {
 		const input = compressibleBody;
 		const streams = [createReadableStream(input), brotliCompressStream()];
@@ -115,7 +112,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		await rejects(pipeline(streams), /unexpected end of file/);
 	});
 
-	// *** gzip *** //
 	test(`gzipCompressStream should compress`, async (_t) => {
 		const input = compressibleBody;
 		const streams = [createReadableStream(input), gzipCompressStream()];
@@ -139,7 +135,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		strictEqual(await streamToString(pipejoin(streams)), compressibleBody);
 	});
 
-	// *** deflate *** //
 	test(`deflateCompressStream should compress`, async (_t) => {
 		const input = compressibleBody;
 		const streams = [createReadableStream(input), deflateCompressStream()];
@@ -154,7 +149,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		strictEqual(output, compressibleBody);
 	});
 
-	// *** decompression bomb protection *** //
 	if (variant === "node") {
 		test(`gzipDecompressStream should enforce maxOutputSize`, async (_t) => {
 			const input = gzipSync(compressibleBody);
@@ -205,8 +199,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, compressibleBody);
 		});
 
-		// A default decompression ceiling now applies; `maxOutputSize: null` opts
-		// out of any limit (unbounded), so normal payloads still round-trip.
 		test(`gzipDecompressStream maxOutputSize:null disables the limit`, async (_t) => {
 			const input = gzipSync(compressibleBody);
 			const streams = [
@@ -217,7 +209,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, compressibleBody);
 		});
 
-		// *** maxOutputSize within limit (covers normal-path push) *** //
 		test(`gzipDecompressStream should pass through within maxOutputSize`, async (_t) => {
 			const input = gzipSync(compressibleBody);
 			const streams = [
@@ -248,10 +239,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, compressibleBody);
 		});
 
-		// Arbitrary keys on the first (options) argument must NOT be promoted into
-		// zlib Brotli `params` (the old behavior threw "chunkSize is not a valid
-		// Brotli parameter"). Only an explicit `params` field is forwarded; real
-		// stream options go on the second argument.
 		test(`brotliDecompressStream should not promote first-arg keys to Brotli params`, async (_t) => {
 			const input = brotliCompressSync(compressibleBody);
 			const streams = [
@@ -262,7 +249,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, compressibleBody);
 		});
 
-		// *** zstd decompress maxOutputSize *** //
 		test(`zstdDecompressStream should enforce maxOutputSize`, async (_t) => {
 			const input = zstdCompressSync(compressibleBody);
 			const streams = [
@@ -287,7 +273,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, compressibleBody);
 		});
 
-		// Covers `maxOutputSize === null ? void 0 :` true-branch in zstdDecompressStream.
 		test(`zstdDecompressStream maxOutputSize:null should NOT throw`, async (_t) => {
 			const input = zstdCompressSync(compressibleBody);
 			const output = await streamToString(
@@ -299,15 +284,12 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, compressibleBody);
 		});
 
-		// guardOutput Buffer.byteLength(chunk) fallback for zstd (node-only): push a
-		// string directly into the guarded stream so .byteLength is undefined.
 		test(`zstdDecompressStream guardOutput sizes string chunks via Buffer.byteLength`, (_t) => {
 			const stream = zstdDecompressStream({ maxOutputSize: 1024 });
 			ok(stream.push("abc") === true);
 			stream.destroy();
 		});
 
-		// *** compress maxOutputSize *** //
 		test(`gzipCompressStream should enforce maxOutputSize`, async (_t) => {
 			const input = compressibleBody;
 			const streams = [
@@ -356,9 +338,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, deflateSync(compressibleBody).toString());
 		});
 
-		// deflateCompressStream reads quality/level/maxOutputSize from the first
-		// argument and forwards real stream options from the second argument
-		// (matching gzipCompressStream), rather than spreading the first arg.
 		test(`deflateCompressStream should honor quality and second-arg stream options`, async (_t) => {
 			const streams = [
 				createReadableStream(compressibleBody),
@@ -414,10 +393,7 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** quality / level parameter routing *** //
 	if (variant === "node") {
-		// brotliCompressStream: quality=0 vs quality=11 produce different sizes;
-		// ensures params object is forwarded (ObjectLiteral survivor).
 		test(`brotliCompressStream quality:0 differs from quality:11`, async (_t) => {
 			const out0 = await streamToBuffer(
 				pipejoin([
@@ -439,8 +415,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(brotliDecompressSync(out11).toString(), compressibleBody);
 		});
 
-		// default quality matches BROTLI_DEFAULT_QUALITY constant
-		// (covers quality ?? BROTLI_DEFAULT_QUALITY LogicalOperator survivor).
 		test(`brotliCompressStream default quality equals explicit BROTLI_DEFAULT_QUALITY`, async (_t) => {
 			const { constants: zlibConst } = await import("node:zlib");
 			const outDef = await streamToBuffer(
@@ -458,7 +432,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(outDef.toString("hex"), outExp.toString("hex"));
 		});
 
-		// gzipCompressStream: quality maps to zlib level; levels 1 and 9 differ.
 		test(`gzipCompressStream quality:1 and quality:9 both round-trip`, async (_t) => {
 			const out1 = await streamToBuffer(
 				pipejoin([
@@ -490,8 +463,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			);
 		});
 
-		// gzipCompressStream accepts `level` like deflate (level ?? quality); exact
-		// output vs gzipSync pins both the precedence and the routing to zlib.
 		test(`gzipCompressStream level overrides quality`, async (_t) => {
 			const output = await streamToBuffer(
 				pipejoin([
@@ -518,8 +489,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			);
 		});
 
-		// deflateCompressStream: `level` takes precedence over `quality`
-		// (covers `level ?? quality` LogicalOperator survivor).
 		test(`deflateCompressStream level overrides quality`, async (_t) => {
 			const compressed = await streamToBuffer(
 				pipejoin([
@@ -533,10 +502,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, compressibleBody);
 		});
 
-		// deflateCompressStream with quality:9 must match deflateSync at level:9.
-		// `level && quality` mutation: when level is undefined, `undefined && quality`
-		// = `undefined` → quality ignored → output would match default level, not 9.
-		// Also catches `createDeflate({})` mutation (drops level entirely).
 		test(`deflateCompressStream quality:9 output matches deflateSync level:9`, async (_t) => {
 			const { deflateSync: defSync } = await import("node:zlib");
 			const output = await streamToBuffer(
@@ -551,7 +516,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			);
 		});
 
-		// deflateCompressStream with level:1 must match deflateSync at level:1.
 		test(`deflateCompressStream level:1 output matches deflateSync level:1`, async (_t) => {
 			const { deflateSync: defSync } = await import("node:zlib");
 			const output = await streamToBuffer(
@@ -566,7 +530,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			);
 		});
 
-		// zstdCompressStream: different quality levels both round-trip.
 		test(`zstdCompressStream quality:1 and quality:19 both round-trip`, async (_t) => {
 			const out1 = await streamToBuffer(
 				pipejoin([
@@ -584,7 +547,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(zstdDecompressSync(out19).toString(), compressibleBody);
 		});
 
-		// zstdCompressStream with explicit params (covers `params ?? { ... }` ObjectLiteral survivor).
 		test(`zstdCompressStream with explicit params round-trips`, async (_t) => {
 			const { constants: zlibConst } = await import("node:zlib");
 			const out = await streamToBuffer(
@@ -598,8 +560,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(zstdDecompressSync(out).toString(), compressibleBody);
 		});
 
-		// zstdDecompressStream with explicit params
-		// (covers `params ? {..., params} : streamOptions` ConditionalExpression survivor).
 		test(`zstdDecompressStream with explicit params round-trips`, async (_t) => {
 			const { constants: zlibConst } = await import("node:zlib");
 			const input = zstdCompressSync(compressibleBody);
@@ -614,12 +574,9 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, compressibleBody);
 		});
 
-		// brotliDecompressStream with params option
-		// (covers `params ? {..., params} : streamOptions` ConditionalExpression survivor).
 		test(`brotliDecompressStream with params option round-trips`, async (_t) => {
 			const { constants: zlibConst } = await import("node:zlib");
 			const input = brotliCompressSync(compressibleBody);
-			// BROTLI_PARAM_MODE is a valid decompress-time param (mode 0 = generic)
 			const output = await streamToString(
 				pipejoin([
 					createReadableStream(input),
@@ -632,9 +589,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** maxOutputSize exact boundary (> vs >=) *** //
-	// Payload whose decompressed size exactly equals maxOutputSize must PASS.
-	// `outputSize > maxOutputSize` allows equal; `>=` would reject it.
 	if (variant === "node") {
 		test(`gzipDecompressStream exact-boundary maxOutputSize should NOT throw`, async (_t) => {
 			const input = gzipSync(compressibleBody);
@@ -684,7 +638,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(output, compressibleBody);
 		});
 
-		// One byte under the limit MUST throw.
 		test(`gzipDecompressStream one-byte-under maxOutputSize should throw`, async (_t) => {
 			const input = gzipSync(compressibleBody);
 			const exactSize = Buffer.byteLength(compressibleBody);
@@ -700,8 +653,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** error message label strings (StringLiteral survivors) *** //
-	// Error message must contain "Compression"/"Decompression" (not "").
 	if (variant === "node") {
 		test(`gzipDecompressStream error message contains "Decompression"`, async (_t) => {
 			const input = gzipSync(compressibleBody);
@@ -803,7 +754,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			}
 		});
 
-		// Error message includes the maxOutputSize number (covers StringLiteral survivor).
 		test(`gzipDecompressStream error message includes the byte limit value`, async (_t) => {
 			const input = gzipSync(compressibleBody);
 			try {
@@ -818,8 +768,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** restore after "close" event (StringLiteral "close" → "") *** //
-	// After a stream closes normally, a second independent stream must still work.
 	if (variant === "node") {
 		test(`gzipDecompressStream second invocation works after first closes`, async (_t) => {
 			const input = gzipSync(compressibleBody);
@@ -833,8 +781,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(out2, compressibleBody);
 		});
 
-		// After an error event fires the push override must be restored
-		// (StringLiteral "error" → "").
 		test(`gzipDecompressStream works correctly after previous maxOutputSize error`, async (_t) => {
 			const input = gzipSync(compressibleBody);
 			try {
@@ -842,9 +788,7 @@ describe(`@datastream/compress (${variant})`, async () => {
 					createReadableStream(input),
 					gzipDecompressStream({ maxOutputSize: 10 }),
 				]);
-			} catch (_e) {
-				// expected
-			}
+			} catch (_e) {}
 			const out = await streamToString(
 				pipejoin([createReadableStream(input), gzipDecompressStream()]),
 			);
@@ -852,9 +796,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** maxOutputSize: null on compress streams (LogicalOperator || survivor) *** //
-	// `||` mutation: `null !== null || null !== void 0` = true → guardOutput(null) → throws.
-	// These tests verify null disables the guard on compress streams.
 	if (variant === "node") {
 		test(`gzipCompressStream maxOutputSize:null should NOT throw`, async (_t) => {
 			const output = await streamToString(
@@ -897,9 +838,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** zstd quality output size differs (kills ObjectLiteral `params ?? {}`) *** //
-	// With a 100KB repetitive body, quality:1 and quality:19 DO produce different sizes.
-	// `params ?? {}` loses the quality → both use default level → same output size.
 	if (variant === "node") {
 		const bigRepeat = "x".repeat(100_000);
 		test(`zstdCompressStream quality:1 differs from quality:19 on large body`, async (_t) => {
@@ -922,11 +860,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** AbortSignal honored on node compress/decompress streams *** //
-	// Aborting mid-flight must cause the pipeline to reject with an AbortError (the
-	// signal is forwarded into the underlying zlib stream); without signal support
-	// the pipeline would resolve successfully. A large payload + small chunkSize
-	// guarantees the stream is still in-flight when the signal fires.
 	const signalHonored = (e) =>
 		e.name === "AbortError" ||
 		e.code === "ABORT_ERR" ||
@@ -967,10 +900,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** maxOutputSize:null on decompress streams (ungated — works under both runs) *** //
-	// Covers the `maxOutputSize === null ? void 0 :` true-branch in each decompressor.
-	// The gzip variant is also covered inside the node-only block; these ungated
-	// copies ensure the branch fires in the browser run too.
 	test(`gzipDecompressStream maxOutputSize:null should NOT throw`, async (_t) => {
 		const input = gzipSync(compressibleBody);
 		const output = await streamToString(
@@ -1004,12 +933,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		strictEqual(output, compressibleBody);
 	});
 
-	// *** guardOutput Buffer.byteLength(chunk) fallback (ungated — both runs) *** //
-	// guardOutput overrides stream.push and sizes each chunk via
-	// `chunk.byteLength ?? Buffer.byteLength(chunk)`. zlib only ever pushes Buffers
-	// (which have .byteLength), so the Buffer.byteLength fallback is reached only
-	// when a non-BufferSource (a string) is pushed. We grab the guarded stream and
-	// push a string directly: byteLength is undefined, so the fallback runs.
 	nodeTest(
 		`gzipDecompressStream guardOutput sizes string chunks via Buffer.byteLength`,
 		(_t) => {
@@ -1037,14 +960,10 @@ describe(`@datastream/compress (${variant})`, async () => {
 		},
 	);
 
-	// String chunk larger than maxOutputSize must trip the guard: this exercises
-	// Buffer.byteLength(chunk) on the string-sizing path together with the
-	// `outputSize > maxOutputSize` true branch. push() returns false synchronously.
 	nodeTest(
 		`gzipDecompressStream guardOutput rejects oversized string chunk`,
 		(_t) => {
 			const stream = gzipDecompressStream({ maxOutputSize: 2 });
-			// Swallow the destroy() error so it does not surface as an unhandled error.
 			stream.on("error", () => {});
 			strictEqual(stream.push("abcdef"), false);
 			stream.destroy();
@@ -1106,9 +1025,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			}
 		});
 
-		// Brotli compress maxOutputSize — covers guardOutput invocation on the
-		// compress path (lines 39-41 in brotli.node.mjs) which is gated to node-only
-		// in the decompression-bomb block but must also fire in the browser run.
 		test(`brotliCompressStream should enforce maxOutputSize`, async (_t) => {
 			const streams = [
 				createReadableStream(compressibleBody),
@@ -1122,8 +1038,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			}
 		});
 
-		// brotliDecompressStream with params — covers the `params ?` branch in
-		// brotliDecompressStream (line 46 in brotli.node.mjs).
 		test(`brotliDecompressStream with params should round-trip`, async (_t) => {
 			const { constants: zlibConst } = await import("node:zlib");
 			const input = brotliCompressSync(compressibleBody);
@@ -1139,16 +1053,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** browser (*.browser.js) sources, exercised directly *** //
-	// `test:unit` runs without `--conditions=browser`, so `@datastream/compress/<algo>`
-	// resolves to the node build in this pass. To run the browser code paths here
-	// we import the *.browser.js sources by file URL (the same pattern used in
-	// packages/kafka), drive them through the browser build of @datastream/core,
-	// and -- because
-	// brotli-wasm's ESM entry loads its wasm via fetch (unavailable for file://
-	// URLs under Node) -- remap the `brotli-wasm` specifier to its synchronous
-	// node build via a module customization hook. The streaming class API is
-	// identical across brotli-wasm builds; only wasm loading differs.
 	{
 		const coreWebUrl = pathToFileURL(
 			`${repo}packages/core/index.browser.mjs`,
@@ -1166,8 +1070,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			import.meta.url,
 		);
 
-		// Under the browser run the package subpath is the built browser bundle; the
-		// node run imports the source directly so these paths are pinned there too.
 		const webModule = (file) =>
 			variant === "browser"
 				? import(`@datastream/compress/${file.replace(".browser.js", "")}`)
@@ -1179,12 +1081,8 @@ describe(`@datastream/compress (${variant})`, async () => {
 			webCore
 				.streamToBuffer(stream)
 				.then((buffer) => textDecoder.decode(buffer));
-		// node:zlib *Sync helpers return a Buffer that is a view into Node's shared
-		// allocation pool; copy it into a tightly-sized Uint8Array so the web
-		// ReadableStream feeds the exact compressed bytes (and nothing trailing).
 		const webInput = (buffer) => Uint8Array.from(buffer);
 
-		// *** brotli web *** //
 		const brotliWeb = await webModule("brotli.browser.js");
 
 		test("web-direct: brotliCompressStream should round-trip", async (_t) => {
@@ -1228,7 +1126,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 
 		test("web-direct: brotli should round-trip data larger than the output buffer", async (_t) => {
-			// 200KB > OUTPUT_SIZE (16KB) exercises the NeedsMoreOutput loop.
 			const big = "x".repeat(200_000);
 			const streams = [
 				webCore.createReadableStream(big),
@@ -1267,8 +1164,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 
 		test("web-direct: brotliDecompressStream should reject trailing bytes after stream end", async (_t) => {
 			const compressed = brotliCompressSync(compressibleBody);
-			// Append garbage after a complete brotli stream; a strict decoder must
-			// not silently drop it.
 			const withTrailing = new Uint8Array(compressed.byteLength + 4);
 			withTrailing.set(compressed, 0);
 			withTrailing.set([0x01, 0x02, 0x03, 0x04], compressed.byteLength);
@@ -1284,7 +1179,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			}
 		});
 
-		// *** gzip web *** //
 		const gzipWeb = await webModule("gzip.browser.js");
 
 		test("web-direct: gzipCompressStream should round-trip", async (_t) => {
@@ -1344,8 +1238,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			chunk instanceof ArrayBuffer || ArrayBuffer.isView(chunk);
 		const installStrictCompression = () => {
 			globalThis.CompressionStream = class {
-				// Mirror the real WHATWG signature `new CompressionStream(format)` so the
-				// identity stand-in has the same arity (the format is intentionally ignored).
 				constructor(_format) {
 					const ts = new TransformStream({
 						transform(chunk, controller) {
@@ -1375,9 +1267,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 				const gzipWebStrict = await import(
 					`${pathToFileURL(`${repo}packages/compress/gzip.browser.js`).href}?strict=gzip`
 				);
-				// Identity compressor => round-trips through the (real) decompress on
-				// the bytes the strict compressor accepted; the test fails with a
-				// TypeError if the factory forwards string chunks to CompressionStream.
 				const out = await webCore.streamToBuffer(
 					webCore.pipejoin([
 						webCore.createReadableStream(compressibleBody),
@@ -1421,7 +1310,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			}
 		});
 
-		// *** deflate web *** //
 		const deflateWeb = await webModule("deflate.browser.js");
 
 		test("web-direct: deflateCompressStream should round-trip", async (_t) => {
@@ -1487,10 +1375,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			}
 		});
 
-		// A browser DecompressionStream inflates each written chunk synchronously,
-		// so native.browser.js must feed it in 16KiB slices and let maxOutputSize
-		// stop the pipe between slices. A fake DecompressionStream records every
-		// chunk it is handed and expands it by `ratio`.
 		const withFakeDecompressionStream = async (ratio, fn) => {
 			const original = globalThis.DecompressionStream;
 			const writes = [];
@@ -1544,9 +1428,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			});
 		});
 
-		// The output stage's abort normally reaches the input stage by cancelling
-		// back through the codec; a codec whose sides are unlinked (stuck mid-chunk)
-		// never passes it on, so the input stage must honour the signal itself.
 		test("web-direct: deflateDecompressStream input stage aborts without the codec", async (_t) => {
 			const original = globalThis.DecompressionStream;
 			globalThis.DecompressionStream = class {
@@ -1611,7 +1492,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 
 		test("web-direct: deflateDecompressStream stops feeding a bomb at maxOutputSize", async (_t) => {
 			await withFakeDecompressionStream(1000, async (writes) => {
-				// 1MiB of input = 64 slices; each slice inflates to ~16MB.
 				await rejects(
 					webCore.pipeline([
 						webCore.createReadableStream([new Uint8Array(1024 * 1024)]),
@@ -1655,10 +1535,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** guardOutput internals (node *.node.mjs sources) *** //
-	// These tests pin the monkey-patched push guard installed by guardOutput and the
-	// limit-resolution branches in each <algo>{Compress,Decompress}Stream. They run
-	// only under --conditions=node because they import the node builds directly.
 	if (variant === "node") {
 		const compressFactories = {
 			gzip: gzipCompressStream,
@@ -1674,27 +1550,19 @@ describe(`@datastream/compress (${variant})`, async () => {
 		};
 
 		for (const [name, factory] of Object.entries(decompressFactories)) {
-			// guardOutput must size string chunks via Buffer.byteLength (the `??`
-			// fallback). With a tiny limit, pushing a string longer than the limit must
-			// trip the guard: push() returns false. The `&&` mutant makes outputSize
-			// NaN so the guard never trips and push() returns true.
 			test(`${name}DecompressStream guardOutput sizes string chunks and trips limit`, (_t) => {
 				const stream = factory({ maxOutputSize: 2 });
 				stream.on("error", () => {});
-				strictEqual(stream.push("abc"), false); // 3 bytes > 2 -> destroyed
+				strictEqual(stream.push("abc"), false);
 				stream.destroy();
 			});
 
-			// Within the limit, push() returns true and the guard does not trip.
 			test(`${name}DecompressStream guardOutput passes string chunks within limit`, (_t) => {
 				const stream = factory({ maxOutputSize: 1024 });
 				strictEqual(stream.push("abc"), true);
 				stream.destroy();
 			});
 
-			// restore() resets stream.push on 'error'. If restore is a no-op, or the
-			// 'error' listener is registered under the wrong event name, push stays the
-			// wrapped function.
 			test(`${name}DecompressStream restores push on error`, (_t) => {
 				const stream = factory({ maxOutputSize: 100 });
 				const wrapped = stream.push;
@@ -1704,7 +1572,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 				stream.destroy();
 			});
 
-			// restore() resets stream.push on 'close' too (separate listener).
 			test(`${name}DecompressStream restores push on close`, (_t) => {
 				const stream = factory({ maxOutputSize: 100 });
 				const wrapped = stream.push;
@@ -1713,9 +1580,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 				stream.destroy();
 			});
 
-			// maxOutputSize:null disables the limit entirely: NO guard is installed, so
-			// the stream carries no extra close/error listeners. The `false ? ...` and
-			// `if (limit !== undefined) -> if (true)` mutants would install the guard.
 			test(`${name}DecompressStream maxOutputSize:null installs no guard`, (_t) => {
 				const stream = factory({ maxOutputSize: null });
 				strictEqual(stream.listenerCount("close"), 0);
@@ -1723,7 +1587,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 				stream.destroy();
 			});
 
-			// The default (no maxOutputSize) DOES install the guard (DEFAULT ceiling).
 			test(`${name}DecompressStream default installs the guard`, (_t) => {
 				const stream = factory();
 				strictEqual(stream.listenerCount("close"), 1);
@@ -1733,8 +1596,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		}
 
 		for (const [name, factory] of Object.entries(compressFactories)) {
-			// No maxOutputSize on a compress stream => no guard => no extra listeners.
-			// The `maxOutputSize !== undefined -> true` mutant would install the guard.
 			test(`${name}CompressStream without maxOutputSize installs no guard`, (_t) => {
 				const stream = factory();
 				strictEqual(stream.listenerCount("close"), 0);
@@ -1742,7 +1603,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 				stream.destroy();
 			});
 
-			// maxOutputSize:null on a compress stream also installs no guard.
 			test(`${name}CompressStream maxOutputSize:null installs no guard`, (_t) => {
 				const stream = factory({ maxOutputSize: null });
 				strictEqual(stream.listenerCount("close"), 0);
@@ -1750,7 +1610,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 				stream.destroy();
 			});
 
-			// A finite maxOutputSize installs the guard.
 			test(`${name}CompressStream with maxOutputSize installs the guard`, (_t) => {
 				const stream = factory({ maxOutputSize: 1024 });
 				strictEqual(stream.listenerCount("close"), 1);
@@ -1759,9 +1618,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			});
 		}
 
-		// ObjectLiteral: brotli/zstd decompress forward `{ ...streamOptions, params }`
-		// when params are supplied. The `{}` mutant drops streamOptions, so chunkSize
-		// reverts to the zlib default (16384) instead of the supplied value.
 		test(`brotliDecompressStream forwards streamOptions when params given`, (_t) => {
 			const stream = brotliDecompressStream(
 				{ params: { [zlibConstants.BROTLI_DECODER_PARAM_LARGE_WINDOW]: 0 } },
@@ -1781,11 +1637,8 @@ describe(`@datastream/compress (${variant})`, async () => {
 		});
 	}
 
-	// *** browser build: brotli-wasm loops and limits, native limits *** //
 	if (variant === "browser") {
-		const bigBody = "0123456789".repeat(20_000); // 200KB: many 16KB output buffers
-		// Incompressible, so a single 128KB chunk overflows the 16KB output buffer on
-		// both compress and decompress and input is consumed across iterations.
+		const bigBody = "0123456789".repeat(20_000);
 		const noise = Uint8Array.from(randomBytes(128 * 1024));
 		const roundtrip = async (streams) => streamToString(pipejoin(streams));
 
@@ -1826,7 +1679,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 				]),
 				bigBody,
 			);
-			// Compressed by node:zlib, decompressed by brotli-wasm (multi-buffer output).
 			strictEqual(
 				await roundtrip([
 					createReadableStream(Uint8Array.from(brotliCompressSync(bigBody))),
@@ -1870,7 +1722,7 @@ describe(`@datastream/compress (${variant})`, async () => {
 			await pipeline([
 				createReadableStream(compressibleBody),
 				brotliDecompressStream({ maxOutputSize: null }),
-			]).catch(() => {}); // not brotli data; only the limit path matters here
+			]).catch(() => {});
 			const size = (
 				await streamToBuffer(
 					pipejoin([createReadableStream(bigBody), brotliCompressStream()]),
@@ -1942,8 +1794,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			);
 		});
 
-		// A live (never-aborted) signal must not disturb the data, and both the
-		// input and output stages must detach their abort listeners on completion.
 		test(`native streams honour a live AbortSignal and detach its listeners`, async () => {
 			const { signal } = new AbortController();
 			const calls = { add: 0, remove: 0 };
@@ -1967,11 +1817,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			deepStrictEqual(calls, { add: 2, remove: 2 });
 		});
 
-		// An errored stream never reaches flush(), so the error and cancel paths
-		// must detach too; otherwise a long-lived shared signal collects one
-		// listener per failed stream.
-		// The unended source errors while the input stage is still open, so only
-		// its cancel() can detach it.
 		const unended = (chunk) => {
 			const source = createReadableStream();
 			source.push(chunk);
@@ -2000,7 +1845,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 						gzipDecompressStream({ maxOutputSize }, { signal }),
 					]),
 				);
-				// cancellation reaches the input stage asynchronously
 				await new Promise((resolve) => setImmediate(resolve));
 				strictEqual(getEventListeners(signal, "abort").length, 0);
 			});
@@ -2017,7 +1861,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			await rejects(promise, (e) => e === reason);
 		});
 
-		// "resolved", the rejection reason, or "pending" a macrotask later.
 		const settled = (promise) =>
 			Promise.race([
 				promise.then(
@@ -2027,8 +1870,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 				new Promise((resolve) => setTimeout(() => resolve("pending"), 10)),
 			]);
 
-		// No chunk is in flight, so no transform/flush can notice the abort: only
-		// the stages' abort listeners can end the stream.
 		test(`native streams reject with the signal reason when aborted while idle`, async () => {
 			const controller = new AbortController();
 			const reason = new Error("stop");
@@ -2041,8 +1882,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			strictEqual(await settled(promise), reason);
 		});
 
-		// Once the input has ended (its listener detached) the output stage alone
-		// still errors its readable on abort.
 		test(`native output stage honours the signal after the input has ended`, async () => {
 			const controller = new AbortController();
 			const { signal } = controller;
@@ -2054,13 +1893,10 @@ describe(`@datastream/compress (${variant})`, async () => {
 			await writer.close();
 			strictEqual(getEventListeners(signal, "abort").length, 1);
 			controller.abort(reason);
-			// let the abort error the stage before the read pulls a chunk through
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			strictEqual(await settled(readable.getReader().read()), reason);
 		});
 
-		// An explicit null opts out of the default 256MiB ceiling. Asserted on the
-		// resolver: proving it end to end would need >256MiB of output.
 		test(`native decompress limit: null is unlimited, undefined is the default`, async () => {
 			const { resolveDecompressLimit, DEFAULT_DECOMPRESS_MAX_OUTPUT_SIZE } =
 				await import("./native.browser.js");
@@ -2071,8 +1907,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 			);
 		});
 
-		// A signal that is already aborted errors each stage at start, before it
-		// would attach a listener that could never fire (and never be removed).
 		for (const [name, factory] of [
 			["compress", gzipCompressStream],
 			["decompress", gzipDecompressStream],
@@ -2097,7 +1931,6 @@ describe(`@datastream/compress (${variant})`, async () => {
 		}
 	}
 
-	// *** Major: named exports only, zstd is node-only, limit errors are RangeError *** //
 	const streamNames = (algo) => [
 		`${algo}CompressStream`,
 		`${algo}DecompressStream`,

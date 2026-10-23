@@ -1,6 +1,5 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-/* global ReadableStream, TransformStream, WritableStream */
 import {
 	concatBytes,
 	createChunkDecoder,
@@ -18,10 +17,7 @@ const errorOnAbort = (controller, reason) =>
 	setTimeout(() => controller.error(reason));
 
 export const pipeline = async (streams, streamOptions = {}) => {
-	// Work on a copy so appending the terminal writable doesn't mutate the
-	// caller's array.
 	streams = [...streams];
-	// Ensure stream ends with only writable
 	const lastStream = streams[streams.length - 1];
 	if (isReadable(lastStream)) {
 		// Web Streams have no objectMode flag, so (unlike the Node build, which
@@ -42,8 +38,6 @@ export const pipeline = async (streams, streamOptions = {}) => {
 export const pipejoin = (streams) => join(streams);
 
 const join = (streams, pipeOptions) => {
-	// An initial value so the Promise check also runs for index 0 (a source
-	// passed without await, e.g. an async stream factory).
 	return streams.reduce((pipeline, stream, idx) => {
 		if (typeof stream.then === "function") {
 			throw new Error(`Promise instead of stream passed in at index ${idx}`);
@@ -51,8 +45,6 @@ const join = (streams, pipeOptions) => {
 		if (idx === 0) {
 			return stream;
 		}
-		// A WritableStream can only ever be the terminal; anywhere else
-		// pipeThrough would reject it anyway.
 		if (stream.getWriter) {
 			return pipeline.pipeTo(stream, pipeOptions);
 		}
@@ -74,7 +66,6 @@ export const result = async (streams) => {
 };
 
 export const streamToArray = async (stream, { maxBufferSize } = {}) => {
-	// undefined (the default) and null are both unlimited.
 	const limit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	const value = [];
 	let size = 0;
@@ -91,7 +82,6 @@ export const streamToArray = async (stream, { maxBufferSize } = {}) => {
 };
 
 export const streamToObject = async (stream, { maxBufferSize } = {}) => {
-	// undefined (the default) and null are both unlimited.
 	const limit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	const value = Object.create(null);
 	let size = 0;
@@ -108,13 +98,9 @@ export const streamToObject = async (stream, { maxBufferSize } = {}) => {
 };
 
 export const streamToString = async (stream, { maxBufferSize } = {}) => {
-	// undefined (the default) and null are both unlimited.
 	const limit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	const chunks = [];
 	let size = 0;
-	// A streaming decoder so multibyte sequences split across byte chunks
-	// decode correctly. Mirrors Node's Buffer.concat(...).toString() semantics:
-	// byte chunks are decoded as UTF-8, anything else is String()-ified.
 	const decoder = createChunkDecoder();
 	for await (const chunk of stream) {
 		size += chunk?.length ?? chunk?.byteLength ?? 0;
@@ -124,30 +110,20 @@ export const streamToString = async (stream, { maxBufferSize } = {}) => {
 			);
 		}
 		if (ArrayBuffer.isView(chunk) || chunk instanceof ArrayBuffer) {
-			// Decoded here: otherwise Array.join would coerce a typed array of
-			// raw bytes into comma-separated decimal byte codes.
 			chunks.push(decoder.decode(chunk));
 		} else {
-			// Array.prototype.join semantics (node parity): null/undefined -> "".
 			chunks.push(`${chunk ?? ""}`);
 		}
 	}
-	// Flush any bytes buffered by the streaming decoder.
 	chunks.push(decoder.flush());
 	return chunks.join("");
 };
 
-// Browser parity for the Node streamToBuffer. There is no Buffer in the web
-// runtime, so this returns a concatenated Uint8Array (Node's Buffer is itself
-// a Uint8Array, so byte consumers behave identically across builds).
 export const streamToBuffer = async (stream, { maxBufferSize } = {}) => {
-	// undefined (the default) and null are both unlimited.
 	const limit = maxBufferSize ?? Number.POSITIVE_INFINITY;
 	const value = [];
 	let size = 0;
 	for await (const chunk of stream) {
-		// Bytes keep their raw byte window (any TypedArray/DataView/ArrayBuffer);
-		// anything else is text. null/undefined -> empty (node parity).
 		const buf = ArrayBuffer.isView(chunk)
 			? new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
 			: chunk instanceof ArrayBuffer
@@ -164,8 +140,6 @@ export const streamToBuffer = async (stream, { maxBufferSize } = {}) => {
 	return concatBytes(value);
 };
 
-// `?.` so null/undefined return false instead of throwing (Node's instanceof
-// check safely returns false).
 export const isReadable = (stream) => {
 	return stream instanceof ReadableStream || !!stream?.readable;
 };
@@ -174,8 +148,6 @@ export const isWritable = (stream) => {
 	return stream instanceof WritableStream || !!stream?.writable;
 };
 
-// chunkSize is only createReadableStream's slice size, never a queuing
-// strategy size(): highWaterMark counts chunks, as in the node build.
 export const makeOptions = ({
 	highWaterMark,
 	signal,
@@ -191,18 +163,12 @@ export const makeOptions = ({
 
 export const createReadableStream = (input, streamOptions = {}) => {
 	const maxQueueSize = streamOptions.highWaterMark ?? 1024;
-	const chunkSize = streamOptions.chunkSize ?? 16_384; // 16KB
+	const chunkSize = streamOptions.chunkSize ?? 16_384;
 	if (chunkSize <= 0) throw new Error("chunkSize must be a positive number");
 	const { signal } = streamOptions;
 	const { readableStrategy } = makeOptions(streamOptions);
-	// Iterable inputs are pulled one next() per pull() (node's Readable.from
-	// parity): upstream (a paginated fetch, a DB cursor) only advances on
-	// demand, and cancel()/abort stop it via iterator.return().
 	let iterator;
 	let controller;
-	// Set on every terminal path so a late push() (after close/abort/cancel, or
-	// a second push(null)) is a no-op like node's, not "Controller is already
-	// closed".
 	let closed = false;
 	const cleanup = () => signal?.removeEventListener("abort", onAbort);
 	const close = () => {
@@ -233,10 +199,7 @@ export const createReadableStream = (input, streamOptions = {}) => {
 			start(c) {
 				controller = c;
 				if (signal?.aborted) return onAbort();
-				// cleanup() removes the listener on every terminal path.
 				signal?.addEventListener("abort", onAbort);
-				// No input => manual-push mode (mirrors the node build's undefined
-				// branch): leave the stream open for stream.push().
 				if (input === undefined) return;
 				if (typeof input === "string") {
 					let position = 0;
@@ -268,28 +231,18 @@ export const createReadableStream = (input, streamOptions = {}) => {
 				} else if (typeof input?.[Symbol.asyncIterator] === "function") {
 					iterator = input[Symbol.asyncIterator]();
 				} else if (typeof input?.[Symbol.iterator] === "function") {
-					// Arrays included: pulled lazily like node's Readable.from.
 					iterator = input[Symbol.iterator]();
 				} else {
-					// number/boolean/symbol/null/non-iterable object: a missing branch
-					// previously left the stream open forever (a silent hang). Error
-					// promptly to match Node's immediate throw.
 					fail(new TypeError("createReadableStream: unsupported input type"));
 				}
 			},
 			pull() {
-				// Manual-push mode has no iterator; push() enqueues directly.
 				if (!iterator) return;
-				// A sync iterator fills the queue to highWaterMark in one call: one
-				// next() per pull() round trip is ~3x slower on 10k-object arrays.
-				// An async next() is awaited, one per pull() (lazy, node parity).
 				let next;
 				do {
 					try {
 						next = iterator.next();
 					} catch (e) {
-						// A throwing source errors the stream without close()/cancel(),
-						// so drop the abort listener here too.
 						cleanup();
 						throw e;
 					}
@@ -312,9 +265,6 @@ export const createReadableStream = (input, streamOptions = {}) => {
 	stream.push = (chunk) => {
 		if (closed) return;
 		if (chunk === null) return close();
-		// desiredSize = highWaterMark - queued, so this mirrors the node build's
-		// readableLength check. (Node closes the controller synchronously in
-		// start(), so `controller` is always set here.)
 		const queueSize =
 			(readableStrategy.highWaterMark ?? 1) - controller.desiredSize;
 		if (queueSize >= maxQueueSize) {
@@ -328,8 +278,6 @@ export const createReadableStream = (input, streamOptions = {}) => {
 };
 
 export const createPassThroughStream = (passThrough, flush, streamOptions) => {
-	// Node parity: the default returns the chunk, so a thenable chunk's own
-	// rejection surfaces when transform() awaits it.
 	passThrough ??= (chunk) => chunk;
 	if (typeof flush !== "function") {
 		streamOptions = flush;
@@ -337,11 +285,6 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 	}
 	const { signal } = streamOptions ?? {};
 	const { writableStrategy, readableStrategy } = makeOptions(streamOptions);
-	// Track the abort listener so we can remove it once the stream settles;
-	// otherwise a shared signal accumulates a listener per constructed stream.
-	// cleanup() is idempotent and is invoked from EVERY terminal path (clean
-	// flush, downstream cancel, and a thrown transform/flush callback), not just
-	// the clean flush — otherwise an errored/cancelled stream leaks its listener.
 	let onAbort;
 	const cleanup = () => {
 		if (onAbort) {
@@ -354,7 +297,6 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 			start(controller) {
 				if (signal) {
 					onAbort = () => errorOnAbort(controller, signal.reason);
-					// Already aborted: the event won't fire again (node parity).
 					if (signal.aborted) return onAbort();
 					signal.addEventListener("abort", onAbort);
 				}
@@ -376,8 +318,6 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 					await flush();
 				}
 			},
-			// Called when the readable side is cancelled or the writable side is
-			// aborted/errored (e.g. a downstream sink errors).
 			cancel() {
 				cleanup();
 			},
@@ -395,8 +335,6 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 	}
 	const { signal } = streamOptions ?? {};
 	const { writableStrategy, readableStrategy } = makeOptions(streamOptions);
-	// See createPassThroughStream for why cleanup() is wired into every terminal
-	// path rather than only the clean flush.
 	let onAbort;
 	const cleanup = () => {
 		if (onAbort) {
@@ -409,7 +347,6 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 			start(controller) {
 				if (signal) {
 					onAbort = () => errorOnAbort(controller, signal.reason);
-					// Already aborted: the event won't fire again (node parity).
 					if (signal.aborted) return onAbort();
 					signal.addEventListener("abort", onAbort);
 				}
@@ -451,11 +388,8 @@ export const createWritableStream = (write, close, streamOptions) => {
 		streamOptions = close;
 		close = undefined;
 	}
-	// A no-op default keeps runAbort branch-free (identical in both builds).
 	const { signal, abort = () => {} } = streamOptions ?? {};
 	const { writableStrategy } = makeOptions(streamOptions);
-	// See createPassThroughStream for why cleanup() is wired into every terminal
-	// path (clean close, abort, and a thrown write/close callback).
 	let onAbort;
 	const cleanup = () => {
 		if (onAbort) {
@@ -474,8 +408,6 @@ export const createWritableStream = (write, close, streamOptions) => {
 						errorOnAbort(controller, signal.reason);
 						runAbort(abort, signal.reason);
 					};
-					// Already aborted: the event won't fire again, so run the same
-					// handler now (node parity: its Writable destroys immediately).
 					if (signal.aborted) return onAbort();
 					signal.addEventListener("abort", onAbort);
 				}
@@ -501,7 +433,6 @@ export const createWritableStream = (write, close, streamOptions) => {
 			// never run. Not called when our own write/close threw.
 			async abort(reason) {
 				cleanup();
-				// A fired signal already ran it from onAbort.
 				if (!signal?.aborted) await runAbort(abort, reason);
 			},
 		},
@@ -509,7 +440,6 @@ export const createWritableStream = (write, close, streamOptions) => {
 	);
 };
 
-// *** Shared helpers ***
 export {
 	concatBytes,
 	createChunkDecoder,

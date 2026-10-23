@@ -8,7 +8,6 @@ import type {
 
 export function azureCosmosQueryStream(
 	options: {
-		// Container
 		client: unknown;
 		query: string | { query: string; parameters?: unknown[] };
 		[key: string]: unknown;
@@ -18,7 +17,6 @@ export function azureCosmosQueryStream(
 
 export function azureCosmosUpsertItemStream(
 	options: {
-		// Container
 		client: unknown;
 		// Max retries of throttled (429) operations (default 10); null = unlimited.
 		retryMaxCount?: number | null;
@@ -28,7 +26,6 @@ export function azureCosmosUpsertItemStream(
 
 export function azureCosmosDeleteItemStream(
 	options: {
-		// Container
 		client: unknown;
 		// Max retries of throttled (429) operations (default 10); null = unlimited.
 		retryMaxCount?: number | null;

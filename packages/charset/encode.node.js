@@ -5,9 +5,6 @@ import { createTransformStream } from "@datastream/core";
 import iconv from "iconv-lite";
 
 export const charsetEncodeStream = ({ charset } = {}, streamOptions = {}) => {
-	// A missing/null charset means UTF-8; a given but unknown one is an error
-	// (like the web build), not a silent UTF-8 fallback. iconv-lite resolves
-	// labels itself (including ISO-8859-8-I), so no label mapping is needed.
 	const encoding = charset ?? "UTF-8";
 	if (!iconv.encodingExists(encoding)) {
 		throw new Error(`charsetEncodeStream: Unsupported encoding "${charset}"`);

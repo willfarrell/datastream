@@ -22,7 +22,6 @@ const settle = async () => {
 	}
 };
 
-// Bucket.file(name) -> File with createReadStream/createWriteStream.
 const fakeBucket = ({ readable, writable } = {}) => {
 	const bucket = {
 		calls: [],
@@ -78,7 +77,6 @@ const assertTypeError = (fn, message) =>
 	});
 
 describe(`@datastream/gcp/storage (${variant})`, () => {
-	// *** gcpStorageReadStream *** //
 	test(`gcpStorageReadStream streams the object bytes`, async () => {
 		const readable = Readable.from(["ab", "c"]);
 		const bucket = fakeBucket({ readable });
@@ -151,7 +149,6 @@ describe(`@datastream/gcp/storage (${variant})`, () => {
 		strictEqual(getEventListeners(controller.signal, "abort").length, 0);
 	});
 
-	// *** gcpStorageWriteStream *** //
 	test(`gcpStorageWriteStream resolves only once the upload is committed`, async () => {
 		const writable = fakeUpload();
 		const bucket = fakeBucket({ writable });
@@ -196,8 +193,6 @@ describe(`@datastream/gcp/storage (${variant})`, () => {
 		strictEqual(writable.committed, false);
 	});
 
-	// e.g. the resumable session could not be created: the SDK destroys its
-	// write stream on its own while the wrapper sits idle.
 	test(`gcpStorageWriteStream fails when the SDK stream errors on its own`, async () => {
 		const writable = fakeUpload();
 		const stream = gcpStorageWriteStream({
@@ -229,7 +224,6 @@ describe(`@datastream/gcp/storage (${variant})`, () => {
 
 	test(`gcpStorageWriteStream honours the SDK stream's backpressure`, async () => {
 		const writable = fakeUpload({ highWaterMark: 1 });
-		// One byte each, so a highWaterMark of 1 refuses every write until 'drain'.
 		const chunks = Array.from({ length: 20 }, (_, i) =>
 			String.fromCharCode(97 + i),
 		);
@@ -248,7 +242,6 @@ describe(`@datastream/gcp/storage (${variant})`, () => {
 			{ bucket: fakeBucket({ writable }), name: "a" },
 			{ signal: controller.signal },
 		);
-		// A source that never ends, so the upload is still open on abort.
 		const source = createReadableStream();
 		source.push("a");
 		const done = rejects(
@@ -295,7 +288,6 @@ describe(`@datastream/gcp/storage (${variant})`, () => {
 		deepStrictEqual(bucket.calls, []);
 	});
 
-	// *** gcpStorageListStream *** //
 	// Mirrors Bucket.getFiles({ autoPaginate: false }) (promisified): resolves
 	// [files, nextQuery, apiResponse]; nextQuery is a copy of the query plus
 	// the next pageToken, or null on the last page. Each file is a File with
@@ -361,7 +353,6 @@ describe(`@datastream/gcp/storage (${variant})`, () => {
 		);
 	});
 
-	// Backpressure parks the generator at a yield: destroy must stop paging.
 	test(`gcpStorageListStream destroy stops paging`, {
 		timeout: 1000,
 	}, async () => {
@@ -386,8 +377,6 @@ describe(`@datastream/gcp/storage (${variant})`, () => {
 		strictEqual(calls, 1);
 	});
 
-	// getFiles takes no AbortSignal: a destroy while a page request is in
-	// flight must still close the stream instead of waiting on the network.
 	test(`gcpStorageListStream destroy does not wait on an in-flight page`, {
 		timeout: 1000,
 	}, async () => {

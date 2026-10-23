@@ -15,7 +15,6 @@ export const awsGlueSchemaRegistryResolver = ({
 	cacheExpiry = -1,
 	maxCacheSize = 1000,
 } = {}) => {
-	// null = unbounded cache
 	const cacheCap = maxCacheSize ?? Number.POSITIVE_INFINITY;
 	// Cache the lazily-created client per resolver invocation (closure-local) so
 	// each resolver honors its own clientOptions. The module-level defaultClient
@@ -57,11 +56,6 @@ export const awsGlueSchemaRegistryResolver = ({
 		if (hit && (hit.expires === -1 || hit.expires > Date.now())) {
 			return hit.value;
 		}
-		// Drop the stale entry so it doesn't sit ahead of fresh keys in the
-		// Map's FIFO order: the refreshed key is set() at the tail below, keeping
-		// eviction true-FIFO. delete() is a no-op when the key is absent, so the
-		// (stale-only) hit is implied. In-flight dedup means nothing re-inserts
-		// the key before that set().
 		cache.delete(schemaVersionId);
 		const pending = inflight.get(schemaVersionId);
 		if (pending) return pending;
@@ -76,8 +70,6 @@ export const awsGlueSchemaRegistryResolver = ({
 					schemaDefinition: resp.SchemaDefinition,
 					dataFormat: resp.DataFormat,
 				};
-				// maxCacheSize <= 0 disables caching; evicting down to a non-positive
-				// cap would otherwise spin forever on an empty Map.
 				if (cacheCap > 0) {
 					evictIfNeeded();
 					cache.set(schemaVersionId, {

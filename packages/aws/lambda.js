@@ -6,8 +6,6 @@ import {
 } from "@aws-sdk/client-lambda";
 import { awsClientDefaults, awsReadableStream } from "./client.js";
 
-// Created on first use, so importing the module (or always passing a per-call
-// client) never constructs an unused SDK client.
 let defaultClient;
 const getDefaultClient = () =>
 	(defaultClient ??= new LambdaClient(awsClientDefaults));
@@ -15,8 +13,6 @@ export const awsLambdaSetClient = (lambdaClient) => {
 	defaultClient = lambdaClient;
 };
 
-// Routed through awsReadableStream so destroy() before natural end aborts the
-// in-flight InvokeWithResponseStream (signal also follows streamOptions.signal).
 export const awsLambdaReadableStream = (lambdaOptions, streamOptions = {}) =>
 	awsReadableStream(
 		(signal) => awsLambdaGenerator(lambdaOptions, signal),

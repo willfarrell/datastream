@@ -5,8 +5,6 @@
 // - https://caniuse.com/?search=CompressionStream
 // - not supported on firefox - https://bugzilla.mozilla.org/show_bug.cgi?id=1586639
 // - not supported in safari
-// Internal: not a package export, inlined into each *.browser.mjs bundle by
-// bin/esbuild.
 import { makeOptions } from "@datastream/core";
 
 // Default decompression output ceiling (256MiB) so that untrusted compressed
@@ -15,7 +13,6 @@ import { makeOptions } from "@datastream/core";
 export const DEFAULT_DECOMPRESS_MAX_OUTPUT_SIZE = 256 * 1024 * 1024;
 
 // Decompression is bounded by default; only an explicit null opts out.
-// null opts out of any ceiling; undefined gets the default one.
 export const resolveDecompressLimit = (maxOutputSize) =>
 	maxOutputSize === null
 		? Number.POSITIVE_INFINITY
@@ -29,8 +26,6 @@ export const toBytes = (chunk) =>
 	typeof chunk === "string" ? textEncoder.encode(chunk) : chunk;
 
 const SLICE_SIZE = 16_384;
-// Uint8Array view over any BufferSource so it can be sliced with subarray().
-// The WHATWG streams reject anything else with a TypeError; do so up front.
 const toView = (bytes) => {
 	if (ArrayBuffer.isView(bytes)) {
 		return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -53,9 +48,6 @@ const inputStage = (streamOptions) => {
 	const { signal } = streamOptions;
 	const { writableStrategy, readableStrategy } = makeOptions(streamOptions);
 	let onAbort;
-	// Called on every terminal path (flush, cancel), as in core's
-	// createTransformStream: an errored stream never reaches flush(), so a
-	// shared signal would otherwise keep one listener per failed stream.
 	const cleanup = () => {
 		if (onAbort) {
 			signal.removeEventListener("abort", onAbort);
@@ -88,7 +80,6 @@ const inputStage = (streamOptions) => {
 				cleanup();
 				signal?.throwIfAborted();
 			},
-			// Readable side cancelled (e.g. a later stage errored).
 			cancel: cleanup,
 		},
 		writableStrategy,
@@ -102,7 +93,6 @@ const outputStage = (maxOutputSize, label, streamOptions) => {
 	const { signal } = streamOptions;
 	let onAbort;
 	let outputSize = 0;
-	// See inputStage: also run when this stage errors itself.
 	const cleanup = () => {
 		if (onAbort) {
 			signal.removeEventListener("abort", onAbort);
@@ -132,14 +122,11 @@ const outputStage = (maxOutputSize, label, streamOptions) => {
 			controller.enqueue(chunk);
 		},
 		flush: cleanup,
-		// Writable side aborted (e.g. corrupt input errored the decompressor).
 		cancel: cleanup,
 	});
 };
 
 const wrap = (compressor, maxOutputSize, streamOptions, label) => {
-	// Explicit null streamOptions (default params only cover undefined) means
-	// none, as in the node build.
 	streamOptions ??= {};
 	const input = inputStage(streamOptions);
 	const output = outputStage(maxOutputSize, label, streamOptions);

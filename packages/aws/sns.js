@@ -3,11 +3,8 @@
 import { PublishBatchCommand, SNSClient } from "@aws-sdk/client-sns";
 import { awsBatchEntriesStream, awsClientDefaults } from "./client.js";
 
-// SNS PublishBatch aggregate payload limit (256KiB).
 const SNS_MAX_BATCH_BYTES = 262_144;
 
-// Created on first use, so importing the module (or always passing a per-call
-// client) never constructs an unused SDK client.
 let defaultClient;
 const getDefaultClient = () =>
 	(defaultClient ??= new SNSClient(awsClientDefaults));

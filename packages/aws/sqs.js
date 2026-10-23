@@ -13,11 +13,8 @@ import {
 	awsReadableStream,
 } from "./client.js";
 
-// SQS SendMessageBatch aggregate payload limit (1MiB).
 const SQS_MAX_BATCH_BYTES = 1_048_576;
 
-// Created on first use, so importing the module (or always passing a per-call
-// client) never constructs an unused SDK client.
 let defaultClient;
 const getDefaultClient = () =>
 	(defaultClient ??= new SQSClient(awsClientDefaults));
@@ -45,8 +42,6 @@ export const awsSQSReceiveMessageStream = async (
 			}
 			expectMore = pollingActive || messages.length > 0;
 			if (pollingActive && messages.length === 0 && pollingDelay > 0) {
-				// Abortable idle wait: rejects immediately and clears the timer
-				// when the stream is destroyed or streamOptions.signal aborts mid-delay.
 				await timeout(pollingDelay, { signal });
 			}
 		}

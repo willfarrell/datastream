@@ -5,10 +5,6 @@
 import { isRedirect } from "@sveltejs/kit";
 import tardisec from "../../.tardisec.json" with { type: "json" };
 
-// Kit encodes a redirect differently for these two, so let its own handler build
-// those responses: a client-side navigation reads a `__data.json` redirect as JSON,
-// and a fetch-submitted form action reads an `x-sveltekit-action` one. Both are 200s
-// the browser never follows, so neither is a scan surface.
 const kitOwnsRedirect = (event) =>
 	event.url?.pathname?.endsWith("/__data.json") ||
 	event.request?.headers?.get("x-sveltekit-action") === "true";
@@ -16,10 +12,6 @@ const kitOwnsRedirect = (event) =>
 const tardisecMiddleware = async ({ event, resolve }) => {
 	// const { url, params, cookies } = event;
 
-	// redirect() throws, and a throw unwinds past every hook wrapping the thrower
-	// straight to Kit's own handler, so the 3xx shipped with none of these headers and
-	// every scan of `/` graded the redirect rather than the page it points at. Move this
-	// hook first in the sequence() if another hook is ever added that redirects.
 	let response;
 	try {
 		response = await resolve(event);

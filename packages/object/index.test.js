@@ -32,14 +32,12 @@ import {
 } from "./helpers.js";
 
 describe(`@datastream/object (${variant})`, () => {
-	// *** Major-version API *** //
 	test(`exports no default and no objectReadableStream`, async (_t) => {
 		const mod = await import("@datastream/object");
 		strictEqual(mod.default, undefined);
 		strictEqual(mod.objectReadableStream, undefined);
 	});
 
-	// *** objectCountStream *** //
 	test(`objectCountStream should count length of chunks`, async (_t) => {
 		const input = ["1", "2", "3"];
 		const streams = [createReadableStream(input), objectCountStream()];
@@ -67,7 +65,6 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(value, 3);
 	});
 
-	// *** objectBatchStream *** //
 	test(`objectBatchStream should batch chunks by key`, async (_t) => {
 		const input = [
 			{ a: "1", b: "2" },
@@ -126,7 +123,6 @@ describe(`@datastream/object (${variant})`, () => {
 		]);
 	});
 
-	// *** objectPivotLongToWideStream *** //
 	test(`objectPivotLongToWideStream should pivot chunks to wide`, async (_t) => {
 		const input = [
 			{ a: "1", b: "l", v: 1, u: "m" },
@@ -169,7 +165,6 @@ describe(`@datastream/object (${variant})`, () => {
 		}
 	});
 
-	// *** objectPivotWideToLongStream *** //
 	test(`objectPivotWideToLongStream should pivot chunks to wide`, async (_t) => {
 		const input = [
 			{ a: "1", "l m": 1, "w m": 2 },
@@ -213,7 +208,6 @@ describe(`@datastream/object (${variant})`, () => {
 		]);
 	});
 
-	// *** objectKeyValueStream *** //
 	test(`objectKeyValueStream should transform to {chunk[key]:chunk[value]}`, async (_t) => {
 		const input = [{ a: "1", b: "2", c: "3" }];
 		const streams = [
@@ -227,7 +221,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ 1: "2" }]);
 	});
 
-	// *** objectKeyValuesStream *** //
 	test(`objectKeyValuesStream should transform to {chunk[key]:chunk}`, async (_t) => {
 		const input = [{ a: "1", b: "2", c: "3" }];
 		const streams = [
@@ -254,7 +247,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ 1: { b: "2" } }]);
 	});
 
-	// *** objectSkipConsecutiveDuplicates *** //
 	test(`objectSkipConsecutiveDuplicatesStream should skip consecutive duplicates`, async (_t) => {
 		const input = [{ a: 1 }, { b: 2 }, { b: 2 }, { c: 3 }];
 		const streams = [
@@ -268,7 +260,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ a: 1 }, { b: 2 }, { c: 3 }]);
 	});
 
-	// *** objectPivotLongToWideStream with custom delimiter *** //
 	test(`objectPivotLongToWideStream should use custom delimiter`, async (_t) => {
 		const input = [
 			{ a: "1", b: "l", u: "m", v: 1 },
@@ -290,7 +281,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ a: "1", "l-m": 1, "w-m": 2 }]);
 	});
 
-	// *** objectKeyJoinStream *** //
 	test(`objectKeyJoinStream should join keys into new key`, async (_t) => {
 		const input = [{ firstName: "John", lastName: "Doe", age: 30 }];
 		const streams = [
@@ -319,7 +309,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ fullName: "John,Doe" }]);
 	});
 
-	// *** objectKeyMapStream *** //
 	test(`objectKeyMapStream should map keys to new names`, async (_t) => {
 		const input = [{ a: 1, b: 2, c: 3 }];
 		const streams = [
@@ -333,7 +322,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ x: 1, y: 2, c: 3 }]);
 	});
 
-	// *** objectValueMapStream *** //
 	test(`objectValueMapStream should map values using lookup`, async (_t) => {
 		const input = [{ status: "active" }, { status: "inactive" }];
 		const streams = [
@@ -350,7 +338,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ status: 1 }, { status: 0 }]);
 	});
 
-	// *** objectPickStream *** //
 	test(`objectPickStream should pick specified keys`, async (_t) => {
 		const input = [{ a: 1, b: 2, c: 3 }];
 		const streams = [
@@ -364,7 +351,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ a: 1, c: 3 }]);
 	});
 
-	// *** objectFromEntriesStream *** //
 	test(`objectFromEntriesStream should transform array to object with keys`, async (_t) => {
 		const input = [[1, 2, 3]];
 		const streams = [
@@ -410,7 +396,6 @@ describe(`@datastream/object (${variant})`, () => {
 		]);
 	});
 
-	// *** objectOmitStream *** //
 	test(`objectOmitStream should omit specified keys`, async (_t) => {
 		const input = [{ a: 1, b: 2, c: 3 }];
 		const streams = [
@@ -424,7 +409,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ a: 1, c: 3 }]);
 	});
 
-	// *** objectToEntriesStream *** //
 	test(`objectToEntriesStream should transform object to array with keys`, async (_t) => {
 		const input = [{ a: 1, b: 2, c: 3 }];
 		const streams = [
@@ -483,7 +467,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [[1, undefined, 3]]);
 	});
 
-	// *** objectSkipConsecutiveDuplicatesStream shallow equality regression *** //
 	test(`objectSkipConsecutiveDuplicatesStream should use shallow equality by default`, async (_t) => {
 		const input = [{ a: 1 }, { a: 1 }, { a: 2 }, { a: 2 }, { a: 1 }];
 		const streams = [
@@ -513,9 +496,6 @@ describe(`@datastream/object (${variant})`, () => {
 		]);
 	});
 
-	// deepEqual used to be JSON.stringify(a) === JSON.stringify(b), so records that
-	// were structurally identical but had a different key order (routine after
-	// JSON.parse or objectPickStream) were not recognised as duplicates.
 	test(`objectSkipConsecutiveDuplicatesStream isNestedObject ignores key order`, async (_t) => {
 		const input = [
 			{ a: 1, b: { c: 2, d: 3 } },
@@ -534,7 +514,6 @@ describe(`@datastream/object (${variant})`, () => {
 		]);
 	});
 
-	// *** objectPivotWideToLongStream shallow copy regression *** //
 	test(`objectPivotWideToLongStream should not mutate input chunks`, async (_t) => {
 		const input = [{ id: 1, x: 10, y: 20 }];
 		const original = { ...input[0] };
@@ -551,7 +530,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(input[0], original);
 	});
 
-	// *** objectPivotWideToLongStream isNestedObject deep clone *** //
 	test(`objectPivotWideToLongStream should deep clone when isNestedObject is true`, async (_t) => {
 		const input = [{ id: 1, a: { x: 10 }, b: { x: 20 } }];
 		const streams = [
@@ -573,7 +551,6 @@ describe(`@datastream/object (${variant})`, () => {
 		]);
 	});
 
-	// *** objectKeyJoinStream isNestedObject deep clone *** //
 	test(`objectKeyJoinStream should deep clone when isNestedObject is true`, async (_t) => {
 		const input = [{ firstName: "John", lastName: "Doe", nested: { v: 1 } }];
 		const streams = [
@@ -591,7 +568,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ nested: { v: 1 }, fullName: "John Doe" }]);
 	});
 
-	// *** objectKeyJoinStream shallow copy regression *** //
 	test(`objectKeyJoinStream should not mutate input chunks`, async (_t) => {
 		const input = [{ first: "a", last: "b", other: "c" }];
 		const original = { ...input[0] };
@@ -607,7 +583,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(input[0], original);
 	});
 
-	// *** objectBatchStream maxBatchSize *** //
 	test(`objectBatchStream should enforce maxBatchSize`, async (_t) => {
 		const { ok } = await import("node:assert");
 		const input = Array.from({ length: 10 }, (_, i) => ({ a: "same", b: i }));
@@ -619,7 +594,6 @@ describe(`@datastream/object (${variant})`, () => {
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
 
-		// All items share key "same", but batches should be split at size 3
 		for (const batch of output) {
 			ok(batch.length <= 3);
 		}
@@ -629,10 +603,7 @@ describe(`@datastream/object (${variant})`, () => {
 		);
 	});
 
-	// *** objectBatchStream collision-proof grouping key *** //
 	test(`objectBatchStream should keep distinct key tuples in separate batches when values contain spaces`, async (_t) => {
-		// ["a b","c"] and ["a","b c"] both join to "a b c" with space-delimiter —
-		// they must produce two separate batches, not one merged batch.
 		const input = [
 			{ x: "a b", y: "c" },
 			{ x: "a", y: "b c" },
@@ -648,7 +619,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [[{ x: "a b", y: "c" }], [{ x: "a", y: "b c" }]]);
 	});
 
-	// *** objectValueMapStream preserves unmapped keys *** //
 	test(`objectValueMapStream should preserve the original value for keys not present in the map`, async (_t) => {
 		const input = [{ status: "active" }, { status: "unknown" }];
 		const streams = [
@@ -662,11 +632,9 @@ describe(`@datastream/object (${variant})`, () => {
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
 
-		// "unknown" is not in the map — original value must be preserved
 		deepStrictEqual(output, [{ status: 1 }, { status: "unknown" }]);
 	});
 
-	// *** objectPivotLongToWideStream should not mutate input *** //
 	test(`objectPivotLongToWideStream should not mutate input chunks`, async (_t) => {
 		const input = [
 			[
@@ -685,7 +653,6 @@ describe(`@datastream/object (${variant})`, () => {
 		const stream = pipejoin(streams);
 		await streamToArray(stream);
 
-		// Original input[0][0] should be unchanged
 		deepStrictEqual(input[0][0], originalFirst);
 	});
 
@@ -709,7 +676,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ id: 1, value: 5, metric: 7, cost: 9 }]);
 	});
 
-	// *** objectValueMapStream should not mutate input *** //
 	test(`objectValueMapStream should not mutate input chunks`, async (_t) => {
 		const input = [{ status: "active", id: 1 }, { status: "unknown" }];
 		const streams = [
@@ -744,7 +710,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(input[0], JSON.parse('{"__proto__":"a","x":{"y":1}}'));
 	});
 
-	// *** objectBatchStream should produce no output on empty input *** //
 	test(`objectBatchStream should produce no output when input is empty`, async (_t) => {
 		const streams = [
 			createReadableStream([]),
@@ -755,7 +720,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, []);
 	});
 
-	// *** objectToEntriesStream should produce empty arrays when keys is empty *** //
 	test(`objectToEntriesStream should produce empty array when keys is empty`, async (_t) => {
 		const input = [{ a: 1, b: 2 }];
 		const streams = [
@@ -767,7 +731,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [[]]);
 	});
 
-	// *** objectPickStream inherited keys *** //
 	test(`objectPickStream should not pick keys that only exist on Object.prototype`, async (_t) => {
 		const input = [
 			{ a: 1, constructor: 2, toString: 3 },
@@ -786,7 +749,6 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(output[1].isAdmin, undefined);
 	});
 
-	// *** objectOmitStream inherited keys *** //
 	test(`objectOmitStream should keep own keys whose names exist on Object.prototype`, async (_t) => {
 		const input = [{ a: 1, b: 2, toString: 3, valueOf: 4 }];
 		const streams = [
@@ -800,7 +762,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ a: 1, toString: 3, valueOf: 4 }]);
 	});
 
-	// *** objectBatchStream maxBatchSize empty batch *** //
 	test(`objectBatchStream should not emit empty batches after a maxBatchSize flush`, async (_t) => {
 		const input = [{ k: 1 }, { k: 1 }, { k: 2 }, { k: 2 }];
 		const streams = [
@@ -817,7 +778,6 @@ describe(`@datastream/object (${variant})`, () => {
 		]);
 	});
 
-	// *** objectKeyMapStream inherited keys *** //
 	test(`objectKeyMapStream should not rename keys that only exist on Object.prototype`, async (_t) => {
 		const input = [
 			{ a: 1, constructor: 2, toString: 3 },
@@ -839,7 +799,6 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(output[1].isAdmin, undefined);
 	});
 
-	// *** objectPivotLongToWideStream reserved pivot value *** //
 	test(`objectPivotLongToWideStream should keep a "__proto__" pivot value as an own column`, async (_t) => {
 		const input = [
 			{ id: 1, k: "__proto__", v: { polluted: true } },
@@ -866,7 +825,6 @@ describe(`@datastream/object (${variant})`, () => {
 		});
 	});
 
-	// *** objectFromEntriesStream reserved key *** //
 	test(`objectFromEntriesStream should keep a "__proto__" key as an own property`, async (_t) => {
 		const input = [[{ polluted: true }, 2]];
 		const streams = [
@@ -883,7 +841,6 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(output[0].polluted, undefined);
 	});
 
-	// *** objectPickStream reserved key *** //
 	test(`objectPickStream should pick a "__proto__" key as an own property`, async (_t) => {
 		const input = [JSON.parse('{"a":1,"__proto__":{"isAdmin":true}}')];
 		const streams = [
@@ -898,7 +855,6 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(output[0].isAdmin, undefined);
 	});
 
-	// *** objectOmitStream reserved key *** //
 	test(`objectOmitStream should keep a "__proto__" key as an own property`, async (_t) => {
 		const input = [JSON.parse('{"a":1,"__proto__":{"isAdmin":true}}')];
 		const streams = [
@@ -913,7 +869,6 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(output[0].isAdmin, undefined);
 	});
 
-	// *** objectKeyValuesStream reserved key *** //
 	test(`objectKeyValuesStream should keep a "__proto__" value key as an own property`, async (_t) => {
 		const input = [JSON.parse('{"id":"k","__proto__":{"isAdmin":true}}')];
 		const streams = [
@@ -930,7 +885,6 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(output[0].k.isAdmin, undefined);
 	});
 
-	// *** objectKeyJoinStream reserved key *** //
 	test(`objectKeyJoinStream should keep a "__proto__" joined key as an own property`, async (_t) => {
 		const input = [{ a: "1", b: "2", c: 3 }];
 		const streams = [
@@ -947,7 +901,6 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [JSON.parse('{"c":3,"__proto__":"1-2"}')]);
 	});
 
-	// *** objectSkipConsecutiveDuplicatesStream differing undefined keys *** //
 	test(`objectSkipConsecutiveDuplicatesStream should keep rows whose keys differ but read undefined`, async (_t) => {
 		const input = [{ x: undefined }, { y: undefined }];
 		const streams = [
@@ -962,7 +915,6 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(shallowEqual({ x: undefined }, { y: undefined }), false);
 	});
 
-	// *** objectBatchStream maxBatchSize: undefined and null are unlimited *** //
 	test(`objectBatchStream maxBatchSize null keeps a whole group in one batch`, async (_t) => {
 		const input = Array.from({ length: 5 }, (_, i) => ({ a: "same", b: i }));
 		for (const maxBatchSize of [null, undefined]) {
@@ -976,7 +928,6 @@ describe(`@datastream/object (${variant})`, () => {
 		}
 	});
 
-	// *** Clone / equality helpers (moved here from @datastream/core) *** //
 	test(`shallowClone copies own enumerable properties`, () => {
 		const src = { a: 1, b: { c: 2 } };
 		const copy = shallowClone(src);
@@ -1022,8 +973,6 @@ describe(`@datastream/object (${variant})`, () => {
 		strictEqual(deepEqual === structuralDeepEqual, variant === "browser");
 	});
 
-	// The platform deepEqual (node:util isDeepStrictEqual on node) and the
-	// structural fallback the browser build uses must agree on these cases.
 	for (const [name, equal] of [
 		["platform", deepEqual],
 		["structural", structuralDeepEqual],
@@ -1031,7 +980,6 @@ describe(`@datastream/object (${variant})`, () => {
 		test(`deepEqual (${name}) compares structurally`, () => {
 			strictEqual(equal({ a: { b: 1 } }, { a: { b: 1 } }), true);
 			strictEqual(equal({ a: { b: 1 } }, { a: { b: 2 } }), false);
-			// The cases a JSON.stringify comparison gets wrong.
 			strictEqual(equal({ a: 1, b: 2 }, { b: 2, a: 1 }), true);
 			strictEqual(equal({ a: undefined }, {}), false);
 			strictEqual(equal(Number.NaN, Number.NaN), true);
