@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/monorepo",
-	"version": "0.8.0",
+	"version": "0.9.0",
 	"description": "Streams made easy.",
 	"private": true,
 	"type": "module",

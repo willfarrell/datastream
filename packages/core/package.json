@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/core",
-	"version": "0.8.0",
+	"version": "0.9.0",
 	"description": "Stream creation utilities and pipeline functions for Web Streams API and Node.js streams",
 	"type": "module",
 	"sideEffects": false,
@@ -64,6 +64,6 @@
 	"homepage": "https://datastream.js.org",
 	"dependencies": {},
 	"devDependencies": {
-		"@datastream/object": "0.8.0"
+		"@datastream/object": "0.9.0"
 	}
 }

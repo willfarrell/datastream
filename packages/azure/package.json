@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/azure",
-	"version": "0.8.0",
+	"version": "0.9.0",
 	"description": "Azure service streaming integrations for Blob Storage, Queue Storage, Service Bus, Event Hubs, and Cosmos DB, plus Entra ID auth for the Event Hubs Kafka endpoint",
 	"type": "module",
 	"sideEffects": false,
@@ -78,7 +78,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.8.0"
+		"@datastream/core": "0.9.0"
 	},
 	"peerDependencies": {
 		"@azure/cosmos": "^4.3.0",
