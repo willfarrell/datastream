@@ -135,14 +135,13 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           # Same semantics as the local `test:sast:trivy` script. The action has no
-          # input for these flags; trivy reads TRIVY_<FLAG> env vars.
-          # Keep TRIVY_IGNORED_LICENSES in sync with root package.json.
+          # input for this flag; trivy reads TRIVY_<FLAG> env vars.
           TRIVY_INCLUDE_DEV_DEPS: "true"
-          TRIVY_IGNORED_LICENSES: 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT,MPL-2.0,BlueOak-1.0.0,Unlicense,Python-2.0,LGPL-3.0-or-later
         with:
           scanners: license
           scan-type: fs
           scan-ref: .
+          trivy-config: .github/trivy.yml # license policy, shared with `npm run test:sast:trivy`
           hide-progress: true
           exit-code: 1
           format: table
