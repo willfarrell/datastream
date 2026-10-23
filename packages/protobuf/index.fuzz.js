@@ -28,6 +28,7 @@ const catchError = (input, e) => {
 		/invalid wire type/i.test(e.message) ||
 		/invalid tag/i.test(e.message) ||
 		/invalid varint/i.test(e.message) ||
+		/invalid length encoding/i.test(e.message) ||
 		/invalid end group/i.test(e.message) ||
 		/index out of range/i.test(e.message) ||
 		/max depth exceeded/i.test(e.message) ||
