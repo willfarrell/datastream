@@ -202,14 +202,14 @@ describe(`@datastream/ipfs (${variant})`, () => {
 		`ipfsAddStream should terminate node.add source when the stream is destroyed`,
 		async () => {
 			let iterationSettled = false;
-			let iterationError;
+			const caught = {};
 			const node = {
 				async add(source) {
 					try {
 						for await (const _chunk of source) {
 						}
 					} catch (e) {
-						iterationError = e;
+						caught.error = e;
 					} finally {
 						iterationSettled = true;
 					}
@@ -231,7 +231,7 @@ describe(`@datastream/ipfs (${variant})`, () => {
 				new Promise((resolve) => setTimeout(() => resolve(false), 1000)),
 			]);
 			strictEqual(settled, true);
-			strictEqual(iterationError instanceof Error, true);
+			strictEqual(caught.error instanceof Error, true);
 		},
 	);
 
@@ -615,14 +615,14 @@ describe(`@datastream/ipfs (${variant})`, () => {
 	nodeTest(
 		`ipfsAddStream teardown without argument should set a fallback error`,
 		async () => {
-			let sourceError;
+			const caught = {};
 			const node = {
 				async add(source) {
 					try {
 						for await (const _chunk of source) {
 						}
 					} catch (e) {
-						sourceError = e;
+						caught.error = e;
 					}
 					return { cid: "QmFallback" };
 				},
@@ -633,7 +633,7 @@ describe(`@datastream/ipfs (${variant})`, () => {
 			addStream.destroy();
 			await new Promise((resolve) => setTimeout(resolve, 50));
 			strictEqual(
-				sourceError instanceof Error,
+				caught.error instanceof Error,
 				true,
 				"source should throw a real Error even when teardown called without argument",
 			);
@@ -643,14 +643,14 @@ describe(`@datastream/ipfs (${variant})`, () => {
 	nodeTest(
 		`ipfsAddStream teardown fallback error message should describe the cause`,
 		async () => {
-			let sourceError;
+			const caught = {};
 			const node = {
 				async add(source) {
 					try {
 						for await (const _chunk of source) {
 						}
 					} catch (e) {
-						sourceError = e;
+						caught.error = e;
 					}
 					return { cid: "QmMsg" };
 				},
@@ -660,11 +660,11 @@ describe(`@datastream/ipfs (${variant})`, () => {
 			await new Promise((resolve) => setTimeout(resolve, 10));
 			addStream.destroy();
 			await new Promise((resolve) => setTimeout(resolve, 50));
-			strictEqual(sourceError instanceof Error, true);
+			strictEqual(caught.error instanceof Error, true);
 			strictEqual(
-				sourceError.message.includes("ipfsAddStream destroyed"),
+				caught.error.message.includes("ipfsAddStream destroyed"),
 				true,
-				`expected "ipfsAddStream destroyed" in message, got: "${sourceError?.message}"`,
+				`expected "ipfsAddStream destroyed" in message, got: "${caught.error?.message}"`,
 			);
 		},
 	);
@@ -673,14 +673,14 @@ describe(`@datastream/ipfs (${variant})`, () => {
 		`ipfsAddStream should settle node.add source when stream is closed without error`,
 		async () => {
 			let iterationSettled = false;
-			let iterationError;
+			const caught = {};
 			const node = {
 				async add(source) {
 					try {
 						for await (const _chunk of source) {
 						}
 					} catch (e) {
-						iterationError = e;
+						caught.error = e;
 					} finally {
 						iterationSettled = true;
 					}
@@ -706,8 +706,8 @@ describe(`@datastream/ipfs (${variant})`, () => {
 				true,
 				"node.add source must settle when stream is closed without error (close event)",
 			);
-			strictEqual(iterationError instanceof Error, true);
-			strictEqual(iterationError.message, "ipfsAddStream destroyed");
+			strictEqual(caught.error instanceof Error, true);
+			strictEqual(caught.error.message, "ipfsAddStream destroyed");
 		},
 	);
 

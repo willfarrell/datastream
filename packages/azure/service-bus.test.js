@@ -286,6 +286,41 @@ describe(`@datastream/azure/service-bus (${variant})`, () => {
 		});
 	}
 
+	test(`azureServiceBusReceiveMessagesStream waits pollingDelay after an empty page`, async (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout"] });
+		const client = receiver([[], [{ body: 1 }], []]);
+		const controller = new AbortController();
+		t.after(() => controller.abort());
+		const stream = await azureServiceBusReceiveMessagesStream(
+			{ client, pollingActive: true, pollingDelay: 60_000 },
+			{ signal: controller.signal },
+		);
+		const messages = [];
+		let error;
+		const done = (async () => {
+			for await (const message of stream) {
+				messages.push(message);
+			}
+		})().catch((e) => {
+			error = e;
+		});
+		await settle();
+		strictEqual(client.calls.length, 1);
+		t.mock.timers.tick(59_999);
+		await settle();
+		strictEqual(client.calls.length, 1);
+		t.mock.timers.tick(1);
+		await settle();
+		strictEqual(client.calls.length, 3);
+		deepStrictEqual(messages, [{ body: 1 }]);
+		strictEqual(error, undefined);
+		controller.abort();
+		await settle();
+		await done;
+		strictEqual(error instanceof Error, true);
+		strictEqual(client.calls.length, 3);
+	});
+
 	test(`azureServiceBusSendMessagesStream destroy attaches unsent messages`, async () => {
 		const client = {
 			createMessageBatch: async () => ({ count: 0, tryAddMessage: () => true }),

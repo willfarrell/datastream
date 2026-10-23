@@ -40,9 +40,11 @@ const supportedCharsets = [
 	"GB18030",
 ];
 const encodeCharsets = variant === "browser" ? ["UTF-8"] : supportedCharsets;
-// The browser build runs on Node's ICU TextDecoder here, whose GB18030 decoder
-// throws on some invalid input even in non-fatal mode; real browsers substitute
-// U+FFFD.
+// The browser build runs on Node's ICU TextDecoder here, whose GB18030 and
+// EUC-JP decoders throw on some invalid input split across chunks (e.g. EUC-JP
+// [0x8f, 0xa1] then [0x00]) even in non-fatal mode; real browsers substitute
+// U+FFFD. The node variant still fuzzes both through iconv-lite.
+const icuStreamingBroken = ["GB18030", "EUC-JP"];
 const webDecodable = (charset) => {
 	try {
 		new TextDecoder(charset);
@@ -54,7 +56,8 @@ const webDecodable = (charset) => {
 const decodeCharsets =
 	variant === "browser"
 		? supportedCharsets.filter(
-				(charset) => charset !== "GB18030" && webDecodable(charset),
+				(charset) =>
+					!icuStreamingBroken.includes(charset) && webDecodable(charset),
 			)
 		: supportedCharsets;
 

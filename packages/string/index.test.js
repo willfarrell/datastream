@@ -435,6 +435,7 @@ describe(`@datastream/string (${variant})`, () => {
 		const cases = [
 			[/(a)(b)?/g, "[$$|$&|$1|$01|$2|$0|$00|$3|$05|$20|$12|$<x>|$<$&>|$<]"],
 			[/(?<x>a)(?<y>b)?/g, "[$<x>|$<y>|$<z>|$<>|$<x]"],
+			[/(?<a$1>a)/g, "[$<a$1>|x>$<a$1]"],
 			[/(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)?/g, "[$10|$11|$1x]"],
 			["a", "[$1|$&|$<x>]"],
 		];
@@ -448,6 +449,17 @@ describe(`@datastream/string (${variant})`, () => {
 			const output = await replaceChunks(input, { pattern, replacement });
 			strictEqual(output.join(""), expected, `${pattern} ${replacement}`);
 		}
+	});
+
+	test(`stringReplaceStream should expand many unclosed "$<" tokens in linear time`, {
+		timeout: 2_000,
+	}, async (_t) => {
+		const replacement = "$<".repeat(50_000);
+		const output = await replaceChunks(["zaz"], {
+			pattern: /(?<x>a)/g,
+			replacement,
+		});
+		strictEqual(output.join(""), `z${replacement}z`);
 	});
 
 	test(`stringReplaceStream should call a function replacement with stream offsets`, async (_t) => {

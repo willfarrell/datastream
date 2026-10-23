@@ -148,12 +148,30 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 		typeof replacement === "string" && /\$[`']/.test(replacement);
 	const compile = (template, match) => {
 		const parts = [];
+		// Group names are found with indexOf, so an unclosed "$<" never rescans
+		const lastClose = template.lastIndexOf(">");
+		const tokens = /\$(?:[$&`']|(\d\d?)|<)/g;
 		let last = 0;
-		for (const token of template.matchAll(/\$(?:[$&`']|(\d\d?)|<([^>]*)>)/g)) {
+		for (
+			let token = tokens.exec(template);
+			token !== null;
+			token = tokens.exec(template)
+		) {
 			parts.push(template.slice(last, token.index));
-			last = token.index + token[0].length;
-			const [text, digits, name] = token;
-			if (text === "$$") {
+			last = tokens.lastIndex;
+			const [text, digits] = token;
+			if (text === "$<") {
+				// Without named groups or a closing ">", "$<" is literal
+				if (match.groups === undefined || lastClose < last) {
+					parts.push(text);
+				} else {
+					const close = template.indexOf(">", last);
+					const name = template.slice(last, close);
+					parts.push((match) => match.groups[name] ?? "");
+					last = close + 1;
+					tokens.lastIndex = last;
+				}
+			} else if (text === "$$") {
 				parts.push("$");
 			} else if (text === "$&") {
 				parts.push((match) => match[0]);
@@ -161,13 +179,6 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 				parts.push((match, text) => text.slice(0, match.index));
 			} else if (text === "$'") {
 				parts.push((match, text) => text.slice(match.index + match[0].length));
-			} else if (name !== undefined) {
-				if (match.groups === undefined) {
-					// Without named groups "$<" is literal and the rest still expands
-					parts.push("$<", ...compile(`${name}>`, match));
-				} else {
-					parts.push((match) => match.groups[name] ?? "");
-				}
 			} else {
 				const index = Number(digits);
 				const first = Number(digits[0]);

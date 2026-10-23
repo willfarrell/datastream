@@ -1030,6 +1030,8 @@ export const csvFormatStream = (options = {}, streamOptions = {}) => {
 			first === 0xfeff
 		);
 	};
+	// Every option is RegExp.escape'd into a literal alternation, so it can't backtrack
+	// nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 	const containsTriggerRe = new RegExp(
 		`${RegExp.escape(delimiterChar)}|${RegExp.escape(quoteChar)}|\r|\n|${RegExp.escape(newlineChar)}`,
 	);

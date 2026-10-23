@@ -33,9 +33,12 @@ describe(`@datastream/protobuf (${variant})`, () => {
 
 	const toPlain = (m) => ({ id: m.id, name: m.name });
 
-	const encodeAll = (input, options) =>
+	const encodeAll = (input, options, streamOptions) =>
 		streamToArray(
-			pipejoin([createReadableStream(input), protobufEncodeStream(options)]),
+			pipejoin([
+				createReadableStream(input),
+				protobufEncodeStream(options, streamOptions),
+			]),
 		);
 
 	const concat = (chunks) => {
@@ -78,7 +81,7 @@ describe(`@datastream/protobuf (${variant})`, () => {
 	});
 
 	test(`protobufEncodeStream honors streamOptions`, async () => {
-		const encoded = await encodeAll(messages, { Type }, {});
+		const encoded = await encodeAll(messages, { Type }, { highWaterMark: 1 });
 		const stream = protobufEncodeStream({ Type }, { highWaterMark: 1 });
 		strictEqual(isWritable(stream), true);
 		strictEqual(encoded.length, 3);
