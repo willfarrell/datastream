@@ -1,8 +1,9 @@
 {
 	"name": "@datastream/aws",
 	"version": "0.8.0",
-	"description": "AWS service streaming integrations for CloudWatch Logs, DynamoDB, DynamoDB Streams, Kinesis, Lambda, S3, SNS, and SQS",
+	"description": "AWS service streaming integrations for CloudWatch Logs, DynamoDB, DynamoDB Streams, Glue Schema Registry, Kinesis, Lambda, MSK IAM, S3, SNS, and SQS",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},
@@ -13,58 +14,47 @@
 	"exports": {
 		".": {
 			"types": "./index.d.ts",
-			"node": "./index.node.mjs",
-			"default": "./index.node.mjs"
+			"node": "./index.node.mjs"
 		},
 		"./dynamodb": {
 			"types": "./dynamodb.d.ts",
-			"node": "./dynamodb.node.mjs",
-			"default": "./dynamodb.node.mjs"
+			"node": "./dynamodb.node.mjs"
 		},
 		"./dynamodb-streams": {
 			"types": "./dynamodb-streams.d.ts",
-			"node": "./dynamodb-streams.node.mjs",
-			"default": "./dynamodb-streams.node.mjs"
+			"node": "./dynamodb-streams.node.mjs"
 		},
 		"./lambda": {
 			"types": "./lambda.d.ts",
-			"node": "./lambda.node.mjs",
-			"default": "./lambda.node.mjs"
+			"node": "./lambda.node.mjs"
 		},
 		"./s3": {
 			"types": "./s3.d.ts",
-			"node": "./s3.node.mjs",
-			"default": "./s3.node.mjs"
+			"node": "./s3.node.mjs"
 		},
 		"./sns": {
 			"types": "./sns.d.ts",
-			"node": "./sns.node.mjs",
-			"default": "./sns.node.mjs"
+			"node": "./sns.node.mjs"
 		},
 		"./cloudwatch-logs": {
 			"types": "./cloudwatch-logs.d.ts",
-			"node": "./cloudwatch-logs.node.mjs",
-			"default": "./cloudwatch-logs.node.mjs"
+			"node": "./cloudwatch-logs.node.mjs"
 		},
 		"./kinesis": {
 			"types": "./kinesis.d.ts",
-			"node": "./kinesis.node.mjs",
-			"default": "./kinesis.node.mjs"
+			"node": "./kinesis.node.mjs"
 		},
 		"./sqs": {
 			"types": "./sqs.d.ts",
-			"node": "./sqs.node.mjs",
-			"default": "./sqs.node.mjs"
+			"node": "./sqs.node.mjs"
 		},
 		"./msk-iam": {
 			"types": "./msk-iam.d.ts",
-			"node": "./msk-iam.node.mjs",
-			"default": "./msk-iam.node.mjs"
+			"node": "./msk-iam.node.mjs"
 		},
 		"./glue-schema-registry": {
 			"types": "./glue-schema-registry.d.ts",
-			"node": "./glue-schema-registry.node.mjs",
-			"default": "./glue-schema-registry.node.mjs"
+			"node": "./glue-schema-registry.node.mjs"
 		}
 	},
 	"types": "index.d.ts",
@@ -115,7 +105,7 @@
 		"@aws-sdk/client-glue": "^3.1109.0",
 		"@aws-sdk/client-kinesis": "^3.1109.0",
 		"@aws-sdk/client-lambda": "^3.1114.0",
-		"@aws-sdk/client-s3": "^3.0.0",
+		"@aws-sdk/client-s3": "^3.1144.0",
 		"@aws-sdk/client-sns": "^3.1129.0",
 		"@aws-sdk/client-sqs": "^3.0.0",
 		"@aws-sdk/lib-storage": "^3.0.0",
@@ -163,7 +153,7 @@
 		"@aws-sdk/client-glue": "^3.1109.0",
 		"@aws-sdk/client-kinesis": "^3.1109.0",
 		"@aws-sdk/client-lambda": "^3.1114.0",
-		"@aws-sdk/client-s3": "^3.0.0",
+		"@aws-sdk/client-s3": "^3.1144.0",
 		"@aws-sdk/client-sns": "^3.1129.0",
 		"@aws-sdk/client-sqs": "^3.0.0",
 		"@aws-sdk/lib-storage": "^3.0.0",

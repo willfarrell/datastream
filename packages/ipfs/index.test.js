@@ -11,6 +11,7 @@ import {
 } from "@datastream/core";
 import { ipfsAddStream, ipfsGetStream } from "@datastream/ipfs";
 import { variant } from "../variant.js";
+import { makeIpfsAddStream } from "./shared.js";
 
 describe(`@datastream/ipfs (${variant})`, () => {
 	// Node stream internals (write/destroy/emit) drive these teardown tests.
@@ -822,6 +823,313 @@ describe(`@datastream/ipfs (${variant})`, () => {
 			// threw the fallback teardown error into node.add.
 			strictEqual(iterationError instanceof Error, true);
 			strictEqual(iterationError.message, "ipfsAddStream destroyed");
+		},
+	);
+
+	// *** AbortSignal forwarding *** //
+	// js-ipfs, kubo-rpc-client and helia all take AbortOptions ({ signal }) as
+	// the last argument, so an aborted pipeline also cancels the network call.
+	test(`ipfsGetStream passes streamOptions.signal to node.get`, async () => {
+		const controller = new AbortController();
+		const calls = [];
+		const node = {
+			get(...args) {
+				calls.push(args);
+				return createReadableStream(["data"]);
+			},
+		};
+		await ipfsGetStream({ node, cid: "QmSig" }, { signal: controller.signal });
+		await ipfsGetStream({ node, cid: "QmNoSig" });
+		deepStrictEqual(calls, [
+			["QmSig", { signal: controller.signal }],
+			["QmNoSig", { signal: undefined }],
+		]);
+	});
+
+	test(`ipfsAddStream passes streamOptions.signal to node.add`, async () => {
+		const controller = new AbortController();
+		const options = [];
+		const node = {
+			async add(source, addOptions) {
+				options.push(addOptions);
+				for await (const _chunk of source) {
+				}
+				return { cid: "QmSig" };
+			},
+		};
+		await pipeline([
+			createReadableStream(["a"]),
+			await ipfsAddStream({ node }, { signal: controller.signal }),
+		]);
+		await pipeline([
+			createReadableStream(["a"]),
+			await ipfsAddStream({ node }),
+		]);
+		deepStrictEqual(options, [
+			{ signal: controller.signal },
+			{ signal: undefined },
+		]);
+	});
+
+	if (variant === "browser") {
+		// The abort listener is the browser build's only teardown hook; it must
+		// fire at most once and be removed once node.add settles, or every
+		// stream run against a long-lived signal leaks a listener (and a closure
+		// over the whole stream).
+		test(`ipfsAddStream removes its abort listener once node.add settles`, async (t) => {
+			for (const fail of [false, true]) {
+				const controller = new AbortController();
+				const { signal } = controller;
+				const added = [];
+				const removed = [];
+				t.mock.method(signal, "addEventListener", (...args) =>
+					added.push(args),
+				);
+				t.mock.method(signal, "removeEventListener", (...args) =>
+					removed.push(args),
+				);
+				const node = {
+					async add(source) {
+						for await (const _chunk of source) {
+						}
+						if (fail) throw new Error("add failed");
+						return { cid: "QmListener" };
+					},
+				};
+				const addStream = await ipfsAddStream({ node }, { signal });
+				// core's own stream listeners pass no options; ours is the one
+				// registered with { once }.
+				const ours = added.filter((args) => args.length === 3);
+				strictEqual(ours.length, 1);
+				deepStrictEqual(ours[0][0], "abort");
+				deepStrictEqual(ours[0][2], { once: true });
+				const listener = ours[0][1];
+				const removedOurs = () =>
+					removed.filter(([, handler]) => handler === listener);
+				deepStrictEqual(removedOurs(), []);
+				const run = pipeline([createReadableStream(["a"]), addStream]);
+				if (fail) await rejects(run, { message: "add failed" });
+				else await run;
+				deepStrictEqual(removedOurs(), [["abort", listener]]);
+			}
+		});
+
+		// abort(null) keeps a null reason, so teardown falls back to its own error.
+		test(`ipfsAddStream aborted with a null reason fails node.add with the fallback error`, async () => {
+			const controller = new AbortController();
+			let pulled;
+			const started = new Promise((resolve) => {
+				pulled = resolve;
+			});
+			let outcome;
+			const node = {
+				async add(source) {
+					try {
+						for await (const _chunk of source) {
+							pulled();
+						}
+					} catch (e) {
+						outcome = e;
+					}
+					return { cid: "QmNull" };
+				},
+			};
+			const addStream = await ipfsAddStream(
+				{ node },
+				{ signal: controller.signal },
+			);
+			// A web TransformStream only transforms once its readable side pulls.
+			addStream.readable
+				.getReader()
+				.read()
+				.catch(() => {});
+			addStream.writable
+				.getWriter()
+				.write("a")
+				.catch(() => {});
+			await started;
+			controller.abort(null);
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			strictEqual(outcome.message, "ipfsAddStream destroyed");
+		});
+
+		// Once flush ended the source, an abort while node.add is still finishing
+		// must not inject an error into its final pull.
+		test(`ipfsAddStream abort after flush lets node.add finish the source cleanly`, async () => {
+			const controller = new AbortController();
+			let release;
+			const gate = new Promise((resolve) => {
+				release = resolve;
+			});
+			let flushed;
+			const holding = new Promise((resolve) => {
+				flushed = resolve;
+			});
+			let outcome;
+			const node = {
+				async add(source) {
+					const iterator = source[Symbol.asyncIterator]();
+					await iterator.next(); // "a"
+					flushed();
+					await gate;
+					outcome = await iterator.next();
+					return { cid: "QmLate" };
+				},
+			};
+			const run = pipeline([
+				createReadableStream(["a"]),
+				await ipfsAddStream({ node }, { signal: controller.signal }),
+			]);
+			await holding;
+			await new Promise((resolve) => setTimeout(resolve, 10)); // flush ran
+			controller.abort();
+			release();
+			deepStrictEqual(await run, { cid: "QmLate" });
+			deepStrictEqual(outcome, { done: true, value: undefined });
+		});
+	}
+
+	// *** park / release handshake *** //
+	// Each of these hangs if a release call is dropped, so race them against a
+	// short timer to fail fast instead of stalling the run.
+	const within = async (promise, label) => {
+		let timer;
+		try {
+			return await Promise.race([
+				promise,
+				new Promise((_resolve, reject) => {
+					timer = setTimeout(() => reject(new Error(`${label} hung`)), 500);
+				}),
+			]);
+		} finally {
+			clearTimeout(timer);
+		}
+	};
+
+	// node.add settling must release a chunk that is parked but never pulled.
+	test(`ipfsAddStream releases a parked chunk when node.add resolves without pulling it`, async () => {
+		const node = {
+			async add(_source) {
+				await new Promise((resolve) => setTimeout(resolve, 20));
+				return { cid: "QmUnpulled" };
+			},
+		};
+		const result = await within(
+			pipeline([
+				createReadableStream(["a", "b"]),
+				await ipfsAddStream({ node }),
+			]),
+			"pipeline",
+		);
+		strictEqual(result.cid, "QmUnpulled");
+	});
+
+	// flush must wake a source() that is already waiting for the next chunk, or
+	// it never sees the end and node.add (which flush awaits) never settles.
+	test(`ipfsAddStream ends a source that is waiting when the input ends`, async () => {
+		const node = {
+			async add(source) {
+				const chunks = [];
+				for await (const chunk of source) {
+					chunks.push(chunk);
+				}
+				return { cid: chunks.join(",") };
+			},
+		};
+		const input = createReadableStream();
+		const run = pipeline([input, await ipfsAddStream({ node })]);
+		input.push("a");
+		// Let node.add pull "a" and park waiting on the next chunk.
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		input.push(null);
+		strictEqual((await within(run, "pipeline")).cid, "a");
+	});
+
+	// Teardown must reject a parked write itself; node.add here never pulls or
+	// settles, so nothing else would release it.
+	nodeTest(
+		`ipfsAddStream destroy rejects a parked write while node.add is stalled`,
+		async () => {
+			let release;
+			const gate = new Promise((resolve) => {
+				release = resolve;
+			});
+			const node = {
+				async add(_source) {
+					await gate;
+					return { cid: "QmStalled" };
+				},
+			};
+			const addStream = await ipfsAddStream({ node });
+			addStream.on("error", () => {});
+			const written = new Promise((resolve) => addStream.write("a", resolve));
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			addStream.destroy(new Error("stalled"));
+			const error = await within(written, "parked write");
+			strictEqual(error.message, "stalled");
+			release();
+		},
+	);
+
+	// shared.js contract, driven with a recording wire hook (the node build's
+	// own hook returns a no-op unwire, so it can't observe these).
+	nodeTest(`makeIpfsAddStream unwires once node.add settles`, async () => {
+		for (const fail of [false, true]) {
+			const calls = [];
+			let release;
+			const gate = new Promise((resolve) => {
+				release = resolve;
+			});
+			const node = {
+				async add(source) {
+					for await (const _chunk of source) {
+					}
+					await gate;
+					if (fail) throw new Error("add failed");
+					return { cid: "QmUnwire" };
+				},
+			};
+			const streamOptions = {};
+			const addStream = await makeIpfsAddStream((stream, teardown, options) => {
+				calls.push(["wire", stream, typeof teardown, options]);
+				return (...args) => calls.push(["unwire", args.length]);
+			})({ node }, streamOptions);
+			deepStrictEqual(calls, [["wire", addStream, "function", streamOptions]]);
+			const run = pipeline([createReadableStream(["a"]), addStream]);
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			strictEqual(calls.length, 1);
+			release();
+			if (fail) await rejects(run, { message: "add failed" });
+			else await run;
+			deepStrictEqual(calls.slice(1), [["unwire", 1]]);
+		}
+	});
+
+	// Nobody awaits node.add when the wire hook throws (no stream is returned),
+	// so its rejection must not surface as an unhandled rejection.
+	nodeTest(
+		`makeIpfsAddStream does not leak node.add's rejection when wiring throws`,
+		async () => {
+			const unhandled = [];
+			const onUnhandled = (reason) => unhandled.push(reason);
+			process.on("unhandledRejection", onUnhandled);
+			try {
+				const node = {
+					async add(_source) {
+						throw new Error("add failed");
+					},
+				};
+				await rejects(
+					makeIpfsAddStream(() => {
+						throw new Error("wire failed");
+					})({ node }),
+					{ message: "wire failed" },
+				);
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				deepStrictEqual(unhandled, []);
+			} finally {
+				process.off("unhandledRejection", onUnhandled);
+			}
 		},
 	);
 

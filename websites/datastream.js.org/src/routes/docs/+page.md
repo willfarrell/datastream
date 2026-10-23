@@ -66,6 +66,8 @@ console.log(result.validate) // validation errors, keyed by schema path
 
 ## Setup
 
+Requires Node.js 26 or newer.
+
 ```bash
 npm install @datastream/core @datastream/{module}
 ```

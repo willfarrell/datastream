@@ -6,7 +6,12 @@ import {
 	PutRecordsCommand,
 } from "@aws-sdk/client-kinesis";
 import { createWritableStream, timeout } from "@datastream/core";
-import { awsBackoff, awsClientDefaults } from "./client.js";
+import {
+	awsBackoff,
+	awsClientDefaults,
+	awsReadableStream,
+	awsUnsentOnDestroy,
+} from "./client.js";
 
 // PutRecords limits: <=500 records, <=5 MiB aggregate, <=1 MiB per record.
 const KINESIS_MAX_RECORDS = 500;
@@ -40,12 +45,12 @@ export const awsKinesisGetRecordsStream = async (
 		client,
 		...kinesisOptions
 	} = options;
-	async function* command(opts) {
+	async function* command(opts, signal) {
 		let expectMore = true;
 		while (expectMore) {
 			const response = await (client ?? getDefaultClient()).send(
 				new GetRecordsCommand(opts),
-				{ abortSignal: streamOptions.signal },
+				{ abortSignal: signal },
 			);
 			const records = response.Records ?? [];
 			for (const item of records) {
@@ -67,12 +72,15 @@ export const awsKinesisGetRecordsStream = async (
 			// (ProvisionedThroughputExceeded). No wait once the stream is ending.
 			if (expectMore && records.length === 0 && pollingDelay > 0) {
 				// Abortable idle wait: rejects immediately and clears the timer
-				// when streamOptions.signal aborts mid-delay.
-				await timeout(pollingDelay, { signal: streamOptions.signal });
+				// when the stream is destroyed or streamOptions.signal aborts mid-delay.
+				await timeout(pollingDelay, { signal });
 			}
 		}
 	}
-	return command({ ...kinesisOptions });
+	return awsReadableStream(
+		(signal) => command({ ...kinesisOptions }, signal),
+		streamOptions,
+	);
 };
 
 export const awsKinesisPutRecordsStream = (options, streamOptions = {}) => {
@@ -136,5 +144,9 @@ export const awsKinesisPutRecordsStream = (options, streamOptions = {}) => {
 		batchBytes += chunkBytes;
 	};
 	const final = () => send();
-	return createWritableStream(write, final, streamOptions);
+	return awsUnsentOnDestroy(
+		createWritableStream(write, final, streamOptions),
+		() => batch,
+		"awsKinesisPutRecords destroyed with buffered records",
+	);
 };

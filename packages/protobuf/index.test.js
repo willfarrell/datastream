@@ -102,6 +102,30 @@ describe(`@datastream/protobuf (${variant})`, () => {
 		deepStrictEqual(decoded.map(toPlain), messages);
 	});
 
+	// A function Type takes the async transform (resolved per chunk); a static
+	// Type decodes synchronously.
+	test(`protobufDecodeStream accepts a sync function Type`, async () => {
+		const encoded = await encodeAll(messages, { Type });
+		const decoded = await streamToArray(
+			pipejoin([
+				createReadableStream(encoded),
+				protobufDecodeStream({ Type: () => Type }),
+			]),
+		);
+		deepStrictEqual(decoded.map(toPlain), messages);
+	});
+
+	test(`protobufDecodeStream accepts an async function Type`, async () => {
+		const encoded = await encodeAll(messages, { Type });
+		const decoded = await streamToArray(
+			pipejoin([
+				createReadableStream(encoded),
+				protobufDecodeStream({ Type: async () => Type }),
+			]),
+		);
+		deepStrictEqual(decoded.map(toPlain), messages);
+	});
+
 	test(`protobufDecodeStream extracts bytes via payload`, async () => {
 		const encoded = await encodeAll(messages, { Type });
 		const wrapped = encoded.map((data) => ({ data }));
@@ -466,5 +490,48 @@ describe(`@datastream/protobuf (${variant})`, () => {
 			]),
 			incomplete,
 		);
+	});
+
+	// A prefix straddling a chunk boundary right after a message ended mid-chunk:
+	// skip() must consume only what is left of the head chunk before moving on.
+	test(`protobufLengthPrefixUnframeStream skips a straddling prefix after a mid-chunk message`, async () => {
+		const body = new Uint8Array(200).fill(0x42);
+		const chunks = [
+			Uint8Array.from([0x01, 0x41, 0xc8]),
+			Uint8Array.from([0x01, ...body]),
+		];
+		const out = await streamToArray(
+			pipejoin([
+				createReadableStream(chunks),
+				protobufLengthPrefixUnframeStream(),
+			]),
+		);
+		deepStrictEqual(
+			out.map((m) => Array.from(m)),
+			[[0x41], Array.from(body)],
+		);
+	});
+
+	// Multi-byte varint prefixes (128 -> [0x80, 0x01], 16384 -> [0x80, 0x80, 0x01]):
+	// no other test frames a body over 127 bytes.
+	test(`protobufLengthPrefixFrameStream writes multi-byte varint prefixes`, async () => {
+		const bodies = [new Uint8Array(128).fill(1), new Uint8Array(16384).fill(2)];
+		const framed = await streamToArray(
+			pipejoin([
+				createReadableStream(bodies),
+				protobufLengthPrefixFrameStream(),
+			]),
+		);
+		deepStrictEqual(Array.from(framed[0].subarray(0, 2)), [0x80, 0x01]);
+		strictEqual(framed[0].length, 130);
+		deepStrictEqual(Array.from(framed[1].subarray(0, 3)), [0x80, 0x80, 0x01]);
+		strictEqual(framed[1].length, 16387);
+		const unframed = await streamToArray(
+			pipejoin([
+				createReadableStream(framed),
+				protobufLengthPrefixUnframeStream(),
+			]),
+		);
+		deepStrictEqual(unframed, bodies);
 	});
 });

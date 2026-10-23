@@ -3,12 +3,11 @@ title: Browser file processing
 description: Process files in the browser using the File System Access API and datastream.
 ---
 
-Use the File System Access API to process files in the browser:
+Use the File System Access API to process files in the browser. `File.stream()` yields bytes, and the CSV detect streams decode UTF-8 bytes themselves, so no decode step is needed. For a file in another encoding, add `charsetDecodeStream({ charset })` from [`@datastream/charset`](/docs/packages/charset) before `detectDelimiters`.
 
 ```javascript
 import { pipeline } from '@datastream/core'
 import { fileReadStream, fileWriteStream } from '@datastream/file'
-import { charsetDecodeStream } from '@datastream/charset'
 import {
   csvDetectDelimitersStream,
   csvDetectHeaderStream,
@@ -33,7 +32,6 @@ const count = objectCountStream()
 
 const result = await pipeline([
   await fileReadStream({ types }),
-  charsetDecodeStream({ charset: 'UTF-8' }), // File.stream() yields bytes; the CSV streams expect text
   detectDelimiters,
   detectHeader,
   csvParseStream({

@@ -3,6 +3,7 @@
 	"version": "0.8.0",
 	"description": "Symmetric encryption/decryption streams",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},

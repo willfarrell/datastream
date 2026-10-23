@@ -1,15 +1,23 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import type {
+	DatastreamPassThrough,
 	DatastreamReadable,
-	DatastreamWritable,
 	StreamOptions,
 	StreamResult,
 } from "@datastream/core";
 
+// streamOptions.signal is forwarded as AbortOptions (js-ipfs, kubo-rpc-client, helia).
+export interface IpfsAbortOptions {
+	signal?: AbortSignal;
+}
+
 export interface IpfsNode {
-	get(cid: string): unknown;
-	add(data: AsyncIterable<unknown>): Promise<{ cid: string }> | { cid: string };
+	get(cid: string, options?: IpfsAbortOptions): unknown;
+	add(
+		data: AsyncIterable<unknown>,
+		options?: IpfsAbortOptions,
+	): Promise<{ cid: string }> | { cid: string };
 }
 
 export function ipfsGetStream(
@@ -27,7 +35,7 @@ export function ipfsAddStream(
 	},
 	streamOptions?: StreamOptions,
 ): Promise<
-	DatastreamWritable & {
+	DatastreamPassThrough & {
 		result: () => StreamResult<string>;
 	}
 >;

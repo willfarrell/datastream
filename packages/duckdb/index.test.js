@@ -1,15 +1,23 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert";
+import { mkdtemp, rm } from "node:fs/promises";
 import { register } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test, { describe } from "node:test";
 import {
 	arrowBatchFromObjectStream,
 	arrowDetectSchemaStream,
 } from "@datastream/arrow";
-import { createReadableStream, pipeline } from "@datastream/core";
+import {
+	createReadableStream,
+	pipeline,
+	streamToArray,
+} from "@datastream/core";
 import {
 	duckdbAppenderStream,
 	duckdbArrowInsertStream,
 	duckdbConnect,
+	duckdbQueryStream,
 } from "@datastream/duckdb";
 import {
 	Bool,
@@ -40,6 +48,23 @@ import {
 	vectorFromArray,
 } from "apache-arrow";
 import { variant } from "../variant.js";
+
+// Fake appenders only define appendValue; the typed appends (which appendCell
+// now prefers for primitives) delegate to it via the prototype.
+const typedAppends = {
+	get appendVarchar() {
+		return this.appendValue;
+	},
+	get appendBoolean() {
+		return this.appendValue;
+	},
+	get appendInteger() {
+		return this.appendValue;
+	},
+	get appendDouble() {
+		return this.appendValue;
+	},
+};
 
 describe(`@datastream/duckdb (${variant})`, () => {
 	// @duckdb/node-api tests; the browser build (duckdb-wasm) is exercised further down.
@@ -197,17 +222,20 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		async () => {
 			let closed = false;
 			const appender = {
+				__proto__: typedAppends,
 				appendValue: (v) => {
 					if (v === "poison") throw new Error("bad cell");
 				},
 				appendNull: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					closed = true;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id", "name"] }),
 				createAppender: async () => appender,
 			};
@@ -232,17 +260,20 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		async () => {
 			let closed = false;
 			const appender = {
+				__proto__: typedAppends,
 				appendValue: () => {
 					throw new Error("bad batch cell");
 				},
 				appendNull: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					closed = true;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id", "name"] }),
 				createAppender: async () => appender,
 			};
@@ -344,15 +375,18 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		async () => {
 			let closed = false;
 			const appender = {
+				__proto__: typedAppends,
 				appendValue: () => {},
 				appendNull: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					closed = true;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id", "name"] }),
 				createAppender: async () => appender,
 			};
@@ -378,60 +412,22 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	);
 
 	nodeTest(
-		`duckdbAppenderStream handles its own "error" event (absorbs it and releases the appender)`,
-		async () => {
-			let closed = false;
-			const appender = {
-				appendValue: () => {},
-				appendNull: () => {},
-				endRow: () => {},
-				flushSync: () => {},
-				closeSync: () => {
-					closed = true;
-				},
-			};
-			const db = {
-				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
-				createAppender: async () => appender,
-			};
-			const stream = await duckdbAppenderStream({ db, table: "users" });
-			// Lazily create the native appender so cleanup has a handle to release.
-			await new Promise((resolve, reject) => {
-				stream.write({ id: 1 }, (error) => (error ? reject(error) : resolve()));
-			});
-			// The stream registers its own "error" listener, so emitting "error" must be
-			// absorbed (not rethrown as an unhandled "error" event) and must release the
-			// appender. Without that listener, emit("error") throws here.
-			let threw = false;
-			try {
-				stream.emit("error", new Error("boom"));
-			} catch {
-				threw = true;
-			}
-			strictEqual(threw, false, 'the stream must handle its own "error" event');
-			strictEqual(
-				closed,
-				true,
-				"the appender handle must be released on error",
-			);
-			stream.destroy();
-		},
-	);
-
-	nodeTest(
 		`duckdbArrowInsertStream closes the appender when an upstream source errors AFTER init (no native handle leak)`,
 		async () => {
 			let closed = false;
 			const appender = {
+				__proto__: typedAppends,
 				appendValue: () => {},
 				appendNull: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					closed = true;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id", "name"] }),
 				createAppender: async () => appender,
 			};
@@ -478,6 +474,77 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	);
 
 	nodeTest(
+		`duckdbAppenderStream appends an integer outside int32 through appendValue (BIGINT), not DOUBLE`,
+		async () => {
+			const db = await duckdbConnect();
+			await db.run("CREATE TABLE big (v VARCHAR)");
+			await pipeline([
+				createReadableStream([{ v: 2 ** 40 }]),
+				await duckdbAppenderStream({ db, table: "big" }),
+			]);
+			const reader = await db.runAndReadAll("SELECT v FROM big");
+			// A DOUBLE append would store "1099511627776.0".
+			deepStrictEqual(reader.getRowsJS(), [["1099511627776"]]);
+			db.closeSync();
+		},
+	);
+
+	nodeTest(
+		`duckdbAppenderStream appends booleans through appendBoolean`,
+		async () => {
+			const db = await duckdbConnect();
+			await db.run("CREATE TABLE flags (v BOOLEAN)");
+			await pipeline([
+				createReadableStream([{ v: true }, { v: false }]),
+				await duckdbAppenderStream({ db, table: "flags" }),
+			]);
+			const reader = await db.runAndReadAll("SELECT v FROM flags");
+			deepStrictEqual(reader.getRowsJS(), [[true], [false]]);
+			db.closeSync();
+		},
+	);
+
+	// Typed appends report a cast failure without appendValue's "Failed to cast
+	// value: " prefix (and with the typed source type), which is what makes the
+	// per-type dispatch observable: a value routed through appendValue instead
+	// would fail with a different message.
+	nodeTest(
+		`duckdbAppenderStream cast failures come from the typed appends`,
+		async () => {
+			const db = await duckdbConnect();
+			await db.run("CREATE TABLE ints (v INTEGER)");
+			await db.run("CREATE TABLE dates (v DATE)");
+			const insert = async (table, v) =>
+				pipeline([
+					createReadableStream([{ v }]),
+					await duckdbAppenderStream({ db, table }),
+				]);
+			await rejects(insert("ints", "abc"), {
+				message: "Could not convert string 'abc' to INT32",
+			});
+			await rejects(insert("dates", true), {
+				message: "Unimplemented type for cast (BOOL -> INT32)",
+			});
+			// A non-int32 integer-valued double stays on appendValue (BIGINT), so this
+			// is the binding's own message, not a DOUBLE cast.
+			await rejects(insert("ints", 1e30), {
+				message: "bigint out of int64 range",
+			});
+			await rejects(insert("ints", 1e10 + 0.5), {
+				message:
+					"Type DOUBLE with value 10000000000.5 can't be cast because the value is out of range for the destination type INT32",
+			});
+			await rejects(insert("dates", 5), {
+				message: "Unimplemented type for cast (INT32 -> INT32)",
+			});
+			await rejects(insert("dates", 1.5), {
+				message: "Unimplemented type for cast (DOUBLE -> INT32)",
+			});
+			db.closeSync();
+		},
+	);
+
+	nodeTest(
 		`duckdbArrowInsertStream throws a descriptive error when the batch column count does not match the table`,
 		async () => {
 			const db = await setupTable(); // table users(id, name) -> 2 columns
@@ -501,6 +568,442 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			db.closeSync();
 		},
 	);
+
+	nodeTest(
+		`duckdbAppenderStream does not commit buffered rows when an upstream source errors`,
+		async () => {
+			const db = await setupTable();
+			async function* source() {
+				yield { id: 1, name: "alice" };
+				yield { id: 2, name: "bob" };
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				throw new Error("upstream boom");
+			}
+			await rejects(
+				pipeline([
+					createReadableStream(source()),
+					await duckdbAppenderStream({ db, table: "users" }),
+				]),
+				{ message: "upstream boom" },
+			);
+			// Let the stream's error/close teardown run before reading back.
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			deepStrictEqual(await selectAll(db), []);
+			db.closeSync();
+		},
+	);
+
+	nodeTest(
+		`duckdbArrowInsertStream does not commit buffered rows when the signal aborts`,
+		async () => {
+			const db = await setupTable();
+			const controller = new AbortController();
+			async function* source() {
+				yield { id: 1, name: "alice" };
+				yield { id: 2, name: "bob" };
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				controller.abort(new Error("aborted"));
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				yield { id: 3, name: "carol" };
+			}
+			await rejects(
+				pipeline(
+					[
+						createReadableStream(source()),
+						arrowBatchFromObjectStream({
+							schema: usersArrowSchema,
+							batchSize: 1,
+						}),
+						await duckdbArrowInsertStream(
+							{ db, table: "users" },
+							{ signal: controller.signal },
+						),
+					],
+					{ signal: controller.signal },
+				),
+			);
+			// Let the stream's error/close teardown run before reading back.
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			deepStrictEqual(await selectAll(db), []);
+			db.closeSync();
+		},
+	);
+
+	// *** write atomicity: one transaction per write stream (node) *** //
+	{
+		// More rows than DuckDB's 204,800-row appender auto-flush, which clear()
+		// alone cannot undo.
+		const ROWS = 300_000;
+		const BEGIN_ERROR =
+			"duckdb: could not begin the write stream's transaction; use a connection with no open transaction";
+		const count = async (db, table = "users") =>
+			(
+				await db.runAndReadAll(`SELECT count(*)::INTEGER AS n FROM ${table}`)
+			).getRowObjectsJS()[0].n;
+		const batchOf = (ids, names) =>
+			tableFromArrays({ id: Int32Array.from(ids), name: names }).batches[0];
+
+		nodeTest(
+			`duckdbAppenderStream commits nothing when the pipeline fails past an auto-flush`,
+			async () => {
+				const db = await duckdbConnect();
+				await db.run("CREATE TABLE t (x INTEGER)");
+				async function* source() {
+					for (let x = 0; x < ROWS; x++) yield { x };
+					throw new Error("upstream failed");
+				}
+				await rejects(
+					pipeline([
+						createReadableStream(source()),
+						await duckdbAppenderStream({ db, table: "t" }),
+					]),
+					{ message: "upstream failed" },
+				);
+				strictEqual(await count(db, "t"), 0);
+				// The stream's transaction is gone: the connection can open its own.
+				await db.run("BEGIN TRANSACTION");
+				await db.run("ROLLBACK");
+				db.closeSync();
+			},
+		);
+
+		nodeTest(
+			`duckdbArrowInsertStream commits nothing when the pipeline fails past an auto-flush`,
+			async () => {
+				const db = await duckdbConnect();
+				await db.run("CREATE TABLE t (x INTEGER)");
+				const batch = tableFromArrays({
+					x: Int32Array.from({ length: ROWS }, (_, i) => i),
+				}).batches[0];
+				async function* source() {
+					yield batch;
+					// Let the write land (and auto-flush) before failing.
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					throw new Error("upstream failed");
+				}
+				await rejects(
+					pipeline([
+						createReadableStream(source()),
+						await duckdbArrowInsertStream({ db, table: "t" }),
+					]),
+					{ message: "upstream failed" },
+				);
+				strictEqual(await count(db, "t"), 0);
+				db.closeSync();
+			},
+		);
+
+		nodeTest(
+			`duckdbAppenderStream rolls back the table it created when the pipeline fails`,
+			async () => {
+				const db = await duckdbConnect();
+				async function* source() {
+					yield { id: 1, name: "alice" };
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					throw new Error("upstream failed");
+				}
+				await rejects(
+					pipeline([
+						createReadableStream(source()),
+						await duckdbAppenderStream({
+							db,
+							table: "users",
+							schema: usersArrowSchema,
+						}),
+					]),
+					{ message: "upstream failed" },
+				);
+				await rejects(count(db), /Table with name users does not exist/);
+				db.closeSync();
+			},
+		);
+
+		nodeTest(
+			`duckdb write streams commit their transaction when the pipeline finishes`,
+			async () => {
+				const db = await setupTable();
+				await pipeline([
+					createReadableStream([{ id: 1, name: "alice" }]),
+					await duckdbAppenderStream({ db, table: "users" }),
+				]);
+				await pipeline([
+					createReadableStream([batchOf([2], ["bob"])]),
+					await duckdbArrowInsertStream({ db, table: "users" }),
+				]);
+				// Committed, not just visible inside a still-open transaction: a new
+				// transaction can start and rolling it back keeps the rows.
+				await db.run("BEGIN TRANSACTION");
+				await db.run("ROLLBACK");
+				deepStrictEqual(await selectAll(db), [
+					[1, "alice"],
+					[2, "bob"],
+				]);
+				db.closeSync();
+			},
+		);
+
+		nodeTest(
+			`duckdb write streams refuse a connection that already has an open transaction`,
+			async () => {
+				for (const [make, chunk] of [
+					[duckdbAppenderStream, { id: 1, name: "alice" }],
+					[duckdbArrowInsertStream, batchOf([1], ["alice"])],
+				]) {
+					const db = await setupTable();
+					await db.run("BEGIN TRANSACTION");
+					await rejects(
+						pipeline([
+							createReadableStream([chunk]),
+							await make({ db, table: "users" }),
+						]),
+						(error) => {
+							strictEqual(error.message, BEGIN_ERROR);
+							ok(
+								error.cause.message.includes(
+									"cannot start a transaction within a transaction",
+								),
+							);
+							return true;
+						},
+					);
+					db.closeSync();
+				}
+			},
+		);
+
+		// A fake connection logging every statement and appender call in order.
+		const makeTxDb = ({ run = async () => {} } = {}) => {
+			const calls = [];
+			const db = {
+				calls,
+				run: async (sql) => {
+					calls.push(sql);
+					await run(sql);
+				},
+				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
+				createAppender: async () => ({
+					__proto__: typedAppends,
+					appendValue: () => {},
+					appendNull: () => {},
+					endRow: () => calls.push("row"),
+					columnType: () => ({ typeId: 0 }),
+					flushSync: () => calls.push("flush"),
+					closeSync: () => calls.push("close"),
+				}),
+			};
+			return db;
+		};
+		const fakeBatch = {
+			schema: { fields: [{ name: "id" }] },
+			numRows: 1,
+			getChild: () => ({ get: () => 1 }),
+		};
+		const writers = [
+			["duckdbAppenderStream", duckdbAppenderStream, { id: 1 }],
+			["duckdbArrowInsertStream", duckdbArrowInsertStream, fakeBatch],
+		];
+
+		for (const [name, make, chunk] of writers) {
+			nodeTest(
+				`${name} begins before the first write and commits after closing the appender`,
+				async () => {
+					const db = makeTxDb();
+					await pipeline([
+						createReadableStream([chunk, chunk]),
+						await make({ db, table: "t" }),
+					]);
+					deepStrictEqual(db.calls, [
+						"BEGIN TRANSACTION",
+						"row",
+						"row",
+						"flush",
+						"close",
+						"COMMIT",
+					]);
+				},
+			);
+
+			nodeTest(
+				`${name} opens no transaction when nothing is written`,
+				async () => {
+					const db = makeTxDb();
+					await pipeline([
+						createReadableStream([]),
+						await make({ db, table: "t" }),
+					]);
+					deepStrictEqual(db.calls, []);
+				},
+			);
+
+			nodeTest(
+				`${name} closes the appender then rolls back when upstream fails`,
+				async () => {
+					const db = makeTxDb();
+					async function* source() {
+						yield chunk;
+						throw new Error("upstream boom");
+					}
+					await rejects(
+						pipeline([
+							createReadableStream(source()),
+							await make({ db, table: "t" }),
+						]),
+						{ message: "upstream boom" },
+					);
+					deepStrictEqual(db.calls, [
+						"BEGIN TRANSACTION",
+						"row",
+						"close",
+						"ROLLBACK",
+					]);
+				},
+			);
+
+			nodeTest(
+				`${name} rolls back when the stream is destroyed without an error`,
+				async () => {
+					const db = makeTxDb();
+					const stream = await make({ db, table: "t" });
+					await new Promise((resolve, reject) => {
+						stream.write(chunk, (error) => (error ? reject(error) : resolve()));
+					});
+					stream.destroy();
+					await new Promise((resolve) => stream.once("close", resolve));
+					deepStrictEqual(db.calls, [
+						"BEGIN TRANSACTION",
+						"row",
+						"close",
+						"ROLLBACK",
+					]);
+				},
+			);
+
+			nodeTest(
+				`${name} keeps the original error when ROLLBACK also fails`,
+				async () => {
+					const db = makeTxDb({
+						run: async (sql) => {
+							if (sql === "ROLLBACK") throw new Error("rollback failed");
+						},
+					});
+					async function* source() {
+						yield chunk;
+						throw new Error("upstream boom");
+					}
+					await rejects(
+						pipeline([
+							createReadableStream(source()),
+							await make({ db, table: "t" }),
+						]),
+						{ message: "upstream boom" },
+					);
+					deepStrictEqual(db.calls.at(-1), "ROLLBACK");
+				},
+			);
+
+			nodeTest(`${name} rolls back when its own write fails`, async () => {
+				const db = makeTxDb();
+				const createAppender = db.createAppender;
+				db.createAppender = async () => ({
+					// Spread copies own keys only, so re-attach the typed-append prototype.
+					__proto__: typedAppends,
+					...(await createAppender()),
+					endRow: () => {
+						throw new Error("bad row");
+					},
+				});
+				await rejects(
+					pipeline([
+						createReadableStream([chunk]),
+						await make({ db, table: "t" }),
+					]),
+					{ message: "bad row" },
+				);
+				deepStrictEqual(db.calls, ["BEGIN TRANSACTION", "close", "ROLLBACK"]);
+			});
+
+			nodeTest(
+				`${name} surfaces a failed COMMIT without rolling back again`,
+				async () => {
+					const db = makeTxDb({
+						run: async (sql) => {
+							if (sql === "COMMIT") throw new Error("commit failed");
+						},
+					});
+					await rejects(
+						pipeline([
+							createReadableStream([chunk]),
+							await make({ db, table: "t" }),
+						]),
+						{ message: "commit failed" },
+					);
+					// DuckDB already rolled the failed commit back.
+					deepStrictEqual(db.calls, [
+						"BEGIN TRANSACTION",
+						"row",
+						"flush",
+						"close",
+						"COMMIT",
+					]);
+				},
+			);
+
+			nodeTest(
+				`${name} rolls back a transaction still being opened when aborted`,
+				async () => {
+					let opened;
+					const db = makeTxDb({
+						run: (sql) =>
+							sql === "BEGIN TRANSACTION"
+								? new Promise((resolve) => {
+										opened = resolve;
+									})
+								: undefined,
+					});
+					const controller = new AbortController();
+					const stream = await make(
+						{ db, table: "t" },
+						{ signal: controller.signal },
+					);
+					stream.write(chunk, () => {});
+					await new Promise(setImmediate);
+					controller.abort();
+					await new Promise(setImmediate);
+					opened();
+					await new Promise((resolve) => stream.once("close", resolve));
+					deepStrictEqual(db.calls.slice(-2), ["close", "ROLLBACK"]);
+					strictEqual(db.calls[0], "BEGIN TRANSACTION");
+				},
+			);
+
+			nodeTest(
+				`${name} still runs the caller's abort hook after rolling back`,
+				async () => {
+					const db = makeTxDb();
+					const aborted = [];
+					async function* source() {
+						yield chunk;
+						throw new Error("upstream boom");
+					}
+					await rejects(
+						pipeline([
+							createReadableStream(source()),
+							await make(
+								{ db, table: "t" },
+								{
+									abort: (reason) => {
+										aborted.push([reason.message, db.calls.at(-1)]);
+									},
+								},
+							),
+						]),
+						{ message: "upstream boom" },
+					);
+					deepStrictEqual(aborted, [["upstream boom", "ROLLBACK"]]);
+				},
+			);
+		}
+	}
 
 	// *** browser build (duckdb-wasm), driven by fake db objects *** //
 	// Under the browser run `@datastream/duckdb` is the built browser bundle; the
@@ -962,12 +1465,15 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		async () => {
 			const cells = [];
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
 					appendNull: () => {},
+					__proto__: typedAppends,
 					appendValue: (v) => cells.push(v),
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -1027,15 +1533,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		async () => {
 			const lockError = new Error("lock timeout on resource");
 			const db = {
-				run: async () => {
-					throw lockError;
+				run: async (sql) => {
+					if (sql.includes("LIMIT 0")) throw lockError;
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -1067,10 +1575,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -1099,10 +1609,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -1131,10 +1643,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -1160,10 +1674,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -1191,14 +1707,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				appendNull: () => {
 					nullCount++;
 				},
+				__proto__: typedAppends,
 				appendValue: (v) => {
 					values.push(v);
 				},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["a", "b", "c"] }),
 				createAppender: async () => appender,
 			};
@@ -1223,12 +1742,15 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				appendNull: () => {
 					nullCount++;
 				},
+				__proto__: typedAppends,
 				appendValue: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["x"] }),
 				createAppender: async () => appender,
 			};
@@ -1248,16 +1770,19 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			let closeSyncCount = 0;
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: (v) => {
 					if (v === "boom") throw new Error("forced");
 				},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					closeSyncCount++;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["v"] }),
 				createAppender: async () => appender,
 			};
@@ -1278,16 +1803,19 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			let closeSyncCount = 0;
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: () => {},
 				endRow: () => {},
 				flushSync: () => {
 					flushCount++;
 				},
+				clear: () => {},
 				closeSync: () => {
 					closeSyncCount++;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["v"] }),
 				createAppender: async () => appender,
 			};
@@ -1312,16 +1840,19 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			const calls = [];
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: () => {},
 				endRow: () => {},
 				flushSync: () => {
 					calls.push("flush");
 				},
+				clear: () => {},
 				closeSync: () => {
 					calls.push("close");
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => appender,
 			};
@@ -1343,16 +1874,19 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			const calls = [];
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: () => {},
 				endRow: () => {},
 				flushSync: () => {
 					calls.push("flush");
 				},
+				clear: () => {},
 				closeSync: () => {
 					calls.push("close");
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id", "name"] }),
 				createAppender: async () => appender,
 			};
@@ -1376,12 +1910,15 @@ describe(`@datastream/duckdb (${variant})`, () => {
 	test(`duckdbAppenderStream final does nothing when no rows were written`, async () => {
 		let closeSyncCalled = false;
 		const db = {
+			run: async () => {},
 			runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 			createAppender: async () => ({
+				__proto__: typedAppends,
 				appendValue: () => {},
 				appendNull: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					closeSyncCalled = true;
 				},
@@ -1406,14 +1943,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			let closed = false;
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					closed = true;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id", "name"] }),
 				createAppender: async () => appender,
 			};
@@ -1450,14 +1990,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			let closed = false;
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					closed = true;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => appender,
 			};
@@ -1489,14 +2032,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			const cellValues = [];
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: (v) => {
 					cellValues.push(v);
 				},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["a", "b", "c"] }),
 				createAppender: async () => appender,
 			};
@@ -1525,14 +2071,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			let endRowCount = 0;
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: () => {},
 				endRow: () => {
 					endRowCount++;
 				},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => appender,
 			};
@@ -1638,10 +2187,11 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			"duckdbAppenderStream",
 			"duckdbArrowInsertStream",
 			"duckdbConnect",
+			"duckdbQueryStream",
 		]);
 	});
 
-	// *** wireAppenderCleanup — signal branch *** //
+	// *** abort teardown — signal fires during init *** //
 
 	nodeTest(
 		`duckdbAppenderStream closes appender when AbortSignal fires after init`,
@@ -1650,14 +2200,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			const controller = new AbortController();
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					closed = true;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => {
 					controller.abort();
@@ -1695,10 +2248,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -1728,17 +2283,20 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			// internally), the error must be swallowed so the original write error is
 			// what propagates to the caller.
 			const appender = {
+				__proto__: typedAppends,
 				appendValue: (v) => {
 					if (v === "boom") throw new Error("write error");
 				},
 				appendNull: () => {},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {
 					throw new Error("closeSync also failed");
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["v"] }),
 				createAppender: async () => appender,
 			};
@@ -1781,10 +2339,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -1800,29 +2360,26 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** wireAppenderCleanup — pre-aborted signal path *** //
+	// *** abort teardown — pre-aborted signal *** //
 
 	test(`duckdbAppenderStream with pre-aborted signal closes appender when signal is already aborted at wiring time`, async () => {
-		// When the AbortSignal is ALREADY aborted at the moment wireAppenderCleanup
-		// runs (i.e. signal.aborted === true), cleanup() must be called immediately
-		// via the signal.aborted branch rather than attaching an event listener.
-		// We inject an appender that is already set on the state object by
-		// manipulating the db so createAppender resolves before wireAppenderCleanup.
-		// The simplest way is: abort the controller BEFORE calling duckdbAppenderStream
-		// and verify the stream construction succeeds without throwing (the branch
-		// is a no-op when state.appender is still undefined, but the branch IS taken).
+		// An ALREADY aborted signal destroys the Writable at construction, so the
+		// abort teardown runs before any appender exists and must not throw.
 		const controller = new AbortController();
 		controller.abort(); // pre-aborted BEFORE duckdbAppenderStream is called
 		let appenderCreated = false;
 		const db = {
+			run: async () => {},
 			runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 			createAppender: async () => {
 				appenderCreated = true;
 				return {
 					appendNull: () => {},
+					__proto__: typedAppends,
 					appendValue: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				};
 			},
@@ -1840,7 +2397,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			caught = e;
 		}
 		// The stream construction itself must not throw — the pre-aborted signal
-		// branch (line 103) is taken at wiring time and is a no-op when no appender
+		// teardown is taken at construction time and is a no-op when no appender
 		// exists yet. The pipeline may fail due to the abort, which is fine.
 		ok(
 			caught === undefined || caught instanceof Error,
@@ -1916,10 +2473,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -1961,10 +2520,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -2004,10 +2565,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -2050,10 +2613,12 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				},
 				runAndReadAll: async () => ({ columnNames: () => ["a", "b"] }),
 				createAppender: async () => ({
+					__proto__: typedAppends,
 					appendValue: () => {},
 					appendNull: () => {},
 					endRow: () => {},
 					flushSync: () => {},
+					clear: () => {},
 					closeSync: () => {},
 				}),
 			};
@@ -2084,215 +2649,30 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		},
 	);
 
-	// *** wireAppenderCleanup — signal listener closes the appender SYNCHRONOUSLY on abort *** //
-	// The signal listener path is distinct from the stream's own error/close path:
-	// when the signal fires while the stream is still live, the appender must close
-	// immediately via the addEventListener("abort", cleanup) listener, BEFORE the
-	// stream emits its async "close". This isolates the signal branch (which the
-	// native Writable's own abort handling would otherwise mask).
-
-	const buildSignalCloseProbe = (factory, chunk) => async () => {
-		let closed = false;
-		let closeEventFired = false;
-		const controller = new AbortController();
-		const appender = {
-			appendNull: () => {},
-			appendValue: () => {},
-			endRow: () => {},
-			flushSync: () => {},
-			closeSync: () => {
-				closed = true;
-			},
-		};
-		const stream = await factory(appender, controller.signal);
-		stream.on("close", () => {
-			closeEventFired = true;
-		});
-		// Write one row/batch so init() creates the appender (state.appender is set).
-		await new Promise((resolve, reject) =>
-			stream.write(chunk, (e) => (e ? reject(e) : resolve())),
-		);
-		strictEqual(closed, false, "appender must be open before the signal fires");
-		controller.abort();
-		// SYNCHRONOUSLY after abort: the signal listener must already have closed the
-		// appender, and the stream's async "close" must not have fired yet.
-		strictEqual(
-			closeEventFired,
-			false,
-			"the stream's async close must not have fired synchronously",
-		);
-		strictEqual(
-			closed,
-			true,
-			"the abort listener must close the appender synchronously on abort",
-		);
-		stream.destroy();
-	};
-
-	nodeTest(
-		`duckdbAppenderStream closes the appender synchronously via the abort listener`,
-		buildSignalCloseProbe(
-			async (appender, signal) => {
-				const db = {
-					runAndReadAll: async () => ({ columnNames: () => ["id"] }),
-					createAppender: async () => appender,
-				};
-				return duckdbAppenderStream({ db, table: "t" }, { signal });
-			},
-			{ id: 1 },
-		),
-	);
-
-	nodeTest(
-		`duckdbArrowInsertStream closes the appender synchronously via the abort listener`,
-		buildSignalCloseProbe(
-			async (appender, signal) => {
-				const db = {
-					runAndReadAll: async () => ({ columnNames: () => ["id"] }),
-					createAppender: async () => appender,
-				};
-				return duckdbArrowInsertStream({ db, table: "t" }, { signal });
-			},
-			{
-				schema: { fields: [{ name: "id" }] },
-				numRows: 1,
-				getChild: () => ({ get: () => 1 }),
-			},
-		),
-	);
-
-	// *** wireAppenderCleanup — abort listener is removed once the stream closes *** //
-
-	nodeTest(
-		`duckdbAppenderStream removes the abort listener after the stream closes`,
-		async () => {
-			// After a clean completion, the "close" handler must call
-			// signal.removeEventListener so a later abort does NOT re-run cleanup. We spy
-			// on the real AbortSignal to confirm removeEventListener("abort", ...) is
-			// invoked with the same listener that was added.
-			const controller = new AbortController();
-			const added = [];
-			const removed = [];
-			// The signal is also handed to the core Writable, which adds/removes its OWN
-			// abort listener. Identify wireAppenderCleanup's listener by its source (it
-			// calls closeAppenderOnce) so we assert specifically about that listener.
-			const isCleanup = (listener) =>
-				typeof listener === "function" &&
-				listener.toString().includes("closeAppenderOnce");
-			const realAdd = controller.signal.addEventListener.bind(
-				controller.signal,
-			);
-			const realRemove = controller.signal.removeEventListener.bind(
-				controller.signal,
-			);
-			controller.signal.addEventListener = (type, listener, opts) => {
-				if (type === "abort" && isCleanup(listener)) added.push(listener);
-				return realAdd(type, listener, opts);
-			};
-			controller.signal.removeEventListener = (type, listener, opts) => {
-				if (type === "abort" && isCleanup(listener)) removed.push(listener);
-				return realRemove(type, listener, opts);
-			};
-			const appender = {
-				appendNull: () => {},
-				appendValue: () => {},
-				endRow: () => {},
-				flushSync: () => {},
-				closeSync: () => {},
-			};
-			const db = {
-				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
-				createAppender: async () => appender,
-			};
-			await pipeline([
-				createReadableStream([{ id: 1 }]),
-				await duckdbAppenderStream(
-					{ db, table: "t" },
-					{ signal: controller.signal },
-				),
-			]);
-			strictEqual(added.length, 1, "exactly one abort listener must be added");
-			deepStrictEqual(
-				removed,
-				added,
-				"the same abort listener that was added must be removed on close",
-			);
-		},
-	);
-
-	// *** wireAppenderCleanup — abort listener is registered with { once: true } *** //
-
-	nodeTest(
-		`duckdbAppenderStream registers the abort listener with { once: true }`,
-		async () => {
-			// The abort listener must be a one-shot ({ once: true }); otherwise a repeated
-			// abort dispatch could re-enter cleanup. Capture the options passed to
-			// addEventListener("abort", ...) and assert once === true.
-			const controller = new AbortController();
-			let capturedOptions;
-			// Capture only wireAppenderCleanup's own abort listener (it references
-			// closeAppenderOnce); the core Writable registers a separate abort listener.
-			const isCleanup = (listener) =>
-				typeof listener === "function" &&
-				listener.toString().includes("closeAppenderOnce");
-			const realAdd = controller.signal.addEventListener.bind(
-				controller.signal,
-			);
-			controller.signal.addEventListener = (type, listener, opts) => {
-				if (type === "abort" && isCleanup(listener)) capturedOptions = opts;
-				return realAdd(type, listener, opts);
-			};
-			const appender = {
-				appendNull: () => {},
-				appendValue: () => {},
-				endRow: () => {},
-				flushSync: () => {},
-				closeSync: () => {},
-			};
-			const db = {
-				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
-				createAppender: async () => appender,
-			};
-			const stream = await duckdbAppenderStream(
-				{ db, table: "t" },
-				{ signal: controller.signal },
-			);
-			// One write to create the appender and register the listener.
-			await new Promise((resolve, reject) =>
-				stream.write({ id: 1 }, (e) => (e ? reject(e) : resolve())),
-			);
-			ok(capturedOptions, "abort listener options object must be provided");
-			strictEqual(
-				capturedOptions.once,
-				true,
-				"abort listener must be registered with { once: true }",
-			);
-			stream.destroy();
-		},
-	);
-
-	// *** wireAppenderCleanup — stream "close" listener closes the appender *** //
+	// *** abort teardown — destroy without an error *** //
 
 	nodeTest(
 		`duckdbAppenderStream closes the appender via the stream "close" event (destroy without error)`,
 		async () => {
 			// Destroying the stream WITHOUT an error must still release the native
-			// appender. This exercises the stream.once("close", cleanup) listener in
-			// isolation: no write error, no abort signal, no final() — only "close".
+			// appender: no write error, no abort signal, no final().
 			let closed = false;
 			let flushed = false;
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: () => {},
 				endRow: () => {},
 				flushSync: () => {
 					flushed = true;
 				},
+				clear: () => {},
 				closeSync: () => {
 					closed = true;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => appender,
 			};
@@ -2305,11 +2685,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			// destroy() with no error: emits "close" but NOT "error", and skips final().
 			stream.destroy();
 			await new Promise((resolve) => stream.once("close", resolve));
-			strictEqual(
-				closed,
-				true,
-				"the stream close listener must release the appender",
-			);
+			strictEqual(closed, true, "destroy must release the appender");
 			strictEqual(
 				flushed,
 				false,
@@ -2330,14 +2706,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			const cells = [];
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: (v) => {
 					cells.push(v);
 				},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 				createAppender: async () => appender,
 			};
@@ -2369,14 +2748,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			const cells = [];
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: (v) => {
 					cells.push(v);
 				},
 				endRow: () => {},
 				flushSync: () => {},
+				clear: () => {},
 				closeSync: () => {},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["a", "b", "c"] }),
 				createAppender: async () => appender,
 			};
@@ -2410,6 +2792,7 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			let closeCount = 0;
 			const appender = {
 				appendNull: () => {},
+				__proto__: typedAppends,
 				appendValue: () => {
 					throw new Error("cell boom");
 				},
@@ -2417,11 +2800,13 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				flushSync: () => {
 					flushCount++;
 				},
+				clear: () => {},
 				closeSync: () => {
 					closeCount++;
 				},
 			};
 			const db = {
+				run: async () => {},
 				runAndReadAll: async () => ({ columnNames: () => ["id", "name"] }),
 				createAppender: async () => appender,
 			};
@@ -2453,14 +2838,17 @@ describe(`@datastream/duckdb (${variant})`, () => {
 		let flushCalled = false;
 		let closeCalled = false;
 		const db = {
+			run: async () => {},
 			runAndReadAll: async () => ({ columnNames: () => ["id"] }),
 			createAppender: async () => ({
+				__proto__: typedAppends,
 				appendValue: () => {},
 				appendNull: () => {},
 				endRow: () => {},
 				flushSync: () => {
 					flushCalled = true;
 				},
+				clear: () => {},
 				closeSync: () => {
 					closeCalled = true;
 				},
@@ -2487,6 +2875,217 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			"closeSync must not run for an empty stream",
 		);
 	});
+
+	// *** write atomicity: one transaction per write stream (browser) *** //
+	{
+		// A fake duckdb-wasm connection logging statements, prepared-statement
+		// sends/closes and Arrow inserts in order. Probe/DESCRIBE queries are
+		// answered but not logged.
+		const makeWebTxDb = ({ query = async () => {} } = {}) => {
+			const calls = [];
+			const db = {
+				calls,
+				query: async (sql) => {
+					if (sql.startsWith("SELECT")) {
+						return { schema: { fields: usersArrowSchema.fields } };
+					}
+					calls.push(sql);
+					await query(sql);
+				},
+				prepare: async () => ({
+					send: async () => {
+						calls.push("send");
+					},
+					close: async () => {
+						calls.push("close");
+					},
+				}),
+				insertArrowTable: async () => {
+					calls.push("insert");
+				},
+			};
+			return db;
+		};
+		const row = { id: 1, name: "alice" };
+		const batch = tableFromArrays({
+			id: Int32Array.from([1]),
+			name: ["alice"],
+		}).batches[0];
+		const webWriters = [
+			["duckdbAppenderStream", "duckdbAppenderStream", row, "send", "close"],
+			// batchRows: 1 flushes every batch, so the insert lands before failing.
+			["duckdbArrowInsertStream", "duckdbArrowInsertStream", batch, "insert"],
+		];
+		const BEGIN_ERROR =
+			"duckdb: could not begin the write stream's transaction; use a connection with no open transaction";
+
+		for (const [name, exported, chunk, op, release] of webWriters) {
+			const make = async (db, streamOptions) =>
+				(await importWeb())[exported](
+					{ db, table: "users", batchRows: 1 },
+					streamOptions,
+				);
+			const released = release ? [release] : [];
+
+			test(`web ${name} begins before the first write and commits at the end`, async () => {
+				const db = makeWebTxDb();
+				await pipeline([createReadableStream([chunk, chunk]), await make(db)]);
+				deepStrictEqual(db.calls, [
+					"BEGIN TRANSACTION",
+					op,
+					op,
+					...released,
+					"COMMIT",
+				]);
+			});
+
+			test(`web ${name} opens no transaction when nothing is written`, async () => {
+				const db = makeWebTxDb();
+				await pipeline([createReadableStream([]), await make(db)]);
+				deepStrictEqual(db.calls, []);
+			});
+
+			test(`web ${name} rolls back when upstream fails`, async () => {
+				const db = makeWebTxDb();
+				const aborted = [];
+				async function* source() {
+					yield chunk;
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					throw new Error("upstream boom");
+				}
+				await rejects(
+					pipeline([
+						createReadableStream(source()),
+						await make(db, {
+							abort: (reason) => aborted.push(reason.message),
+						}),
+					]),
+					{ message: "upstream boom" },
+				);
+				deepStrictEqual(db.calls, [
+					"BEGIN TRANSACTION",
+					op,
+					...released,
+					"ROLLBACK",
+				]);
+				deepStrictEqual(aborted, ["upstream boom"]);
+			});
+
+			test(`web ${name} rolls back when its own write fails`, async () => {
+				const db = makeWebTxDb();
+				db.prepare = async () => ({
+					send: async () => {
+						throw new Error("bad row");
+					},
+					close: async () => {
+						db.calls.push("close");
+					},
+				});
+				db.insertArrowTable = async () => {
+					throw new Error("bad row");
+				};
+				await rejects(
+					pipeline([createReadableStream([chunk]), await make(db)]),
+					{ message: "bad row" },
+				);
+				deepStrictEqual(db.calls, [
+					"BEGIN TRANSACTION",
+					...released,
+					"ROLLBACK",
+				]);
+			});
+
+			test(`web ${name} keeps the original error when ROLLBACK also fails`, async () => {
+				const db = makeWebTxDb({
+					query: async (sql) => {
+						if (sql === "ROLLBACK") throw new Error("rollback failed");
+					},
+				});
+				db.insertArrowTable = async () => {
+					throw new Error("bad row");
+				};
+				db.prepare = async () => ({
+					send: async () => {
+						throw new Error("bad row");
+					},
+					close: async () => {},
+				});
+				await rejects(
+					pipeline([createReadableStream([chunk]), await make(db)]),
+					{ message: "bad row" },
+				);
+				deepStrictEqual(db.calls, ["BEGIN TRANSACTION", "ROLLBACK"]);
+			});
+
+			test(`web ${name} surfaces a failed COMMIT without rolling back again`, async () => {
+				const db = makeWebTxDb({
+					query: async (sql) => {
+						if (sql === "COMMIT") throw new Error("commit failed");
+					},
+				});
+				await rejects(
+					pipeline([createReadableStream([chunk]), await make(db)]),
+					{ message: "commit failed" },
+				);
+				deepStrictEqual(db.calls, [
+					"BEGIN TRANSACTION",
+					op,
+					...released,
+					"COMMIT",
+				]);
+			});
+
+			test(`web ${name} refuses a connection that already has an open transaction`, async () => {
+				const db = makeWebTxDb({
+					query: async (sql) => {
+						if (sql === "BEGIN TRANSACTION") {
+							throw new Error(
+								"TransactionContext Error: cannot start a transaction within a transaction",
+							);
+						}
+					},
+				});
+				await rejects(
+					pipeline([createReadableStream([chunk]), await make(db)]),
+					(error) => {
+						strictEqual(error.message, BEGIN_ERROR);
+						ok(error.cause.message.includes("within a transaction"));
+						return true;
+					},
+				);
+				// Its BEGIN failed, so it must not roll back the caller's transaction.
+				deepStrictEqual(db.calls, ["BEGIN TRANSACTION"]);
+			});
+
+			test(`web ${name} rolls back a transaction still being opened when aborted`, async () => {
+				let opened;
+				const db = makeWebTxDb({
+					query: (sql) =>
+						sql === "BEGIN TRANSACTION"
+							? new Promise((resolve) => {
+									opened = resolve;
+								})
+							: undefined,
+				});
+				const controller = new AbortController();
+				const { signal } = controller;
+				const pending = pipeline(
+					[createReadableStream([chunk]), await make(db, { signal })],
+					{ signal },
+				);
+				pending.catch(() => {});
+				await new Promise(setImmediate);
+				controller.abort();
+				await new Promise(setImmediate);
+				opened();
+				await rejects(pending);
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				strictEqual(db.calls[0], "BEGIN TRANSACTION");
+				ok(db.calls.includes("ROLLBACK"), `no ROLLBACK in ${db.calls}`);
+				strictEqual(db.calls.includes("COMMIT"), false);
+			});
+		}
+	}
 
 	// *** browser build: table creation, probes, identifiers, arrays, connect *** //
 	{
@@ -2567,7 +3166,8 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				created(db),
 				'CREATE TABLE "t" ("c_bool" BOOLEAN, "c_int8" TINYINT, "c_int16" SMALLINT, "c_int32" INTEGER, "c_int64" BIGINT, "c_uint8" UTINYINT, "c_uint16" USMALLINT, "c_uint32" UINTEGER, "c_uint64" UBIGINT, "c_float32" REAL, "c_float64" DOUBLE, "c_date" DATE, "c_ts_s" TIMESTAMP_S, "c_ts_ms" TIMESTAMP_MS, "c_ts_us" TIMESTAMP, "c_ts_ns" TIMESTAMP_NS, "c_str" VARCHAR)',
 			);
-			strictEqual(db.queries.at(-1), 'SELECT * FROM "t" LIMIT 0');
+			strictEqual(db.queries.at(-2), 'SELECT * FROM "t" LIMIT 0');
+			strictEqual(db.queries.at(-1), "COMMIT");
 			strictEqual(db.sent.length, 1);
 			strictEqual(db.closed, 1);
 		});
@@ -2760,6 +3360,72 @@ describe(`@datastream/duckdb (${variant})`, () => {
 			);
 		});
 
+		test(`web duckdbArrowInsertStream reorders batch columns to table order by name, case-insensitively`, async () => {
+			const { duckdbArrowInsertStream: webArrowInsertStream } =
+				await importWeb();
+			// Table is (ID, name); the batch carries (name, id).
+			const db = makeWebDb({
+				fields: [new Field("ID", new Int32()), new Field("name", new Utf8())],
+			});
+			await pipeline([
+				createReadableStream([{ name: "alice", id: 1 }]),
+				arrowBatchFromObjectStream({
+					schema: new Schema([
+						new Field("name", new Utf8(), true),
+						new Field("id", new Int32(), true),
+					]),
+				}),
+				await webArrowInsertStream({ db, table: "users" }),
+			]);
+			const [{ table }] = db.inserted;
+			deepStrictEqual(
+				table.schema.fields.map((f) => f.name),
+				["id", "name"],
+			);
+			deepStrictEqual(table.get(0).toJSON(), { id: 1, name: "alice" });
+		});
+
+		test(`web duckdbArrowInsertStream rejects a column count or name mismatch`, async () => {
+			const { duckdbArrowInsertStream: webArrowInsertStream } =
+				await importWeb();
+			const tooMany = makeWebDb();
+			await rejects(
+				pipeline([
+					createReadableStream([{ id: 1, name: "a", other: "x" }]),
+					arrowBatchFromObjectStream({
+						schema: new Schema([
+							...usersArrowSchema.fields,
+							new Field("other", new Utf8(), true),
+						]),
+					}),
+					await webArrowInsertStream({ db: tooMany, table: "users" }),
+				]),
+				{
+					message:
+						'duckdb: record batch column count (3) does not match table "users" column count (2)',
+				},
+			);
+			deepStrictEqual(tooMany.inserted, []);
+			const renamed = makeWebDb();
+			await rejects(
+				pipeline([
+					createReadableStream([{ id: 1, other: "x" }]),
+					arrowBatchFromObjectStream({
+						schema: new Schema([
+							new Field("id", new Int32(), true),
+							new Field("other", new Utf8(), true),
+						]),
+					}),
+					await webArrowInsertStream({ db: renamed, table: "users" }),
+				]),
+				{
+					message:
+						'duckdb: record batch is missing column "name" for table "users"',
+				},
+			);
+			deepStrictEqual(renamed.inserted, []);
+		});
+
 		test(`web duckdb streams reject empty and non-string table names`, async () => {
 			const { duckdbAppenderStream: webAppenderStream } = await importWeb();
 			for (const table of ["", 42]) {
@@ -2822,9 +3488,11 @@ describe(`@datastream/duckdb (${variant})`, () => {
 							export class ConsoleLogger {}
 							export class AsyncDuckDB {
 								constructor(logger, worker) { this.logger = logger; this.worker = worker; }
-								async instantiate(mainModule, pthreadWorker) { this.instantiated = [mainModule, pthreadWorker]; }
-								async open(config) { this.opened = config; }
-								async connect() { return { db: this }; }
+								// worker.fail names a step to reject, so tests can drive the error paths.
+								async instantiate(mainModule, pthreadWorker) { if (this.worker.fail === "instantiate") throw new Error("instantiate failed"); this.instantiated = [mainModule, pthreadWorker]; }
+								async open(config) { if (this.worker.fail === "open") throw new Error("open failed"); this.opened = config; }
+								async connect() { if (this.worker.fail === "connect") throw new Error("connect failed"); return { db: this }; }
+								async terminate() { this.worker.terminate(); }
 							}
 						`)}), shortCircuit: true };
 					}
@@ -2894,5 +3562,499 @@ describe(`@datastream/duckdb (${variant})`, () => {
 				delete globalThis.Worker;
 			}
 		});
+
+		test(`web duckdbConnect terminates the Worker when setup fails`, async () => {
+			const { duckdbConnect: webConnect } = await importWeb();
+			for (const fail of ["instantiate", "open", "connect"]) {
+				const workers = [];
+				globalThis.Worker = class {
+					fail = fail;
+					terminated = false;
+					constructor() {
+						workers.push(this);
+					}
+					terminate() {
+						this.terminated = true;
+					}
+				};
+				try {
+					await rejects(webConnect("opfs://data.duckdb"), {
+						message: `${fail} failed`,
+					});
+					strictEqual(workers.length, 1);
+					strictEqual(workers[0].terminated, true, `${fail}: worker leaked`);
+				} finally {
+					delete globalThis.Worker;
+				}
+			}
+		});
+	}
+
+	// *** duckdbQueryStream (node build: real in-memory DuckDB) *** //
+	{
+		// Delegates to a real connection, counting interrupt() calls.
+		const spyConnection = async () => {
+			const db = await duckdbConnect();
+			const spy = Object.create(db);
+			spy.interrupts = 0;
+			spy.interrupt = () => {
+				spy.interrupts += 1;
+				db.interrupt();
+			};
+			return spy;
+		};
+
+		nodeTest(`duckdbQueryStream streams plain JS row objects`, async () => {
+			const db = await spyConnection();
+			const rows = await streamToArray(
+				duckdbQueryStream({
+					db,
+					sql: "SELECT 1::INTEGER AS i, 1.5::DOUBLE AS d, 'a' AS s, true AS b, NULL AS n, 2::BIGINT AS big",
+				}),
+			);
+			deepStrictEqual(rows, [
+				{ i: 1, d: 1.5, s: "a", b: true, n: null, big: 2n },
+			]);
+			// A query that ran to completion is never interrupted.
+			strictEqual(db.interrupts, 0);
+		});
+
+		nodeTest(`duckdbQueryStream binds params`, async () => {
+			const db = await duckdbConnect();
+			const rows = await streamToArray(
+				duckdbQueryStream({
+					db,
+					sql: "SELECT ?::INTEGER AS a, ?::VARCHAR AS b",
+					params: [7, "x"],
+				}),
+			);
+			deepStrictEqual(rows, [{ a: 7, b: "x" }]);
+		});
+
+		nodeTest(
+			`duckdbQueryStream yields every row across result chunks`,
+			async () => {
+				const db = await duckdbConnect();
+				// 5000 rows span three 2048-row DuckDB chunks.
+				const rows = await streamToArray(
+					duckdbQueryStream({
+						db,
+						sql: "SELECT range::INTEGER AS i FROM range(5000) ORDER BY i",
+					}),
+				);
+				strictEqual(rows.length, 5000);
+				deepStrictEqual(rows[0], { i: 0 });
+				deepStrictEqual(rows[4999], { i: 4999 });
+			},
+		);
+
+		nodeTest(
+			`duckdbQueryStream surfaces a query error without interrupting`,
+			async () => {
+				const db = await spyConnection();
+				await rejects(
+					streamToArray(duckdbQueryStream({ db, sql: "SELECT * FROM nope" })),
+					{ message: /Table with name nope does not exist/ },
+				);
+				strictEqual(db.interrupts, 0);
+			},
+		);
+
+		nodeTest(
+			`duckdbQueryStream does not interrupt a result abandoned between chunks`,
+			async () => {
+				const db = await spyConnection();
+				const seen = [];
+				for await (const row of duckdbQueryStream({
+					db,
+					sql: "SELECT range::INTEGER AS i FROM range(1000000)",
+				})) {
+					seen.push(row);
+					break;
+				}
+				deepStrictEqual(seen, [{ i: 0 }]);
+				// Paused mid-chunk: nothing is running, so nothing is interrupted.
+				strictEqual(db.interrupts, 0);
+				// The connection stays usable after the abandoned result.
+				deepStrictEqual(
+					(await db.runAndReadAll("SELECT 3 AS a")).getRowObjectsJS(),
+					[{ a: 3 }],
+				);
+			},
+		);
+
+		// db.interrupt() is connection-wide: it would kill another query running on
+		// the same connection, so only a stream with its own call in flight may use it.
+		const slowQuery =
+			"SELECT count(*)::INTEGER AS n FROM range(30000000) t(a) WHERE hash(a) % 7 = 0";
+
+		nodeTest(
+			`duckdbQueryStream destroyed before it is read leaves other queries alone`,
+			async () => {
+				const db = await spyConnection();
+				const stream = duckdbQueryStream({ db, sql: "SELECT 1" });
+				const other = db.runAndReadAll(slowQuery);
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				stream.destroy();
+				strictEqual((await other).getRowObjectsJS().length, 1);
+				strictEqual(db.interrupts, 0);
+			},
+		);
+
+		nodeTest(
+			`duckdbQueryStream paused mid-result and destroyed leaves other queries alone`,
+			async () => {
+				const db = await spyConnection();
+				const stream = duckdbQueryStream({
+					db,
+					sql: "SELECT * FROM range(100000)",
+				});
+				const it = stream[Symbol.asyncIterator]();
+				for (let i = 0; i < 10; i++) await it.next();
+				const other = db.runAndReadAll(slowQuery);
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				stream.destroy();
+				strictEqual((await other).getRowObjectsJS().length, 1);
+				strictEqual(db.interrupts, 0);
+			},
+		);
+
+		// A fake connection whose stream() or next chunk fetch hangs until
+		// interrupt() rejects it, like node-api's "Interrupted!".
+		const hangingDb = (hangAt) => {
+			const db = { interrupts: 0 };
+			let fail;
+			const hang = new Promise((_resolve, reject) => {
+				fail = reject;
+			});
+			hang.catch(() => {});
+			db.interrupt = () => {
+				db.interrupts += 1;
+				fail(new Error("Interrupted!"));
+			};
+			db.stream = async () => {
+				if (hangAt === "stream") await hang;
+				return {
+					async *yieldRowObjectJs() {
+						yield [{ i: 0 }];
+						await hang;
+					},
+				};
+			};
+			return db;
+		};
+
+		for (const hangAt of ["stream", "chunk"]) {
+			nodeTest(
+				`duckdbQueryStream interrupts when destroyed during an in-flight ${hangAt} call`,
+				async () => {
+					const db = hangingDb(hangAt);
+					const stream = duckdbQueryStream({ db, sql: "SELECT 1" });
+					stream.on("error", () => {});
+					stream.resume();
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					strictEqual(db.interrupts, 0);
+					stream.destroy();
+					strictEqual(db.interrupts, 1);
+				},
+			);
+		}
+
+		nodeTest(
+			`duckdbQueryStream abort interrupts a query that is still executing`,
+			{ timeout: 20_000 },
+			async () => {
+				const db = await spyConnection();
+				const controller = new AbortController();
+				setTimeout(() => controller.abort(), 100);
+				// Never finishes on its own: without interrupt() the abort would wait
+				// on the native query forever.
+				await rejects(
+					streamToArray(
+						duckdbQueryStream(
+							{
+								db,
+								sql: "SELECT range FROM range(1000000000000) WHERE hash(range) % 1000000007 = 0",
+							},
+							{ signal: controller.signal },
+						),
+					),
+					{ name: "AbortError" },
+				);
+				strictEqual(db.interrupts, 1);
+			},
+		);
+
+		nodeTest(
+			`duckdbQueryStream reads back a Parquet file written with COPY`,
+			async () => {
+				const db = await duckdbConnect();
+				const dir = await mkdtemp(join(tmpdir(), "datastream-duckdb-"));
+				const file = join(dir, "users.parquet").replaceAll("'", "''");
+				try {
+					await db.run(
+						`COPY (SELECT range::INTEGER AS id, 'user' || range AS name, range % 2 = 0 AS even FROM range(3)) TO '${file}' (FORMAT parquet)`,
+					);
+					const rows = await streamToArray(
+						duckdbQueryStream({
+							db,
+							sql: "SELECT * FROM read_parquet(?) ORDER BY id",
+							params: [file],
+						}),
+					);
+					deepStrictEqual(rows, [
+						{ id: 0, name: "user0", even: true },
+						{ id: 1, name: "user1", even: false },
+						{ id: 2, name: "user2", even: true },
+					]);
+				} finally {
+					await rm(dir, { recursive: true, force: true });
+				}
+			},
+		);
+	}
+
+	// *** duckdbQueryStream (browser build: fake duckdb-wasm connection) *** //
+	{
+		// An async reader over the given RecordBatches (duckdb-wasm hands back an
+		// AsyncRecordBatchStreamReader). `next` overrides a step to inject errors
+		// or a query that never settles.
+		const makeReader = (batches, next) => {
+			let i = 0;
+			return {
+				[Symbol.asyncIterator]() {
+					return this;
+				},
+				next:
+					next ??
+					(async () =>
+						i < batches.length
+							? { value: batches[i++], done: false }
+							: { value: undefined, done: true }),
+			};
+		};
+		const makeQueryDb = (batches, next) => {
+			const db = { sends: [], prepares: [], params: [], closed: 0, cancels: 0 };
+			db.send = async (sql, allowStreamResult) => {
+				db.sends.push([sql, allowStreamResult]);
+				return makeReader(batches, next);
+			};
+			db.prepare = async (sql) => {
+				db.prepares.push(sql);
+				return {
+					send: async (...params) => {
+						db.params.push(params);
+						return makeReader(batches, next);
+					},
+					close: async () => {
+						db.closed += 1;
+					},
+				};
+			};
+			db.cancelSent = async () => {
+				db.cancels += 1;
+				return true;
+			};
+			return db;
+		};
+		const batchesOf = (...tables) => tables.flatMap((t) => t.batches);
+
+		test(`web duckdbQueryStream streams plain row objects from every batch`, async () => {
+			const { duckdbQueryStream: webQueryStream } = await importWeb();
+			// An empty batch in the middle must be skipped, not end the stream.
+			const db = makeQueryDb(
+				batchesOf(
+					tableFromArrays({ id: Int32Array.from([1, 2]), name: ["a", "b"] }),
+					tableFromArrays({ id: Int32Array.from([]), name: [] }),
+					tableFromArrays({ id: Int32Array.from([3]), name: ["c"] }),
+				),
+			);
+			const rows = await streamToArray(
+				webQueryStream({ db, sql: "SELECT id, name FROM users" }),
+			);
+			deepStrictEqual(rows, [
+				{ id: 1, name: "a" },
+				{ id: 2, name: "b" },
+				{ id: 3, name: "c" },
+			]);
+			// Rows are plain objects (StructRow.toJSON), not arrow proxies.
+			strictEqual(Object.getPrototypeOf(rows[0]), Object.prototype);
+			// Streamed (allowStreamResult), not materialized in the worker.
+			deepStrictEqual(db.sends, [["SELECT id, name FROM users", true]]);
+			deepStrictEqual(db.prepares, []);
+			strictEqual(db.cancels, 0);
+		});
+
+		test(`web duckdbQueryStream binds params through a prepared statement and closes it`, async () => {
+			const { duckdbQueryStream: webQueryStream } = await importWeb();
+			const db = makeQueryDb(
+				batchesOf(tableFromArrays({ a: Int32Array.from([7]) })),
+			);
+			const rows = await streamToArray(
+				webQueryStream({ db, sql: "SELECT ? AS a", params: [7, "x"] }),
+			);
+			deepStrictEqual(rows, [{ a: 7 }]);
+			deepStrictEqual(db.sends, []);
+			deepStrictEqual(db.prepares, ["SELECT ? AS a"]);
+			deepStrictEqual(db.params, [[7, "x"]]);
+			strictEqual(db.closed, 1);
+			strictEqual(db.cancels, 0);
+		});
+
+		test(`web duckdbQueryStream closes the prepared statement when the result errors`, async () => {
+			const { duckdbQueryStream: webQueryStream } = await importWeb();
+			const db = makeQueryDb([], async () => {
+				throw new Error("fetch failed");
+			});
+			await rejects(
+				streamToArray(webQueryStream({ db, sql: "SELECT ?", params: [1] })),
+				{ message: "fetch failed" },
+			);
+			strictEqual(db.closed, 1);
+		});
+
+		test(`web duckdbQueryStream surfaces a send error`, async () => {
+			const { duckdbQueryStream: webQueryStream } = await importWeb();
+			const db = makeQueryDb([]);
+			db.send = async () => {
+				throw new Error("Parser Error");
+			};
+			await rejects(streamToArray(webQueryStream({ db, sql: "SELEC" })), {
+				message: "Parser Error",
+			});
+			strictEqual(db.closed, 0);
+		});
+
+		test(`web duckdbQueryStream cancels the query and closes the statement when stopped early`, async () => {
+			const { duckdbQueryStream: webQueryStream } = await importWeb();
+			const db = makeQueryDb(
+				batchesOf(tableFromArrays({ id: Int32Array.from([1, 2, 3]) })),
+			);
+			const seen = [];
+			for await (const row of webQueryStream({
+				db,
+				sql: "SELECT ?",
+				params: [1],
+			})) {
+				seen.push(row);
+				break;
+			}
+			deepStrictEqual(seen, [{ id: 1 }]);
+			// node core tears the Readable down asynchronously after break.
+			await new Promise(setImmediate);
+			// Paused between rows: nothing is in flight, so cancelSent() (which
+			// cancels whatever the connection is running) is not called.
+			strictEqual(db.cancels, 0);
+			strictEqual(db.closed, 1);
+		});
+
+		// Direct ReadableStream control (cancel() / getReader()) is only on the
+		// browser core; the node core returns a node Readable.
+		(variant === "browser" ? test : test.skip)(
+			`web duckdbQueryStream cancelled before it is read does not cancel the connection`,
+			async () => {
+				const { duckdbQueryStream: webQueryStream } = await importWeb();
+				const db = makeQueryDb([]);
+				await webQueryStream({ db, sql: "SELECT 1" }).cancel();
+				strictEqual(db.cancels, 0);
+				deepStrictEqual(db.sends, []);
+			},
+		);
+
+		(variant === "browser" ? test : test.skip)(
+			`web duckdbQueryStream cancels when a later batch fetch is in flight`,
+			async () => {
+				const { duckdbQueryStream: webQueryStream } = await importWeb();
+				const [batch] = batchesOf(
+					tableFromArrays({ id: Int32Array.from([1]) }),
+				);
+				let fetches = 0;
+				let settle;
+				const db = makeQueryDb([], async () => {
+					fetches += 1;
+					if (fetches === 1) return { value: batch, done: false };
+					return new Promise((_resolve, reject) => {
+						settle = reject;
+					});
+				});
+				db.cancelSent = async () => {
+					db.cancels += 1;
+					settle(new Error("query canceled"));
+					return true;
+				};
+				const reader = webQueryStream({ db, sql: "SELECT 1" }).getReader();
+				deepStrictEqual(await reader.read(), { value: { id: 1 }, done: false });
+				const read = reader.read();
+				await new Promise(setImmediate);
+				strictEqual(fetches, 2);
+				// Without a cancelSent() the fetch would never settle; end it late so a
+				// missed cancel fails the assertion below instead of hanging.
+				setTimeout(() => settle(new Error("not canceled")), 50);
+				await reader.cancel();
+				strictEqual(db.cancels, 1);
+				deepStrictEqual(await read, { value: undefined, done: true });
+			},
+		);
+
+		(variant === "browser" ? test : test.skip)(
+			`web duckdbQueryStream cancel swallows a failing cancelSent`,
+			async () => {
+				const { duckdbQueryStream: webQueryStream } = await importWeb();
+				let settle;
+				const db = makeQueryDb(
+					[],
+					() =>
+						new Promise((_resolve, reject) => {
+							settle = reject;
+						}),
+				);
+				db.cancelSent = async () => {
+					db.cancels += 1;
+					settle(new Error("query canceled"));
+					throw new Error("cancel failed");
+				};
+				const reader = webQueryStream({ db, sql: "SELECT 1" }).getReader();
+				const read = reader.read();
+				await new Promise(setImmediate);
+				await reader.cancel();
+				strictEqual(db.cancels, 1);
+				deepStrictEqual(await read, { value: undefined, done: true });
+			},
+		);
+
+		// The node build of @datastream/core wraps the iterator in a generator,
+		// which queues return() behind the in-flight next(); only the browser core
+		// cancels immediately, so this runs against the browser variant.
+		(variant === "browser" ? test : test.skip)(
+			`web duckdbQueryStream abort cancels a query that is still executing`,
+			async () => {
+				const { duckdbQueryStream: webQueryStream } = await importWeb();
+				let settle;
+				const db = makeQueryDb(
+					[],
+					() =>
+						new Promise((_resolve, reject) => {
+							settle = reject;
+						}),
+				);
+				db.cancelSent = async () => {
+					db.cancels += 1;
+					settle(new Error("query canceled"));
+					return true;
+				};
+				const controller = new AbortController();
+				setTimeout(() => controller.abort(), 10);
+				await rejects(
+					streamToArray(
+						webQueryStream(
+							{ db, sql: "SELECT 1" },
+							{ signal: controller.signal },
+						),
+					),
+					{ name: "AbortError" },
+				);
+				strictEqual(db.cancels, 1);
+			},
+		);
 	}
 });

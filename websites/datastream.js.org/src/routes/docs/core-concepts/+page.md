@@ -101,6 +101,8 @@ All stream factory functions accept a `streamOptions` parameter:
 | `chunkSize` | `number` | `16384` (16KB) | Slice size used when a Readable is created from a string or buffer |
 | `signal` | `AbortSignal` | — | Signal to abort the pipeline |
 
+Exception: the browser builds of `charsetDecodeStream`, `charsetEncodeStream`, `fileReadStream`, and `fileWriteStream` accept `streamOptions` but ignore it.
+
 ```javascript
 const controller = new AbortController()
 

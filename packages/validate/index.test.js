@@ -1,4 +1,4 @@
-import { deepStrictEqual, ok, strictEqual } from "node:assert";
+import { deepStrictEqual, notStrictEqual, ok, strictEqual } from "node:assert";
 import test, { describe } from "node:test";
 import {
 	createReadableStream,
@@ -808,5 +808,178 @@ describe(`@datastream/validate (${variant})`, () => {
 		);
 		deepStrictEqual(errorEntry.keys, ["a_field", "b_field"]);
 		strictEqual(errorEntry.message, "Fields a_field and b_field are required");
+	});
+
+	// *** transpileSchema plugins registered by ajv-cmd/compile *** //
+	test(`transpileSchema should use the JSON Schema 2020-12 dialect`, (_t) => {
+		// prefixItems is 2020-12 only; the draft-07 Ajv class rejects it in strict mode
+		const validate = transpileSchema({
+			type: "array",
+			prefixItems: [{ type: "string" }],
+			items: false,
+			minItems: 1,
+		});
+		strictEqual(validate(["a"]), true);
+		// (coerceTypes would turn a number into a string; an object can't be)
+		strictEqual(validate([{}]), false);
+		strictEqual(validate.errors[0].keyword, "type");
+		strictEqual(validate.errors[0].instancePath, "/0");
+	});
+
+	test(`transpileSchema should support ajv-formats formats`, (_t) => {
+		const validate = transpileSchema({ type: "string", format: "email" });
+		strictEqual(validate("a@example.com"), true);
+		strictEqual(validate("not an email"), false);
+		strictEqual(validate.errors[0].keyword, "format");
+	});
+
+	test(`transpileSchema should support draft 2019 formats`, (_t) => {
+		// idn-email comes from @silverbucket/ajv-formats-draft2019, not ajv-formats
+		const validate = transpileSchema({ type: "string", format: "idn-email" });
+		strictEqual(validate("用户@例子.广告"), true);
+		strictEqual(validate("not an email"), false);
+		strictEqual(validate.errors[0].keyword, "format");
+	});
+
+	test(`transpileSchema should support ajv-keywords keywords`, (_t) => {
+		const validate = transpileSchema({
+			type: "object",
+			properties: { a: { type: "string", transform: ["trim", "toLowerCase"] } },
+		});
+		const data = { a: "  ABC " };
+		strictEqual(validate(data), true);
+		deepStrictEqual(data, { a: "abc" });
+	});
+
+	test(`transpileSchema should skip ajv-errors when allErrors is false`, (_t) => {
+		// ajv-errors throws at registration without allErrors
+		const validate = transpileSchema(
+			{
+				type: "object",
+				properties: { a: { type: "string" }, b: { type: "string" } },
+				required: ["a", "b"],
+			},
+			{ allErrors: false },
+		);
+		strictEqual(validate({}), false);
+		// allErrors:false stops at the first error
+		strictEqual(validate.errors.length, 1);
+		// and errorMessage is then an unknown keyword (strict mode)
+		let message;
+		try {
+			transpileSchema(
+				{ type: "object", errorMessage: "nope" },
+				{ allErrors: false },
+			);
+		} catch (e) {
+			message = e.message;
+		}
+		strictEqual(message, 'strict mode: unknown keyword: "errorMessage"');
+	});
+
+	// *** clone (plain-object copy, structuredClone fallback) *** //
+	const numberA = { type: "object", properties: { a: { type: "number" } } };
+	const validateOne = async (row, schema = numberA) =>
+		(
+			await streamToArray(
+				pipejoin([createReadableStream([row]), validateStream({ schema })]),
+			)
+		)[0];
+
+	test(`validateStream copies a function value by reference and never coerces the original`, async (_t) => {
+		const f = () => {};
+		const original = { a: "1", f };
+		const output = await validateOne(original);
+		strictEqual(output.a, 1);
+		strictEqual(output.f, f);
+		strictEqual(original.a, "1");
+	});
+
+	test(`validateStream clones a null-prototype row (node:sqlite rows) as a plain object`, async (_t) => {
+		const f = () => {};
+		const original = Object.assign(Object.create(null), { a: "1", f });
+		const output = await validateOne(original);
+		strictEqual(output.a, 1);
+		strictEqual(output.f, f);
+		strictEqual(Object.getPrototypeOf(output), Object.prototype);
+		strictEqual(original.a, "1");
+	});
+
+	test(`validateStream clones a Date value through structuredClone`, async (_t) => {
+		const original = { a: "1", d: new Date(0) };
+		const output = await validateOne(original);
+		ok(output.d instanceof Date);
+		notStrictEqual(output.d, original.d);
+		strictEqual(output.d.getTime(), 0);
+	});
+
+	test(`validateStream keeps cycles and shared references in the clone`, async (_t) => {
+		const original = { a: "1", sub: { b: "2" } };
+		original.self = original;
+		original.again = original.sub;
+		const output = await validateOne(original);
+		strictEqual(output.a, 1);
+		strictEqual(output.self, output);
+		strictEqual(output.again, output.sub);
+		notStrictEqual(output.sub, original.sub);
+		strictEqual(original.a, "1");
+	});
+
+	test(`validateStream clones nested arrays`, async (_t) => {
+		const original = { list: ["1", "2"] };
+		const schema = {
+			type: "object",
+			properties: { list: { type: "array", items: { type: "number" } } },
+		};
+		const output = await validateOne(original, schema);
+		ok(Array.isArray(output.list));
+		deepStrictEqual(output.list, [1, 2]);
+		strictEqual(original.list[0], "1");
+	});
+
+	test(`validateStream keeps an own "__proto__" key as a data property`, async (_t) => {
+		const original = JSON.parse('{"__proto__":{"polluted":true},"a":"1"}');
+		const output = await validateOne(original);
+		strictEqual(output.a, 1);
+		deepStrictEqual(Object.getOwnPropertyDescriptor(output, "__proto__"), {
+			value: { polluted: true },
+			writable: true,
+			enumerable: true,
+			configurable: true,
+		});
+		strictEqual(Object.getPrototypeOf(output), Object.prototype);
+		strictEqual(output.polluted, undefined);
+	});
+
+	test(`validateStream clones a row holding a null value`, async (_t) => {
+		const original = { a: "1", b: null };
+		const output = await validateOne(original);
+		strictEqual(output.a, 1);
+		strictEqual(output.b, null);
+		strictEqual(original.a, "1");
+	});
+
+	test(`validateStream validates the original in place when a value is not cloneable`, async (_t) => {
+		// WeakMap has no structuredClone representation, so clone() throws and
+		// the fallback validates (and coerces) the caller's object itself.
+		const original = { a: "1", w: new WeakMap() };
+		const output = await validateOne(original);
+		strictEqual(output, original);
+		strictEqual(original.a, 1);
+	});
+
+	test(`validateStream clones an empty array`, async (_t) => {
+		const output = await validateOne({ a: "1", list: [] });
+		deepStrictEqual(output.list, []);
+	});
+
+	test(`validateStream copies an array holding a function without the structuredClone fallback`, async (_t) => {
+		const f = () => {};
+		const original = { a: "1", list: [f] };
+		const output = await validateOne(original);
+		notStrictEqual(output, original);
+		ok(Array.isArray(output.list));
+		strictEqual(output.list[0], f);
+		strictEqual(original.a, "1");
 	});
 });

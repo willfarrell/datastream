@@ -19,7 +19,7 @@ Parses NDJSON (one JSON value per line) into individual JavaScript values. Split
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `maxBufferSize` | `number \| null` | `16777216` (16MB) | Maximum buffer size for incomplete lines. `null` = unlimited. Exceeding it throws a `RangeError` |
+| `maxBufferSize` | `number \| null` | `16777216` (16MB) | Maximum size of the incomplete (not yet newline-terminated) line held between chunks; complete lines in a chunk don't count. `null` = unlimited. Exceeding it throws a `RangeError` |
 | `maxErrorRows` | `number \| null` | `1000` | Max row indexes kept in each error's `idx`. `null` = unlimited |
 | `resultKey` | `string` | `"ndjsonErrors"` | Key in pipeline result |
 
@@ -52,13 +52,9 @@ console.log(result.ndjsonErrors)
 
 ## `ndjsonFormatStream` <span class="badge">Transform</span>
 
-Formats objects as NDJSON text (one `JSON.stringify` per line). Batches output for throughput.
+Formats objects as NDJSON text (one `JSON.stringify` per line). Batches output for throughput. A value with no JSON form (a function, symbol, or `undefined`) is written as `null`.
 
-### Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `space` | `number \| string` | — | Passed to `JSON.stringify` for pretty-printing each line |
+There is no `space` option: NDJSON is one record per line, and pretty-printing would split a record across lines.
 
 ### Example
 
@@ -81,20 +77,20 @@ await pipeline([
 
 Parses a streaming JSON array (`[{...},{...}]`) into individual elements. Uses a state machine to track nesting depth, strings, and escapes across chunk boundaries — no external dependencies. Accepts string or byte chunks (bytes are decoded as streaming UTF-8).
 
-The input must be a top-level array: only whitespace may come before the opening `[`. Any other input (for example an object such as `{"a":[1,2]}`) emits nothing and records a `NoArrayStart` error in the result.
+The input must be a top-level array: only whitespace may come before the opening `[`. Any other input (for example an object such as `{"a":[1,2]}`) emits nothing and records a `NoArrayStart` error in the result. Only whitespace may follow the closing `]`; anything else (for example `[1][2]`) records a `TrailingData` error and the rest of the input is ignored. Input that ends before the closing `]` records an `UnexpectedEnd` error (elements already complete are still emitted).
 
 ### Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `maxBufferSize` | `number \| null` | `16777216` (16MB) | Maximum buffer size for incomplete elements. `null` = unlimited |
+| `maxBufferSize` | `number \| null` | `16777216` (16MB) | Maximum size of the incomplete element held between chunks; complete elements in a chunk don't count. `null` = unlimited |
 | `maxValueSize` | `number \| null` | `16777216` (16MB) | Maximum size of a single JSON element. `null` = unlimited |
 | `maxErrorRows` | `number \| null` | `1000` | Max row indexes kept in each error's `idx`. `null` = unlimited |
 | `resultKey` | `string` | `"jsonErrors"` | Key in pipeline result |
 
 #### Buffer size protection
 
-A JSON array with deeply nested or very large objects can cause the parser to buffer significant amounts of data. Setting `maxBufferSize` caps total memory and `maxValueSize` caps per-element memory; exceeding either throws a `RangeError`. Lower these from defaults when parsing untrusted input.
+A JSON array with deeply nested or very large objects can cause the parser to buffer significant amounts of data. Setting `maxBufferSize` caps the memory held for an element that spans chunks and `maxValueSize` caps the size of each element; exceeding either throws a `RangeError`. Lower these from defaults when parsing untrusted input.
 
 ```javascript
 // Parse with a 1MB buffer limit for untrusted input
@@ -109,7 +105,11 @@ Parse errors collected during processing:
 {
   ParseError: { id: 'ParseError', message: 'Invalid JSON', idx: [2], count: 1 },
   // only when the input does not start with `[`
-  NoArrayStart: { id: 'NoArrayStart', message: 'Input did not contain a top-level array', idx: [0], count: 1 }
+  NoArrayStart: { id: 'NoArrayStart', message: 'Input did not contain a top-level array', idx: [0], count: 1 },
+  // only when non-whitespace follows the closing `]`
+  TrailingData: { id: 'TrailingData', message: 'Unexpected content after top-level array', idx: [3], count: 1 },
+  // only when the input ends before the closing `]`
+  UnexpectedEnd: { id: 'UnexpectedEnd', message: 'Input ended before the top-level array closed', idx: [3], count: 1 }
 }
 ```
 
@@ -130,7 +130,7 @@ const output = await streamToArray(pipejoin(streams))
 
 ## `jsonFormatStream` <span class="badge">Transform</span>
 
-Formats objects as a JSON array string (`[{...},{...}]`). Emits `[` with the first element, `,\n` between elements, and `]` on flush. Outputs `[]` if no elements.
+Formats objects as a JSON array string (`[{...},{...}]`). Emits `[` with the first element, `,\n` between elements, and `]` on flush. Outputs `[]` if no elements. A value with no JSON form (a function, symbol, or `undefined`) is written as `null`, as `JSON.stringify` does inside arrays.
 
 ### Options
 

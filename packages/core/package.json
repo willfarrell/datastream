@@ -3,6 +3,7 @@
 	"version": "0.8.0",
 	"description": "Stream creation utilities and pipeline functions for Web Streams API and Node.js streams",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},
@@ -13,13 +14,21 @@
 	"module": "./index.browser.mjs",
 	"exports": {
 		".": {
-			"types": "./index.d.ts",
-			"browser": "./index.browser.mjs",
-			"node": "./index.node.mjs",
-			"default": "./index.browser.mjs"
+			"browser": {
+				"types": "./index.browser.d.ts",
+				"default": "./index.browser.mjs"
+			},
+			"node": {
+				"types": "./index.d.ts",
+				"default": "./index.node.mjs"
+			},
+			"default": {
+				"types": "./index.browser.d.ts",
+				"default": "./index.browser.mjs"
+			}
 		},
 		"./browser": {
-			"types": "./index.d.ts",
+			"types": "./index.browser.d.ts",
 			"default": "./index.browser.mjs"
 		}
 	},

@@ -35,7 +35,7 @@ export const encryptStream = async (
 	validateIv(iv, ivSize, algorithm);
 	validateAad(aad, algorithm);
 	const aead = authAlgorithms.includes(algorithm);
-	const stream = createCipheriv(algorithm.toLowerCase(), key, iv, {
+	const stream = createCipheriv(algorithm, key, iv, {
 		...streamOptions,
 		authTagLength: aead ? 16 : undefined,
 	});
@@ -91,7 +91,7 @@ const aeadDecryptStream = (
 	// exposed as a stream, so forwarding streamOptions to it has no effect. The
 	// default auth-tag length is already 16 bytes for every AEAD cipher we use,
 	// so no options object is needed.
-	const decipher = createDecipheriv(algorithm.toLowerCase(), key, iv);
+	const decipher = createDecipheriv(algorithm, key, iv);
 	decipher.setAuthTag(authTag);
 	if ((aad ?? null) !== null) {
 		decipher.setAAD(aad);
@@ -108,9 +108,10 @@ const aeadDecryptStream = (
 		const ciphertext = Buffer.concat(chunks);
 		// update() may produce plaintext, but we withhold it until final()
 		// succeeds; if the tag is wrong, final() throws and nothing is emitted.
-		const head = decipher.update(ciphertext);
-		const tail = decipher.final();
-		const plaintext = Buffer.concat([head, tail]);
+		// The AEAD modes are stream ciphers (no padding), so final() only
+		// verifies the tag and returns no bytes: update() holds all plaintext.
+		const plaintext = decipher.update(ciphertext);
+		decipher.final();
 		byteLimit(
 			maxOutputSize ?? Number.POSITIVE_INFINITY,
 			decryptOutputError,
@@ -144,12 +145,7 @@ export const decryptStream = async (
 		);
 	}
 	// AES-*-CTR: unauthenticated, safe to stream incrementally.
-	const stream = createDecipheriv(
-		algorithm.toLowerCase(),
-		key,
-		iv,
-		streamOptions,
-	);
+	const stream = createDecipheriv(algorithm, key, iv, streamOptions);
 	// Only intercept push when an output ceiling is configured; with no ceiling
 	// the decipher is returned untouched (no per-chunk accounting overhead and no
 	// override to leak).

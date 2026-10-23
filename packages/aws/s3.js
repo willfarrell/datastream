@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: MIT
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+	GetObjectCommand,
+	ListObjectsV2Command,
+	S3Client,
+} from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import {
 	createPassThroughStream,
 	createReadableStream,
 } from "@datastream/core";
-import { awsClientDefaults } from "./client.js";
+import { awsClientDefaults, awsReadableStream } from "./client.js";
 
 // Created on first use, so importing the module (or always passing a per-call
 // client) never constructs an unused SDK client.
@@ -66,6 +70,36 @@ export const awsS3GetObjectStream = async (options, streamOptions = {}) => {
 	return stream;
 };
 
+// Yields each object entry (ListObjectsV2 `Contents` item), following
+// NextContinuationToken until the listing is complete.
+export const awsS3ListObjectsStream = async (options, streamOptions = {}) => {
+	const { client, ...listOptions } = options;
+	async function* command(opts, signal) {
+		let expectMore = true;
+		while (expectMore) {
+			const response = await (client ?? getDefaultClient()).send(
+				new ListObjectsV2Command(opts),
+				{ abortSignal: signal },
+			);
+			for (const item of response.Contents ?? []) {
+				yield item;
+			}
+			opts.ContinuationToken = response.NextContinuationToken;
+			expectMore = !!response.NextContinuationToken;
+		}
+	}
+	return awsReadableStream(
+		(signal) => command(listOptions, signal),
+		streamOptions,
+	);
+};
+
+// Shared default part size for awsS3PutObjectStream and awsS3ChecksumStream:
+// a composite checksum depends on the part boundaries, so both defaults must
+// match. Above S3's 5 MiB multipart minimum; 10,000 parts caps an object at
+// ~160 GiB.
+const DEFAULT_PART_SIZE = 17_179_870;
+
 export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 	const { onProgress, client, tags, partSize, queueSize, ...params } = options;
 	const stream = createPassThroughStream(() => {}, streamOptions);
@@ -76,9 +110,8 @@ export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 	// forward Readable.from's throw()) over a destroyOnReturn:false iterator only
 	// ever return()s it without destroying `stream`.
 	const body = Readable.from(_detach(stream));
-	// lib-storage defaults to a 5 MiB partSize and a 10,000-part ceiling
-	// (~50 GiB max object). Expose partSize/queueSize so callers can raise the
-	// ceiling for very large streamed objects.
+	// lib-storage allows at most 10,000 parts. Expose partSize/queueSize so
+	// callers can raise the object-size ceiling or tune upload concurrency.
 	const upload = new Upload({
 		client: client ?? getDefaultClient(),
 		params: {
@@ -86,7 +119,9 @@ export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 			Body: body,
 		},
 		tags,
-		partSize,
+		// ?? (not a destructuring default) so null also means default, as in
+		// awsS3ChecksumStream; lib-storage would otherwise fall back to 5 MiB.
+		partSize: partSize ?? DEFAULT_PART_SIZE,
 		queueSize,
 	});
 	// lib-storage emits progress on the Upload instance, not the Body stream.
@@ -110,14 +145,14 @@ export const awsS3PutObjectStream = (options, streamOptions = {}) => {
 };
 
 // Computes the S3 multipart checksum of a file you want to upload via a
-// presigned URL.
-// partSize; magic number, no 16MB mentioned in the docs
+// presigned URL. The composite checksum depends on the part boundaries, so
+// partSize must match the upload's part size.
 export const awsS3ChecksumStream = (
 	{ ChecksumAlgorithm, partSize, resultKey } = {},
 	streamOptions = {},
 ) => {
 	ChecksumAlgorithm ??= "SHA256";
-	partSize ??= 17_179_870; // ~16MB, just under S3 multipart minimum
+	partSize ??= DEFAULT_PART_SIZE;
 	const algorithm = _algorithms[ChecksumAlgorithm];
 	if (!algorithm)
 		throw new Error(`Unsupported ChecksumAlgorithm: ${ChecksumAlgorithm}`);
@@ -159,11 +194,15 @@ export const awsS3ChecksumStream = (
 		}
 	};
 	const flush = () => {
-		if (pendingLen > 0) {
-			// Remainder is < partSize: a single concat of the leftover chunks.
-			checksums.push(
-				createHash(algorithm).update(Buffer.concat(pending)).digest(),
-			);
+		// Remainder is < partSize: a single concat of the leftover chunks. Empty
+		// input still digests the (empty) remainder so the checksum is the
+		// algorithm's empty-input digest, matching what S3 reports for 0 bytes.
+		if (pendingLen > 0 || checksums.length === 0) {
+			const hash = createHash(algorithm);
+			for (const chunk of pending) {
+				hash.update(chunk);
+			}
+			checksums.push(hash.digest());
 		}
 	};
 	const stream = createPassThroughStream(passThrough, flush, streamOptions);
@@ -172,8 +211,7 @@ export const awsS3ChecksumStream = (
 		key: resultKey ?? "s3",
 		value: {
 			// Multipart: digest of the concatenated part digests, suffixed with the
-			// part count. Single part: that part's digest. Empty input: concat of
-			// no digests, i.e. the empty string.
+			// part count. Single part (including empty input): that part's digest.
 			checksum:
 				checksums.length > 1
 					? `${createHash(algorithm).update(Buffer.concat(checksums)).digest("base64")}-${checksums.length}`

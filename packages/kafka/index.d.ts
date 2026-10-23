@@ -76,5 +76,28 @@ export function kafkaConsumeStream(
 	},
 	streamOptions?: StreamOptions,
 ): Promise<
-	DatastreamReadable<KafkaConsumedMessage> & { stop: () => Promise<void> }
+	DatastreamReadable<KafkaConsumedMessage> & {
+		/**
+		 * Graceful shutdown: ends the readable, waits until every open
+		 * `kafkaCommitStream` on the same consumer has closed (so its final
+		 * commit runs while the group is still joined), then calls
+		 * `consumer.stop()`. Aborting the `signal` instead stops the consumer
+		 * first, so nothing pending is committed.
+		 */
+		stop: () => Promise<void>;
+	}
+>;
+
+export function kafkaCommitStream(
+	options: {
+		/** kafkajs consumer: needs `commitOffsets`, `on` and `events.GROUP_JOIN`. */
+		consumer: unknown;
+		/** Commit every N messages (and always at the end). Defaults to 100. */
+		batchSize?: number;
+	},
+	streamOptions?: StreamOptions,
+): Promise<
+	DatastreamWritable<
+		Pick<KafkaConsumedMessage, "topic" | "partition" | "offset">
+	>
 >;

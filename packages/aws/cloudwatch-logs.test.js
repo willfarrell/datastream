@@ -1,19 +1,60 @@
-import { deepStrictEqual, rejects } from "node:assert";
+import { deepStrictEqual, rejects, strictEqual } from "node:assert";
 import test, { describe } from "node:test";
 import {
 	CloudWatchLogsClient,
 	FilterLogEventsCommand,
 	GetLogEventsCommand,
+	PutLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
 import * as awsModule from "@datastream/aws/cloudwatch-logs";
 import {
 	awsCloudWatchLogsFilterLogEventsStream,
 	awsCloudWatchLogsGetLogEventsStream,
+	awsCloudWatchLogsPutLogEventsStream,
 	awsCloudWatchLogsSetClient,
 } from "@datastream/aws/cloudwatch-logs";
-import { streamToArray } from "@datastream/core";
+import {
+	createReadableStream,
+	isReadable,
+	pipejoin,
+	pipeline,
+	streamToArray,
+} from "@datastream/core";
 import { mockClient } from "aws-sdk-client-mock";
 import { variant } from "../variant.js";
+
+// The stream reads ahead of the consumer, so a mock that keeps resolving empty
+// pages with no poll delay would spin forever (starving the consumer): end
+// such sequences with a poll that never answers, like an idle long poll.
+const neverResolves = () => new Promise(() => {});
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Plain stub client recording each PutLogEvents request (and its send options)
+// at send time.
+const putLogEventsClient = (response = {}) => {
+	const calls = [];
+	return {
+		calls,
+		send: async (command, sendOptions) => {
+			strictEqual(command instanceof PutLogEventsCommand, true);
+			calls.push({ input: command.input, sendOptions });
+			return response;
+		},
+	};
+};
+const putLogEvents = (events, options = {}, streamOptions = undefined) =>
+	pipeline([
+		createReadableStream(events),
+		awsCloudWatchLogsPutLogEventsStream(
+			{ logGroupName: "g", logStreamName: "s", ...options },
+			streamOptions,
+		),
+	]);
+const batchTimestamps = (client) =>
+	client.calls.map(({ input }) =>
+		input.logEvents.map((event) => event.timestamp),
+	);
 
 describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 	// --- GetLogEventsStream ---
@@ -96,7 +137,7 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 				events: [{ message: "log2" }],
 				nextForwardToken: "token3",
 			})
-			.resolves({ events: [], nextForwardToken: "token3" });
+			.callsFake(neverResolves);
 
 		const options = {
 			logGroupName: "/test/group",
@@ -258,7 +299,12 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(GetLogEventsCommand);
-		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+		// Forwarded as a signal that follows streamOptions.signal (and also
+		// aborts when the stream is destroyed early).
+		const sent = calls[0].args[1]?.abortSignal;
+		deepStrictEqual(sent.aborted, false);
+		controller.abort();
+		deepStrictEqual(sent.aborted, true);
 	});
 
 	// *** startFromHead default & options passthrough *** //
@@ -354,7 +400,12 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(FilterLogEventsCommand);
-		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+		// Forwarded as a signal that follows streamOptions.signal (and also
+		// aborts when the stream is destroyed early).
+		const sent = calls[0].args[1]?.abortSignal;
+		deepStrictEqual(sent.aborted, false);
+		controller.abort();
+		deepStrictEqual(sent.aborted, true);
 	});
 
 	// A per-call `client` option must route that call's sends to it (not the
@@ -474,7 +525,7 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 			.resolvesOnce({ events: [], nextForwardToken: "t1" })
 			.resolvesOnce({ events: [], nextForwardToken: "t1" })
 			.resolvesOnce({ events: [{ message: "log1" }], nextForwardToken: "t2" })
-			.resolves({ events: [], nextForwardToken: "t2" });
+			.callsFake(neverResolves);
 
 		const options = {
 			logGroupName: "g",
@@ -492,8 +543,557 @@ describe(`@datastream/aws/cloudwatch-logs (${variant})`, () => {
 		deepStrictEqual(output, [{ message: "log1" }]);
 	});
 
+	test(`awsCloudWatchLogs read streams are Readables that pipejoin accepts`, async (_t) => {
+		const client = mockClient(CloudWatchLogsClient);
+		awsCloudWatchLogsSetClient(client);
+		client
+			.on(GetLogEventsCommand)
+			.resolves({ events: [{ message: "a" }], nextForwardToken: undefined });
+		client.on(FilterLogEventsCommand).resolves({ events: [{ message: "b" }] });
+
+		const get = await awsCloudWatchLogsGetLogEventsStream({
+			logGroupName: "g",
+			logStreamName: "s",
+		});
+		const filter = await awsCloudWatchLogsFilterLogEventsStream({
+			logGroupName: "g",
+		});
+		strictEqual(isReadable(get), true);
+		strictEqual(isReadable(filter), true);
+		deepStrictEqual(await streamToArray(pipejoin([get])), [{ message: "a" }]);
+		deepStrictEqual(await streamToArray(pipejoin([filter])), [
+			{ message: "b" },
+		]);
+	});
+
+	// A generator's return() only lands at its next yield; destroying the stream
+	// must also abort the idle poll wait so polling stops and 'close' fires.
+	test(`awsCloudWatchLogsGetLogEventsStream destroy stops an idle poll`, {
+		timeout: 1000,
+	}, async (_t) => {
+		const client = mockClient(CloudWatchLogsClient);
+		awsCloudWatchLogsSetClient(client);
+		client
+			.on(GetLogEventsCommand)
+			.resolves({ events: [], nextForwardToken: undefined });
+
+		const stream = await awsCloudWatchLogsGetLogEventsStream({
+			logGroupName: "g",
+			logStreamName: "s",
+			pollingActive: true,
+			pollingDelay: 60_000,
+		});
+		stream.resume();
+		await new Promise((resolve) => setImmediate(resolve));
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		deepStrictEqual(client.commandCalls(GetLogEventsCommand).length, 1);
+	});
+
+	// --- PutLogEventsStream ---
+
+	test(`awsCloudWatchLogsPutLogEventsStream sends one batch sorted by timestamp`, async (_t) => {
+		const client = putLogEventsClient();
+		const events = [
+			{ timestamp: 3, message: "c" },
+			{ timestamp: 1, message: "a" },
+			{ timestamp: 2, message: "b" },
+		];
+		const result = await putLogEvents(events, { client });
+
+		deepStrictEqual(result, {});
+		// No sequenceToken: PutLogEvents ignores it since 2023.
+		deepStrictEqual(client.calls, [
+			{
+				input: {
+					logGroupName: "g",
+					logStreamName: "s",
+					logEvents: [
+						{ timestamp: 1, message: "a" },
+						{ timestamp: 2, message: "b" },
+						{ timestamp: 3, message: "c" },
+					],
+				},
+				sendOptions: { abortSignal: undefined },
+			},
+		]);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream sends nothing for empty input`, async (_t) => {
+		const client = putLogEventsClient();
+		await putLogEvents([], { client });
+		deepStrictEqual(client.calls, []);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream flushes at 10,000 events`, async (_t) => {
+		const client = putLogEventsClient();
+		const events = Array.from({ length: 10_001 }, (_v, i) => ({
+			timestamp: i,
+			message: "m",
+		}));
+		await putLogEvents(events, { client });
+
+		deepStrictEqual(
+			client.calls.map(({ input }) => input.logEvents.length),
+			[10_000, 1],
+		);
+	});
+
+	// Each event counts its UTF-8 message bytes plus 26. "é" is 2 bytes, so two
+	// 524,262-byte messages fill the 1,048,576-byte batch exactly.
+	test(`awsCloudWatchLogsPutLogEventsStream keeps a batch of exactly 1,048,576 bytes`, async (_t) => {
+		const client = putLogEventsClient();
+		const message = "é".repeat(262_131);
+		await putLogEvents(
+			[
+				{ timestamp: 1, message },
+				{ timestamp: 2, message },
+				{ timestamp: 3, message: "a" },
+			],
+			{ client },
+		);
+
+		deepStrictEqual(batchTimestamps(client), [[1, 2], [3]]);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream flushes before exceeding 1,048,576 bytes`, async (_t) => {
+		const client = putLogEventsClient();
+		await putLogEvents(
+			[
+				{ timestamp: 1, message: "é".repeat(262_131) },
+				{ timestamp: 2, message: `${"é".repeat(262_131)}a` },
+			],
+			{ client },
+		);
+
+		deepStrictEqual(batchTimestamps(client), [[1], [2]]);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream keeps events spanning exactly 24 hours`, async (_t) => {
+		const client = putLogEventsClient();
+		await putLogEvents(
+			[
+				{ timestamp: 1000 + DAY_MS, message: "b" },
+				{ timestamp: 1000, message: "a" },
+			],
+			{ client },
+		);
+
+		deepStrictEqual(batchTimestamps(client), [[1000, 1000 + DAY_MS]]);
+	});
+
+	// The span is measured against both the earliest and the latest timestamp
+	// seen so far, whatever order the events arrive in.
+	test(`awsCloudWatchLogsPutLogEventsStream flushes before an event below the 24 hour span`, async (_t) => {
+		const client = putLogEventsClient();
+		await putLogEvents(
+			[
+				{ timestamp: 1000 + DAY_MS, message: "c" },
+				{ timestamp: 1000, message: "b" },
+				{ timestamp: 999, message: "a" },
+			],
+			{ client },
+		);
+
+		deepStrictEqual(batchTimestamps(client), [[1000, 1000 + DAY_MS], [999]]);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream flushes before an event above the 24 hour span`, async (_t) => {
+		const client = putLogEventsClient();
+		await putLogEvents(
+			[
+				{ timestamp: 1000, message: "b" },
+				{ timestamp: 995, message: "a" },
+				{ timestamp: 996 + DAY_MS, message: "c" },
+				{ timestamp: 997 + DAY_MS, message: "d" },
+			],
+			{ client },
+		);
+
+		deepStrictEqual(batchTimestamps(client), [
+			[995, 1000],
+			[996 + DAY_MS, 997 + DAY_MS],
+		]);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream accepts a single event of exactly 1,048,576 bytes`, async (_t) => {
+		const client = putLogEventsClient();
+		await putLogEvents([{ timestamp: 1, message: "x".repeat(1_048_550) }], {
+			client,
+		});
+		deepStrictEqual(client.calls.length, 1);
+	});
+
+	// Mirrors the Kinesis/SNS/SQS writers: an event that can never fit a batch
+	// fails up front instead of having the service reject the whole request.
+	test(`awsCloudWatchLogsPutLogEventsStream rejects an oversize event with RangeError`, async (_t) => {
+		const client = putLogEventsClient();
+		await rejects(
+			() =>
+				putLogEvents(
+					[
+						{ timestamp: 1, message: "a" },
+						{ timestamp: 2, message: "x".repeat(1_048_551) },
+					],
+					{ client },
+				),
+			(error) => {
+				strictEqual(error.name, "RangeError");
+				strictEqual(
+					error.message,
+					"awsCloudWatchLogsPutLogEvents event exceeds 1MiB limit",
+				);
+				deepStrictEqual(error.cause, { bytes: 1_048_577, limit: 1_048_576 });
+				return true;
+			},
+		);
+		deepStrictEqual(client.calls, []);
+	});
+
+	// Events too old / too new / past retention are dropped while the rest are
+	// accepted: surface that instead of losing them silently. The indexes refer
+	// to the sorted batch the stream sent, so the rejected events themselves are
+	// attached (tooNew from its inclusive start index, tooOld / expired up to
+	// their exclusive end index) for the caller to inspect or re-route.
+	test(`awsCloudWatchLogsPutLogEventsStream attaches the rejected events to the error`, async (_t) => {
+		const rejectedLogEventsInfo = {
+			tooOldLogEventEndIndex: 1,
+			expiredLogEventEndIndex: 2,
+			tooNewLogEventStartIndex: 3,
+		};
+		const client = putLogEventsClient({ rejectedLogEventsInfo });
+		await rejects(
+			() =>
+				putLogEvents(
+					[
+						{ timestamp: 5, message: "e" },
+						{ timestamp: 1, message: "a" },
+						{ timestamp: 4, message: "d" },
+						{ timestamp: 2, message: "b" },
+						{ timestamp: 3, message: "c" },
+					],
+					{ client },
+				),
+			(error) => {
+				strictEqual(
+					error.message,
+					"awsCloudWatchLogsPutLogEvents has rejected events",
+				);
+				deepStrictEqual(error.cause, {
+					rejectedLogEventsInfo,
+					rejected: {
+						tooNew: [
+							{ timestamp: 4, message: "d" },
+							{ timestamp: 5, message: "e" },
+						],
+						tooOld: [{ timestamp: 1, message: "a" }],
+						expired: [
+							{ timestamp: 1, message: "a" },
+							{ timestamp: 2, message: "b" },
+						],
+					},
+				});
+				strictEqual(error.cause.rejectedLogEventsInfo, rejectedLogEventsInfo);
+				strictEqual(error.failedMessages, undefined);
+				return true;
+			},
+		);
+	});
+
+	// Absent indexes reject nothing of that kind.
+	test(`awsCloudWatchLogsPutLogEventsStream attaches only the too-new events`, async (_t) => {
+		const rejectedLogEventsInfo = { tooNewLogEventStartIndex: 1 };
+		const client = putLogEventsClient({ rejectedLogEventsInfo });
+		await rejects(
+			() =>
+				putLogEvents(
+					[
+						{ timestamp: 2, message: "b" },
+						{ timestamp: 1, message: "a" },
+					],
+					{ client },
+				),
+			(error) => {
+				deepStrictEqual(error.cause, {
+					rejectedLogEventsInfo,
+					rejected: {
+						tooNew: [{ timestamp: 2, message: "b" }],
+						tooOld: [],
+						expired: [],
+					},
+				});
+				return true;
+			},
+		);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream attaches only the too-old events`, async (_t) => {
+		const rejectedLogEventsInfo = { tooOldLogEventEndIndex: 1 };
+		const client = putLogEventsClient({ rejectedLogEventsInfo });
+		await rejects(
+			() =>
+				putLogEvents(
+					[
+						{ timestamp: 2, message: "b" },
+						{ timestamp: 1, message: "a" },
+					],
+					{ client },
+				),
+			(error) => {
+				deepStrictEqual(error.cause, {
+					rejectedLogEventsInfo,
+					rejected: {
+						tooNew: [],
+						tooOld: [{ timestamp: 1, message: "a" }],
+						expired: [],
+					},
+				});
+				return true;
+			},
+		);
+	});
+
+	// --- event validation ---
+	// A non-finite timestamp would turn the 24 hour span check into NaN
+	// comparisons (always false) and a non-string message cannot be measured, so
+	// both fail up front with nothing sent.
+	for (const [label, event, message] of [
+		[
+			"NaN timestamp",
+			{ timestamp: Number.NaN, message: "a" },
+			"awsCloudWatchLogsPutLogEvents event timestamp must be a finite number",
+		],
+		[
+			"Infinity timestamp",
+			{ timestamp: Number.POSITIVE_INFINITY, message: "a" },
+			"awsCloudWatchLogsPutLogEvents event timestamp must be a finite number",
+		],
+		[
+			"string timestamp",
+			{ timestamp: "1", message: "a" },
+			"awsCloudWatchLogsPutLogEvents event timestamp must be a finite number",
+		],
+		[
+			"missing timestamp",
+			{ message: "a" },
+			"awsCloudWatchLogsPutLogEvents event timestamp must be a finite number",
+		],
+		[
+			"number message",
+			{ timestamp: 1, message: 1 },
+			"awsCloudWatchLogsPutLogEvents event message must be a string",
+		],
+		[
+			"missing message",
+			{ timestamp: 1 },
+			"awsCloudWatchLogsPutLogEvents event message must be a string",
+		],
+	]) {
+		test(`awsCloudWatchLogsPutLogEventsStream rejects an event with a ${label}`, async (_t) => {
+			const client = putLogEventsClient();
+			await rejects(
+				() => putLogEvents([event], { client }),
+				(error) => {
+					strictEqual(error.name, "TypeError");
+					strictEqual(error.message, message);
+					return true;
+				},
+			);
+			deepStrictEqual(client.calls, []);
+		});
+	}
+
+	// A NaN timestamp after valid events must not slip past the span check.
+	test(`awsCloudWatchLogsPutLogEventsStream rejects a NaN timestamp after valid events`, async (_t) => {
+		const client = putLogEventsClient();
+		await rejects(
+			() =>
+				putLogEvents(
+					[
+						{ timestamp: 1, message: "a" },
+						{ timestamp: Number.NaN, message: "b" },
+					],
+					{ client },
+				),
+			{
+				name: "TypeError",
+				message:
+					"awsCloudWatchLogsPutLogEvents event timestamp must be a finite number",
+			},
+		);
+		deepStrictEqual(client.calls, []);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream forwards the abort signal`, async (_t) => {
+		const client = putLogEventsClient();
+		const controller = new AbortController();
+		await putLogEvents(
+			[{ timestamp: 1, message: "a" }],
+			{ client },
+			{
+				signal: controller.signal,
+			},
+		);
+		strictEqual(client.calls[0].sendOptions.abortSignal, controller.signal);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream uses the module client by default`, async (_t) => {
+		const client = mockClient(CloudWatchLogsClient);
+		awsCloudWatchLogsSetClient(client);
+		client.on(PutLogEventsCommand).resolves({});
+
+		const options = { logGroupName: "g", logStreamName: "s" };
+		const optionsCopy = { ...options };
+		await pipeline([
+			createReadableStream([{ timestamp: 1, message: "a" }]),
+			awsCloudWatchLogsPutLogEventsStream(options),
+		]);
+
+		deepStrictEqual(client.commandCalls(PutLogEventsCommand).length, 1);
+		deepStrictEqual(options, optionsCopy);
+	});
+
 	// Named exports are canonical; a default export must not come back.
 	test(`cloudwatch-logs has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
+	});
+
+	// --- buffered entries on destroy / abort ---
+	// final() never runs on destroy() or an abort, so entries still buffered
+	// below the batch limit are handed to the teardown error as failedMessages
+	// (the kafkaProduceStream contract) and nothing is sent.
+	const writeEach = async (stream, chunks) => {
+		for (const chunk of chunks) {
+			await new Promise((resolve, reject) =>
+				stream.write(chunk, (error) => (error ? reject(error) : resolve())),
+			);
+		}
+	};
+	// Resolves stream.errored once closed (null when no error was raised).
+	const destroyedWith = async (stream, error) => {
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.once("error", () => {});
+		stream.destroy(error);
+		await closed;
+		return stream.errored;
+	};
+
+	test(`awsCloudWatchLogsPutLogEventsStream destroy(error) attaches the buffered entries`, async (_t) => {
+		const client = mockClient(CloudWatchLogsClient);
+		awsCloudWatchLogsSetClient(client);
+		client.on(PutLogEventsCommand).resolves({});
+		const stream = awsCloudWatchLogsPutLogEventsStream({
+			logGroupName: "g",
+			logStreamName: "s",
+		});
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			timestamp: i,
+			message: `${i}`,
+		}));
+		await writeEach(stream, chunks);
+		const error = new Error("boom");
+		strictEqual(await destroyedWith(stream, error), error);
+		deepStrictEqual(error.message, "boom");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(PutLogEventsCommand).length, 0);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream destroy() raises an error carrying the buffered entries`, async (_t) => {
+		const client = mockClient(CloudWatchLogsClient);
+		awsCloudWatchLogsSetClient(client);
+		client.on(PutLogEventsCommand).resolves({});
+		const stream = awsCloudWatchLogsPutLogEventsStream({
+			logGroupName: "g",
+			logStreamName: "s",
+		});
+		const chunks = Array.from({ length: 1 }, (_v, i) => ({
+			timestamp: i,
+			message: `${i}`,
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(
+			error.message,
+			"awsCloudWatchLogsPutLogEvents destroyed with buffered events",
+		);
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(PutLogEventsCommand).length, 0);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream destroy() with nothing buffered raises no error`, async (_t) => {
+		const client = mockClient(CloudWatchLogsClient);
+		awsCloudWatchLogsSetClient(client);
+		client.on(PutLogEventsCommand).resolves({});
+		const stream = awsCloudWatchLogsPutLogEventsStream({
+			logGroupName: "g",
+			logStreamName: "s",
+		});
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		strictEqual(stream.errored, null);
+		deepStrictEqual(client.commandCalls(PutLogEventsCommand).length, 0);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream attaches only the entries buffered after the last flush`, async (_t) => {
+		const client = mockClient(CloudWatchLogsClient);
+		awsCloudWatchLogsSetClient(client);
+		client.on(PutLogEventsCommand).resolves({});
+		const stream = awsCloudWatchLogsPutLogEventsStream({
+			logGroupName: "g",
+			logStreamName: "s",
+		});
+		const chunks = Array.from({ length: 10001 }, (_v, i) => ({
+			timestamp: i,
+			message: `${i}`,
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(error.failedMessages, chunks.slice(10000));
+		deepStrictEqual(client.commandCalls(PutLogEventsCommand).length, 1);
+	});
+
+	test(`awsCloudWatchLogsPutLogEventsStream abort attaches the buffered entries without sending`, async (_t) => {
+		const client = mockClient(CloudWatchLogsClient);
+		awsCloudWatchLogsSetClient(client);
+		client.on(PutLogEventsCommand).resolves({});
+		const controller = new AbortController();
+		const stream = awsCloudWatchLogsPutLogEventsStream(
+			{ logGroupName: "g", logStreamName: "s" },
+			{
+				signal: controller.signal,
+			},
+		);
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			timestamp: i,
+			message: `${i}`,
+		}));
+		await writeEach(stream, chunks);
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.once("error", () => {});
+		controller.abort();
+		await closed;
+		const error = stream.errored;
+		deepStrictEqual(error.name, "AbortError");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(PutLogEventsCommand).length, 0);
+	});
+
+	// An invalid event fails the write; the events buffered before it were never
+	// sent, so they ride on that error.
+	test(`awsCloudWatchLogsPutLogEventsStream attaches buffered events to a validation error`, async (_t) => {
+		const client = putLogEventsClient();
+		const buffered = [{ timestamp: 1, message: "a" }];
+		await rejects(
+			() =>
+				putLogEvents([...buffered, { timestamp: 2, message: 2 }], { client }),
+			(error) => {
+				strictEqual(error.name, "TypeError");
+				deepStrictEqual(error.failedMessages, buffered);
+				return true;
+			},
+		);
+		deepStrictEqual(client.calls, []);
 	});
 });

@@ -1,8 +1,9 @@
 {
 	"name": "@datastream/duckdb",
 	"version": "0.8.0",
-	"description": "DuckDB writable streams (copy-from) for Node and browser",
+	"description": "DuckDB query readable, appender and Arrow insert writable streams for Node and browser",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},
@@ -39,6 +40,7 @@
 	"keywords": [
 		"duckdb",
 		"sql",
+		"readable",
 		"writable",
 		"Web Stream API",
 		"Node Stream API"

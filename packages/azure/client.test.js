@@ -1,4 +1,4 @@
-import { deepStrictEqual, ok, rejects } from "node:assert";
+import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert";
 import test, { describe } from "node:test";
 import { createReadableStream, pipeline } from "@datastream/core";
 import { variant } from "../variant.js";
@@ -20,7 +20,14 @@ const fakeBatches = (max) => {
 			return true;
 		},
 		oversizeMessage: "too big",
+		destroyMessage: "destroyed with a buffered batch",
 	};
+};
+
+const writeAll = async (stream, chunks) => {
+	for (const chunk of chunks) {
+		await new Promise((resolve) => stream.write(chunk, resolve));
+	}
 };
 
 describe(`@datastream/azure/client (${variant})`, () => {
@@ -57,6 +64,8 @@ describe(`@datastream/azure/client (${variant})`, () => {
 			pipeline([createReadableStream(["big"]), azureBatchStream(batches, {})]),
 			(e) => e instanceof RangeError && e.cause.limit === 1024,
 		);
+		// The batch was empty: nothing to flush before failing.
+		deepStrictEqual(batches.sent, []);
 	});
 
 	test(`azureBatchStream rejects oversize entry after flushing`, async () => {
@@ -69,5 +78,75 @@ describe(`@datastream/azure/client (${variant})`, () => {
 			{ message: "too big" },
 		);
 		deepStrictEqual(batches.sent, [["a"]]);
+	});
+
+	// final() never runs on destroy/abort: the unsent entries must surface on
+	// the error (kafkaProduceStream's err.failedMessages contract), not vanish.
+	test(`azureBatchStream destroy attaches buffered entries as failedMessages`, async () => {
+		const batches = fakeBatches(2);
+		const stream = azureBatchStream(batches, {});
+		const error = new Promise((resolve) => stream.once("error", resolve));
+		await writeAll(stream, ["a", "b", "c"]);
+		stream.destroy();
+		const e = await error;
+		strictEqual(e.message, "destroyed with a buffered batch");
+		// Only the entry not yet sent; nothing is sent on destroy.
+		deepStrictEqual(e.failedMessages, ["c"]);
+		deepStrictEqual(batches.sent, [["a", "b"]]);
+	});
+
+	test(`azureBatchStream destroy keeps the caller's error`, async () => {
+		const batches = fakeBatches(2);
+		const stream = azureBatchStream(batches, {});
+		const error = new Promise((resolve) => stream.once("error", resolve));
+		await writeAll(stream, ["a"]);
+		const cause = new Error("boom");
+		stream.destroy(cause);
+		strictEqual(await error, cause);
+		deepStrictEqual(cause.failedMessages, ["a"]);
+	});
+
+	test(`azureBatchStream abort attaches buffered entries without sending`, async () => {
+		const batches = fakeBatches(2);
+		const controller = new AbortController();
+		const stream = azureBatchStream(batches, { signal: controller.signal });
+		const error = new Promise((resolve) => stream.once("error", resolve));
+		await writeAll(stream, ["a", "b"]);
+		controller.abort();
+		const e = await error;
+		strictEqual(e.name, "AbortError");
+		deepStrictEqual(e.failedMessages, ["a", "b"]);
+		deepStrictEqual(batches.sent, []);
+	});
+
+	test(`azureBatchStream auto-destroy after a clean end emits no error`, async () => {
+		const batches = fakeBatches(2);
+		const stream = azureBatchStream(batches, {});
+		let errored = false;
+		stream.on("error", () => {
+			errored = true;
+		});
+		await writeAll(stream, ["a", "b", "c", "d"]);
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		// final() flushes [c, d]: nothing is left buffered for the auto-destroy.
+		await new Promise((resolve) => stream.end(resolve));
+		await closed;
+		strictEqual(errored, false);
+		deepStrictEqual(batches.sent, [
+			["a", "b"],
+			["c", "d"],
+		]);
+	});
+
+	test(`azureBatchStream destroy before any write emits no error`, async () => {
+		const stream = azureBatchStream(fakeBatches(2), {});
+		let errored = false;
+		stream.on("error", () => {
+			errored = true;
+		});
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		strictEqual(errored, false);
 	});
 });

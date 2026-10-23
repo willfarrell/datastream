@@ -1,6 +1,12 @@
 /* global Headers, Response */
 
-import { deepStrictEqual, ok, strictEqual } from "node:assert";
+import {
+	deepStrictEqual,
+	notStrictEqual,
+	ok,
+	rejects,
+	strictEqual,
+} from "node:assert";
 import test, { afterEach, describe } from "node:test";
 import {
 	createPassThroughStream,
@@ -20,7 +26,6 @@ import {
 import { variant } from "../variant.js";
 
 describe(`@datastream/fetch (${variant})`, () => {
-	const nodeTest = variant === "node" ? test : test.skip;
 	const mockResponses = {
 		"https://example.org/csv": () =>
 			new Response("a,b,c\n1,2,3", {
@@ -185,15 +190,17 @@ describe(`@datastream/fetch (${variant})`, () => {
 		});
 	});
 
-	// *** built-in default Accept header (literal, before any pollution) *** //
-	// MUST run before any fetchSetDefaults({headers:{Accept:...}}) call below so it
-	// observes the un-overridden literal default `Accept: "application/json"`.
-	// Kills the StringLiteral mutant that empties the literal to "".
-	test(`built-in default Accept header is non-empty application/json`, async (_t) => {
+	// *** built-in defaults (literal, before any pollution) *** //
+	// MUST be the first test: afterEach re-applies these values through
+	// fetchSetDefaults, so only here are the literal defaults (method, Accept,
+	// Accept-Encoding) observed. Kills the StringLiteral mutants emptying them.
+	test(`built-in default method and headers are GET, application/json and br, gzip, deflate`, async (_t) => {
 		const originalFetch = global.fetch;
 		let capturedHeaders;
+		let capturedMethod;
 		global.fetch = async (_url, init) => {
 			capturedHeaders = init.headers;
+			capturedMethod = init.method;
 			return new Response(JSON.stringify({ ok: true }), {
 				status: 200,
 				headers: new Headers({ "Content-Type": "application/json" }),
@@ -205,7 +212,9 @@ describe(`@datastream/fetch (${variant})`, () => {
 				{ url: "https://example.org/builtin-accept", dataPath: "" },
 			]);
 			await streamToArray(stream);
+			strictEqual(capturedMethod, "GET");
 			strictEqual(capturedHeaders.Accept, "application/json");
+			strictEqual(capturedHeaders["Accept-Encoding"], "br, gzip, deflate");
 		} finally {
 			global.fetch = originalFetch;
 		}
@@ -366,7 +375,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 		global.fetch = async (url) => {
 			if (url.includes("bad"))
 				return new Response("nope", {
-					status: 500,
+					status: 404, // not retried (a GET 5xx would be)
 					headers: new Headers({ "Content-Type": "application/json" }),
 				});
 			await new Promise((r) => setTimeout(r, 30)); // still in flight when the error hits
@@ -384,7 +393,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 			);
 			ok(false, "should have thrown");
 		} catch (error) {
-			ok(/ 500 /.test(error.message), error.message);
+			ok(/ 404 /.test(error.message), error.message);
 		} finally {
 			global.fetch = originalFetch;
 			fetchSetDefaults({ dataPath: undefined });
@@ -400,7 +409,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 		global.fetch = async (url) => {
 			if (url.includes("bad"))
 				return new Response("nope", {
-					status: 500,
+					status: 404, // not retried (a GET 5xx would be)
 					headers: new Headers({ "Content-Type": "application/json" }),
 				});
 			await new Promise((r) => setTimeout(r, 30)); // head still in flight when the error hits
@@ -421,7 +430,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 			} catch (e) {
 				error = e;
 			}
-			strictEqual(error?.message, "fetch 500 GET https://example.org/bad");
+			strictEqual(error?.message, "fetch 404 GET https://example.org/bad");
 			deepStrictEqual(unhandled, []);
 		} finally {
 			process.off("unhandledRejection", onUnhandled);
@@ -509,6 +518,32 @@ describe(`@datastream/fetch (${variant})`, () => {
 			{ key: "item", value: 3 },
 			{ key: "item", value: 4 },
 			{ key: "item", value: 5 },
+		]);
+	});
+
+	test(`fetchResponseStream query pagination keeps the offset parameter in place`, async () => {
+		const urls = [];
+		global.fetch = async (url) => {
+			urls.push(url);
+			return new Response(
+				JSON.stringify({ data: urls.length === 1 ? [1, 2] : [] }),
+				{ headers: new Headers({ "Content-Type": "application/json" }) },
+			);
+		};
+		const output = await streamToArray(
+			fetchResponseStream({
+				url: "https://example.org/offset-first",
+				qs: { $offset: 0, $limit: 2 },
+				offsetParam: "$offset",
+				offsetAmount: 2,
+				dataPath: "data",
+				rateLimit: 0,
+			}),
+		);
+		deepStrictEqual(output, [1, 2]);
+		deepStrictEqual(urls, [
+			`https://example.org/offset-first?${new URLSearchParams({ $offset: 0, $limit: 2 })}`,
+			`https://example.org/offset-first?${new URLSearchParams({ $offset: 2, $limit: 2 })}`,
 		]);
 	});
 
@@ -1222,41 +1257,47 @@ describe(`@datastream/fetch (${variant})`, () => {
 				error?.message,
 				"fetch 401 PUT https://example.org/upload-401",
 			);
-			// nothing was queued on the abandoned request body
-			if (variant === "node") strictEqual(requestBody.readableLength, 0);
+			// nothing was queued on the abandoned request body: a read would
+			// otherwise resolve immediately with the queued chunk
+			const read = requestBody.getReader().read();
+			strictEqual(
+				await Promise.race([
+					read,
+					new Promise((resolve) => setTimeout(() => resolve("pending"), 0)),
+				]),
+				"pending",
+			);
 		} finally {
 			global.fetch = originalFetch;
 		}
 	});
 
 	// After a clean end the body belongs to fetch until it has read it all.
-	nodeTest(
-		`fetchWritableStream leaves the request body readable after a normal end`,
-		async (_t) => {
-			const originalFetch = global.fetch;
-			let requestBody;
-			global.fetch = async (_url, init) => {
-				requestBody = init.body;
-				return new Response("", { status: 200 });
-			};
-			try {
-				const stream = await fetchWritableStream({
-					url: "https://example.org/upload-ok",
-					method: "PUT",
-					rateLimit: 0,
-				});
-				await pipeline([createReadableStream(["a"]), stream]);
-				await new Promise((resolve) => setTimeout(resolve, 0));
-				strictEqual(requestBody.destroyed, false);
-				strictEqual(stream.result().value.status, 200);
-				const received = [];
-				for await (const chunk of requestBody) received.push(chunk);
-				deepStrictEqual(received, ["a"]);
-			} finally {
-				global.fetch = originalFetch;
-			}
-		},
-	);
+	test(`fetchWritableStream leaves the request body readable after a normal end`, async (_t) => {
+		const originalFetch = global.fetch;
+		let requestBody;
+		global.fetch = async (_url, init) => {
+			requestBody = init.body;
+			return new Response("", { status: 200 });
+		};
+		try {
+			const stream = await fetchWritableStream({
+				url: "https://example.org/upload-ok",
+				method: "PUT",
+				rateLimit: 0,
+			});
+			// More chunks than the body's queue holds: once the response is in,
+			// writes no longer wait for fetch to read them.
+			await pipeline([createReadableStream(["a", "b", "c"]), stream]);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			strictEqual(stream.result().value.status, 200);
+			const received = [];
+			for await (const chunk of requestBody) received.push(chunk);
+			deepStrictEqual(received, ["a", "b", "c"]);
+		} finally {
+			global.fetch = originalFetch;
+		}
+	});
 
 	// A fetch mock that, like a real upload, reads the request body and only
 	// settles when its signal aborts. `bodyRead` resolves to "ended" on a clean
@@ -1307,14 +1348,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 		strictEqual(upload.init.signal.aborted, true);
 		strictEqual(upload.init.signal.reason, reason);
-		const bodyError = await outcome(upload.bodyRead);
-		if (variant === "browser") {
-			strictEqual(bodyError, reason);
-		} else {
-			// node destroys a signalled Readable with an AbortError carrying the reason
-			strictEqual(bodyError.name, "AbortError");
-			strictEqual(bodyError.cause, reason);
-		}
+		strictEqual(await outcome(upload.bodyRead), reason);
 	});
 
 	test(`fetchWritableStream cancels the request when upstream fails`, async (_t) => {
@@ -1369,6 +1403,490 @@ describe(`@datastream/fetch (${variant})`, () => {
 		await pipeline([createReadableStream(["a"]), stream]);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		strictEqual(init.signal.aborted, false);
+	});
+
+	// *** fetchWritableStream flow control *** //
+	// A slow server must slow the writer down, not overflow a queue: the upload
+	// is far larger than the old 1024-chunk push limit, and the writer never
+	// gets more than a few chunks ahead of what the server has read.
+	test(`fetchWritableStream applies backpressure to a slow server`, {
+		timeout: 10000,
+	}, async (_t) => {
+		let produced = 0;
+		let consumed = 0;
+		let maxAhead = 0;
+		global.fetch = async (_url, init) => {
+			for await (const _chunk of init.body) {
+				consumed++;
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			}
+			return new Response("", { status: 200 });
+		};
+		async function* source() {
+			for (let i = 0; i < 1500; i++) {
+				produced++;
+				maxAhead = Math.max(maxAhead, produced - consumed);
+				yield new Uint8Array(1);
+			}
+		}
+		const stream = await fetchWritableStream({
+			url: "https://example.org/upload-slow",
+			method: "PUT",
+			rateLimit: 0,
+		});
+		await pipeline([createReadableStream(source()), stream]);
+		strictEqual(stream.result().value.status, 200);
+		strictEqual(consumed, 1500);
+		ok(maxAhead < 100, `writer ran ${maxAhead} chunks ahead`);
+	});
+
+	test(`fetchWritableStream wakes a write waiting on the body when the request fails`, {
+		timeout: 2000,
+	}, async (_t) => {
+		// Never reads the body, then fails: the waiting write must throw.
+		global.fetch = () =>
+			new Promise((resolve) => {
+				setTimeout(() => resolve(new Response("", { status: 401 })), 10);
+			});
+		const stream = await fetchWritableStream({
+			url: "https://example.org/upload-wait-401",
+			method: "PUT",
+			rateLimit: 0,
+		});
+		let error;
+		try {
+			await pipeline([createReadableStream(["a", "b", "c"]), stream]);
+		} catch (e) {
+			error = e;
+		}
+		strictEqual(
+			error?.message,
+			"fetch 401 PUT https://example.org/upload-wait-401",
+		);
+	});
+
+	test(`fetchWritableStream drops writes once fetch cancels the body`, {
+		timeout: 2000,
+	}, async (_t) => {
+		let requestBody;
+		global.fetch = async (_url, init) => {
+			requestBody = init.body;
+			await init.body.cancel();
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			return new Response("", { status: 200 });
+		};
+		const stream = await fetchWritableStream({
+			url: "https://example.org/upload-cancelled",
+			method: "PUT",
+			rateLimit: 0,
+		});
+		await pipeline([createReadableStream(["a", "b", "c"]), stream]);
+		strictEqual(stream.result().value.status, 200);
+		// still cancelled (closed), not errored by a late enqueue/close
+		deepStrictEqual(await requestBody.getReader().read(), {
+			done: true,
+			value: undefined,
+		});
+	});
+
+	test(`fetchWritableStream wakes a waiting write when its signal aborts`, {
+		timeout: 2000,
+	}, async (_t) => {
+		const upload = {};
+		// Never reads the body; settles only when its signal aborts.
+		global.fetch = (_url, init) => {
+			upload.init = init;
+			return new Promise((_resolve, reject) => {
+				init.signal.addEventListener("abort", () => reject(init.signal.reason));
+			});
+		};
+		const controller = new AbortController();
+		const stream = await fetchWritableStream(
+			{
+				url: "https://example.org/upload-wait-abort",
+				method: "PUT",
+				rateLimit: 0,
+			},
+			{ signal: controller.signal },
+		);
+		const reason = new Error("stop");
+		const done = pipeline([createReadableStream(["a", "b", "c"]), stream]);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		controller.abort(reason);
+		let error;
+		try {
+			await done;
+		} catch (e) {
+			error = e;
+		}
+		ok(error);
+		strictEqual(upload.init.signal.aborted, true);
+	});
+
+	// *** fetchWritableStream: when a single write settles *** //
+	// Writes go straight to the writable (no pipeline read-ahead), so a test
+	// sees exactly which write is still waiting for room in the request body.
+	const writerOf = (stream) => {
+		if (variant === "browser") {
+			const writer = stream.getWriter();
+			return {
+				write: (chunk) => writer.write(chunk),
+				abort: (reason) => writer.abort(reason),
+			};
+		}
+		stream.on("error", () => {});
+		return {
+			write: (chunk) =>
+				new Promise((resolve, reject) => {
+					stream.write(chunk, (e) => (e ? reject(e) : resolve()));
+				}),
+			abort: async (reason) => {
+				stream.destroy(reason);
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			},
+		};
+	};
+	// "resolved", the rejection reason, or "pending" a macrotask later.
+	const settled = (promise) =>
+		Promise.race([
+			promise.then(
+				() => "resolved",
+				(e) => e,
+			),
+			new Promise((resolve) => setTimeout(() => resolve("pending"), 10)),
+		]);
+	// A request that never reads its body and settles only when the test says.
+	const heldUpload = async (streamOptions) => {
+		const upload = {};
+		upload.response = new Promise((resolve, reject) => {
+			upload.respond = resolve;
+			upload.fail = reject;
+		});
+		global.fetch = (_url, init) => {
+			upload.init = init;
+			return upload.response;
+		};
+		upload.stream = await fetchWritableStream(
+			{ url: "https://example.org/upload-held", method: "PUT", rateLimit: 0 },
+			streamOptions,
+		);
+		Object.assign(upload, writerOf(upload.stream));
+		// fetch is called once the (zero) rate limit wait has passed
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		return upload;
+	};
+
+	test(`fetchWritableStream lets writes run highWaterMark chunks ahead of the server`, async (_t) => {
+		const upload = await heldUpload({ highWaterMark: 3 });
+		strictEqual(await settled(upload.write("a")), "resolved");
+		strictEqual(await settled(upload.write("b")), "resolved");
+		strictEqual(await settled(upload.write("c")), "pending");
+	});
+
+	test(`fetchWritableStream resumes a waiting write once fetch reads the body`, async (_t) => {
+		const upload = await heldUpload();
+		const write = upload.write("a");
+		strictEqual(await settled(write), "pending");
+		const reader = upload.init.body.getReader();
+		deepStrictEqual(await reader.read(), { done: false, value: "a" });
+		strictEqual(await settled(write), "resolved");
+		// a write woken by a read did not fail, so tearing down still aborts
+		const reason = new Error("stop");
+		await upload.abort(reason);
+		strictEqual(upload.init.signal.reason, reason);
+	});
+
+	test(`fetchWritableStream resumes a waiting write once fetch cancels the body`, async (_t) => {
+		const upload = await heldUpload();
+		const write = upload.write("a");
+		strictEqual(await settled(write), "pending");
+		await upload.init.body.cancel();
+		strictEqual(await settled(write), "resolved");
+	});
+
+	test(`fetchWritableStream resumes a waiting write once the response arrives`, async (_t) => {
+		const upload = await heldUpload();
+		const write = upload.write("a");
+		strictEqual(await settled(write), "pending");
+		upload.respond(new Response("", { status: 200 }));
+		strictEqual(await settled(write), "resolved");
+	});
+
+	test(`fetchWritableStream rejects a waiting write when the request fails`, async (_t) => {
+		const upload = await heldUpload();
+		const write = upload.write("a");
+		strictEqual(await settled(write), "pending");
+		const failure = new Error("down");
+		upload.fail(failure);
+		strictEqual(await settled(write), failure);
+	});
+
+	test(`fetchWritableStream settles a waiting write when its signal aborts`, async (_t) => {
+		const controller = new AbortController();
+		const upload = await heldUpload({ signal: controller.signal });
+		const write = upload.write("a");
+		strictEqual(await settled(write), "pending");
+		controller.abort(new Error("stop"));
+		notStrictEqual(await settled(write), "pending");
+	});
+
+	// *** streamed request bodies are never replayed *** //
+	test(`fetchWritableStream does not retry a 429 with a streamed body`, async (_t) => {
+		let calls = 0;
+		global.fetch = async () => {
+			calls++;
+			return new Response("", {
+				status: 429,
+				headers: new Headers({ "Retry-After": "0" }),
+			});
+		};
+		const stream = await fetchWritableStream({
+			url: "https://example.org/upload-429",
+			method: "PUT",
+			rateLimit: 0,
+		});
+		let error;
+		try {
+			await pipeline([createReadableStream(["a"]), stream]);
+		} catch (e) {
+			error = e;
+		}
+		strictEqual(
+			error?.message,
+			"fetch 429 PUT https://example.org/upload-429 cannot replay streamed request body",
+		);
+		deepStrictEqual(error.cause, {
+			status: 429,
+			url: "https://example.org/upload-429",
+			method: "PUT",
+		});
+		strictEqual(calls, 1);
+	});
+
+	for (const status of [307, 308]) {
+		test(`fetchWritableStream does not follow a ${status} with a streamed body`, async (_t) => {
+			let calls = 0;
+			global.fetch = async () => {
+				calls++;
+				return new Response(null, {
+					status,
+					headers: new Headers({ Location: "/elsewhere" }),
+				});
+			};
+			const stream = await fetchWritableStream({
+				url: "https://example.org/upload-redirect",
+				method: "POST",
+				rateLimit: 0,
+			});
+			let error;
+			try {
+				await pipeline([createReadableStream(["a"]), stream]);
+			} catch (e) {
+				error = e;
+			}
+			strictEqual(
+				error?.message,
+				`fetch ${status} POST https://example.org/upload-redirect cannot replay streamed request body`,
+			);
+			deepStrictEqual(error.cause, {
+				status,
+				url: "https://example.org/upload-redirect",
+				method: "POST",
+			});
+			strictEqual(calls, 1);
+		});
+	}
+
+	// Safari's ReadableStream has getReader() but is not async iterable.
+	test(`fetchRateLimit does not replay a ReadableStream body without async iteration`, async (t) => {
+		t.mock.method(Math, "random", () => 0); // a replay would retry at once
+		let calls = 0;
+		global.fetch = async () => {
+			calls++;
+			return new Response("", { status: 429 });
+		};
+		let error;
+		try {
+			await fetchModule.fetchRateLimit({
+				url: "https://example.org/reader",
+				method: "POST",
+				body: { getReader() {} },
+				duplex: "half",
+				rateLimit: 0,
+			});
+		} catch (e) {
+			error = e;
+		}
+		strictEqual(
+			error?.message,
+			"fetch 429 POST https://example.org/reader cannot replay streamed request body",
+		);
+		strictEqual(calls, 1);
+	});
+
+	test(`fetchRateLimit does not replay an async iterable body`, async (_t) => {
+		let calls = 0;
+		global.fetch = async () => {
+			calls++;
+			return new Response("", { status: 429 });
+		};
+		let error;
+		try {
+			await fetchModule.fetchRateLimit({
+				url: "https://example.org/iterable",
+				method: "POST",
+				body: (async function* () {
+					yield "a";
+				})(),
+				duplex: "half",
+				rateLimit: 0,
+			});
+		} catch (e) {
+			error = e;
+		}
+		strictEqual(
+			error?.message,
+			"fetch 429 POST https://example.org/iterable cannot replay streamed request body",
+		);
+		strictEqual(calls, 1);
+	});
+
+	test(`fetchRateLimit still replays a non-stream body on 429 and 307`, async (_t) => {
+		const bodies = [];
+		global.fetch = async (url, init) => {
+			bodies.push(init.body);
+			if (bodies.length === 1) {
+				return new Response("", {
+					status: 429,
+					headers: new Headers({ "Retry-After": "0" }),
+				});
+			}
+			if (url === "https://example.org/replay") {
+				return new Response(null, {
+					status: 307,
+					headers: new Headers({ Location: "/replayed" }),
+				});
+			}
+			return new Response("", { status: 200 });
+		};
+		const response = await fetchModule.fetchRateLimit({
+			url: "https://example.org/replay",
+			method: "POST",
+			body: "payload",
+			rateLimit: 0,
+		});
+		strictEqual(response.status, 200);
+		deepStrictEqual(bodies, ["payload", "payload", "payload"]);
+	});
+
+	// *** concurrency: siblings are cancelled, not awaited to completion *** //
+	// A body that never ends unless its request signal aborts (as a real fetch
+	// body errors on abort); without the shared abort the test would time out.
+	const endlessResponse = (init, aborted) =>
+		new Response(
+			new ReadableStream({
+				start(controller) {
+					controller.enqueue(new Uint8Array(1));
+					init.signal.addEventListener("abort", () => {
+						aborted.push(init.signal.reason);
+						controller.error(init.signal.reason);
+					});
+				},
+			}),
+			{ headers: new Headers({ "Content-Type": "application/octet-stream" }) },
+		);
+
+	test(`fetchResponseStream concurrency aborts in-flight siblings on the first error`, {
+		timeout: 2000,
+	}, async (_t) => {
+		const aborted = [];
+		global.fetch = async (url, init) => {
+			if (url === "https://example.org/fail") {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				return new Response("no", { status: 404 }); // not retried
+			}
+			return endlessResponse(init, aborted);
+		};
+		let error;
+		try {
+			await streamToArray(
+				fetchResponseStream([
+					{ url: "https://example.org/fail", concurrency: 3, rateLimit: 0 },
+					{ url: "https://example.org/slow1", rateLimit: 0 },
+					{ url: "https://example.org/slow2", rateLimit: 0 },
+				]),
+			);
+		} catch (e) {
+			error = e;
+		}
+		strictEqual(error?.message, "fetch 404 GET https://example.org/fail");
+		strictEqual(aborted.length, 2);
+	});
+
+	test(`fetchResponseStream concurrency aborts in-flight siblings when the consumer stops`, {
+		timeout: 2000,
+	}, async (_t) => {
+		const aborted = [];
+		let endlessStarted;
+		const started = new Promise((resolve) => {
+			endlessStarted = resolve;
+		});
+		global.fetch = async (url, init) => {
+			if (url === "https://example.org/quick") {
+				// Respond once the sibling is in flight.
+				await started;
+				// More chunks than the stream reads ahead, so the generator is
+				// suspended at a yield (not awaiting a sibling) when cancelled.
+				const chunks = Array.from({ length: 64 }, () => new Uint8Array(1));
+				return new Response(
+					new ReadableStream({
+						pull(controller) {
+							const chunk = chunks.shift();
+							if (chunk) controller.enqueue(chunk);
+							else controller.close();
+						},
+					}),
+					{
+						headers: new Headers({
+							"Content-Type": "application/octet-stream",
+						}),
+					},
+				);
+			}
+			endlessStarted();
+			return endlessResponse(init, aborted);
+		};
+		const stream = fetchResponseStream([
+			{ url: "https://example.org/quick", concurrency: 2, rateLimit: 0 },
+			{ url: "https://example.org/endless", rateLimit: 0 },
+		]);
+		for await (const _chunk of stream) break;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		strictEqual(aborted.length, 1);
+	});
+
+	test(`fetchResponseStream concurrency still honours the caller's signal`, {
+		timeout: 2000,
+	}, async (_t) => {
+		const aborted = [];
+		global.fetch = async (_url, init) => endlessResponse(init, aborted);
+		const controller = new AbortController();
+		const stream = fetchResponseStream(
+			[
+				{ url: "https://example.org/a", concurrency: 2, rateLimit: 0 },
+				{ url: "https://example.org/b", rateLimit: 0 },
+			],
+			{ signal: controller.signal },
+		);
+		setTimeout(() => controller.abort(new Error("stop")), 10);
+		let error;
+		try {
+			await streamToArray(stream);
+		} catch (e) {
+			error = e;
+		}
+		ok(error);
+		strictEqual(aborted.length, 2);
 	});
 
 	test(`fetchRateLimit should delay between configs within one stream`, async (t) => {
@@ -1590,13 +2108,10 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	// *** Binary branch cleanup on downstream error ***
-	// When the response is NON-JSON, fetchGenerator iterates the raw ReadableStream
-	// (response.body), which has .cancel() but NO .return(). A downstream consumer
-	// error must propagate; the catch block calls response?.cancel?.() then
-	// response?.return?.(). The ReadableStream lacks .return, so the inner optional
-	// chaining on `.return` MUST be preserved — a mutant turning `response?.return?.()`
-	// into `response?.return()` would throw "response.return is not a function" and
-	// mask the real "downstream boom" error.
+	// When the response is NON-JSON, fetchUnknown wraps the raw ReadableStream
+	// (response.body) in drainResponse, whose catch block awaits body.cancel() so a
+	// downstream consumer error releases the socket and still propagates as the
+	// original error (a mutant emptying that catch would swallow it).
 	test(`fetchResponseStream binary branch cleanup on read error preserves original error`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = async (url) => {
@@ -2826,21 +3341,21 @@ describe(`@datastream/fetch (${variant})`, () => {
 		}
 	});
 
-	// *** non-ok (non-429) error cause fields *** //
+	// *** non-ok (non-retried) error cause fields *** //
 	test(`fetchRateLimit non-ok error cause has status, url, method fields`, async (_t) => {
 		const originalFetch = global.fetch;
 		global.fetch = () =>
 			Promise.resolve(
-				new Response("", { status: 503, statusText: "Service Unavailable" }),
+				new Response("", { status: 501, statusText: "Not Implemented" }),
 			);
 		const { fetchRateLimit } = await import("@datastream/fetch");
 		fetchSetDefaults({});
 		try {
-			await fetchRateLimit({ url: "https://example.org/503" });
+			await fetchRateLimit({ url: "https://example.org/501" });
 			throw new Error("Should have thrown");
 		} catch (e) {
 			ok(e.cause !== undefined, "cause should be defined");
-			strictEqual(e.cause.status, 503);
+			strictEqual(e.cause.status, 501);
 			strictEqual(typeof e.cause.url, "string");
 			strictEqual(typeof e.cause.method, "string");
 		} finally {
@@ -3712,7 +4227,7 @@ describe(`@datastream/fetch (${variant})`, () => {
 	});
 
 	// *** redactUrl catch block: must return "[INVALID URL]" not empty string or undefined *** //
-	test(`fetchRateLimit error cause.url is [INVALID URL] when URL is completely unparseable`, async (_t) => {
+	test(`fetchRateLimit error message shows [INVALID URL] when URL is completely unparseable`, async (_t) => {
 		// Passing an invalid URL string to fetchRateLimit causes redactUrl to throw in new URL(...)
 		// and return "[INVALID URL]" from the catch block.
 		// Mutant "return """: cause.url = "" (empty string)
@@ -3726,11 +4241,11 @@ describe(`@datastream/fetch (${variant})`, () => {
 			await fetchRateLimit({ url: "not-a-valid-url-no-scheme" });
 			throw new Error("Should have thrown");
 		} catch (e) {
-			const causeUrl = e.cause?.url;
+			// Rejected by the http(s) check before fetching; the redacted URL
+			// in its message is the unparseable placeholder.
 			strictEqual(
-				causeUrl,
-				"[INVALID URL]",
-				`Expected cause.url to be "[INVALID URL]", got: ${causeUrl}`,
+				e.message,
+				"fetch GET [INVALID URL] is not an http: or https: URL",
 			);
 		} finally {
 			global.fetch = originalFetch;
@@ -3838,5 +4353,418 @@ describe(`@datastream/fetch (${variant})`, () => {
 			global.fetch = originalFetch;
 			fetchSetDefaults({ dataPath: undefined });
 		}
+	});
+
+	// *** retry: 5xx and network errors for idempotent methods *** //
+	const okJson = () =>
+		new Response(JSON.stringify({ ok: true }), {
+			status: 200,
+			headers: new Headers({ "Content-Type": "application/json" }),
+		});
+	// Records every setTimeout delay (the retry backoff) and runs it at once.
+	const recordDelays = (t) => {
+		const realSetTimeout = globalThis.setTimeout;
+		const delays = [];
+		t.mock.method(globalThis, "setTimeout", (fn, ms) => {
+			delays.push(ms);
+			return realSetTimeout(fn, 0);
+		});
+		return delays;
+	};
+
+	test(`fetchRateLimit retries 500, 502, 503 and 504 for idempotent methods`, async (t) => {
+		t.mock.method(Math, "random", () => 0);
+		for (const status of [500, 502, 503, 504]) {
+			for (const method of ["GET", "HEAD", "OPTIONS", "PUT", "DELETE", "get"]) {
+				let calls = 0;
+				global.fetch = async () =>
+					++calls === 1 ? new Response("", { status }) : okJson();
+				const response = await fetchModule.fetchRateLimit({
+					url: "https://example.org/flaky",
+					method,
+					rateLimit: 0,
+				});
+				strictEqual(response.status, 200, `${status} ${method}`);
+				strictEqual(calls, 2, `${status} ${method}`);
+			}
+		}
+	});
+
+	test(`fetchRateLimit does not retry 5xx for non-idempotent methods or other 5xx statuses`, async (_t) => {
+		for (const [status, method] of [
+			[503, "POST"],
+			[500, "PATCH"],
+			[501, "GET"],
+			[505, "GET"],
+		]) {
+			let calls = 0;
+			global.fetch = async () => {
+				calls++;
+				return new Response("", { status });
+			};
+			await rejects(
+				fetchModule.fetchRateLimit({
+					url: "https://example.org/once",
+					method,
+					rateLimit: 0,
+				}),
+				{
+					message: `fetch ${status} ${method} https://example.org/once`,
+					cause: { status, url: "https://example.org/once", method },
+				},
+			);
+			strictEqual(calls, 1, `${status} ${method}`);
+		}
+	});
+
+	test(`fetchRateLimit throws after retryMaxCount attempts on a persistent 503`, async (t) => {
+		t.mock.method(Math, "random", () => 0);
+		let calls = 0;
+		global.fetch = async () => {
+			calls++;
+			return new Response("down", { status: 503 });
+		};
+		await rejects(
+			fetchModule.fetchRateLimit({
+				url: "https://example.org/down?token=secret",
+				rateLimit: 0,
+				retryMaxCount: 3,
+			}),
+			(error) => {
+				strictEqual(error instanceof RangeError, true);
+				strictEqual(
+					error.message,
+					"fetch 503 GET https://example.org/down?[REDACTED] max retries (3) exceeded",
+				);
+				deepStrictEqual(error.cause, {
+					status: 503,
+					url: "https://example.org/down?[REDACTED]",
+					method: "GET",
+				});
+				return true;
+			},
+		);
+		strictEqual(calls, 3);
+	});
+
+	test(`fetchRateLimit honours Retry-After on a 503 and backs off exponentially otherwise`, async (t) => {
+		t.mock.method(Math, "random", () => 0.5);
+		const delays = recordDelays(t);
+		let calls = 0;
+		global.fetch = async () => {
+			calls++;
+			if (calls === 1) {
+				return new Response("", {
+					status: 503,
+					headers: new Headers({ "Retry-After": "7" }),
+				});
+			}
+			if (calls < 4) return new Response("", { status: 502 });
+			return okJson();
+		};
+		const response = await fetchModule.fetchRateLimit({
+			url: "https://example.org/backoff",
+			rateLimit: 0,
+		});
+		strictEqual(response.status, 200);
+		// Retry-After: 7s, then full jitter (0.5) of 2s and 4s
+		deepStrictEqual(delays, [7000, 1000, 2000]);
+	});
+
+	test(`fetchRateLimit retries a network error (TypeError) for idempotent methods`, async (t) => {
+		t.mock.method(Math, "random", () => 0.5);
+		const delays = recordDelays(t);
+		let calls = 0;
+		global.fetch = async () => {
+			if (++calls < 3) throw new TypeError("fetch failed");
+			return okJson();
+		};
+		const response = await fetchModule.fetchRateLimit({
+			url: "https://example.org/net",
+			method: "DELETE",
+			rateLimit: 0,
+		});
+		strictEqual(response.status, 200);
+		strictEqual(calls, 3);
+		deepStrictEqual(delays, [500, 1000]);
+	});
+
+	test(`fetchRateLimit rethrows the network error once retryMaxCount attempts are spent`, async (t) => {
+		t.mock.method(Math, "random", () => 0);
+		const errors = [];
+		global.fetch = async () => {
+			const error = new TypeError("fetch failed");
+			errors.push(error);
+			throw error;
+		};
+		await rejects(
+			fetchModule.fetchRateLimit({
+				url: "https://example.org/net-down",
+				rateLimit: 0,
+				retryMaxCount: 2,
+			}),
+			(error) => error === errors[1],
+		);
+		strictEqual(errors.length, 2);
+	});
+
+	test(`fetchRateLimit does not retry a network error for POST, a non-TypeError, or an aborted signal`, async (t) => {
+		t.mock.method(Math, "random", () => 0);
+		const controller = new AbortController();
+		const reason = new TypeError("caller gave up");
+		controller.abort(reason);
+		const cases = [
+			[{ method: "POST" }, {}, new TypeError("fetch failed")],
+			[{}, {}, new Error("boom")],
+			[{}, {}, new DOMException("aborted", "AbortError")],
+			// An abort reason may itself be a TypeError: still never retried.
+			[{}, { signal: controller.signal }, reason],
+		];
+		for (const [options, streamOptions, thrown] of cases) {
+			let calls = 0;
+			global.fetch = async () => {
+				calls++;
+				throw thrown;
+			};
+			await rejects(
+				fetchModule.fetchRateLimit(
+					{ url: "https://example.org/no-retry", rateLimit: 0, ...options },
+					streamOptions,
+				),
+				(error) => error === thrown,
+			);
+			strictEqual(calls, 1, thrown.message);
+		}
+	});
+
+	test(`fetchWritableStream does not retry a 503 or network error with a streamed body`, async (_t) => {
+		for (const failure of [
+			() => new Response("", { status: 503 }),
+			() => {
+				throw new TypeError("fetch failed");
+			},
+		]) {
+			let calls = 0;
+			global.fetch = async () => {
+				calls++;
+				return failure();
+			};
+			const stream = await fetchWritableStream({
+				url: "https://example.org/upload-flaky",
+				method: "PUT",
+			});
+			await rejects(
+				pipeline([createReadableStream(["a"]), stream]),
+				/^(TypeError: fetch failed|Error: fetch 503 PUT https:\/\/example\.org\/upload-flaky)$/,
+			);
+			strictEqual(calls, 1);
+		}
+	});
+
+	// *** per-request timeout *** //
+	test(`fetchRateLimit timeout aborts the request with a TimeoutError and is not retried`, async (_t) => {
+		let calls = 0;
+		global.fetch = (_url, init) => {
+			calls++;
+			return new Promise((_resolve, reject) => {
+				init.signal.addEventListener("abort", () => reject(init.signal.reason));
+			});
+		};
+		await rejects(
+			fetchModule.fetchRateLimit({
+				url: "https://example.org/slow",
+				rateLimit: 0,
+				timeout: 5,
+			}),
+			{ name: "TimeoutError" },
+		);
+		strictEqual(calls, 1);
+	});
+
+	test(`fetchRateLimit timeout is combined with the caller signal`, async (_t) => {
+		const signals = [];
+		global.fetch = async (_url, init) => {
+			signals.push(init.signal);
+			return okJson();
+		};
+		const controller = new AbortController();
+		const { signal } = controller;
+		const url = "https://example.org/sig";
+		await fetchModule.fetchRateLimit({ url, rateLimit: 0 }, { signal });
+		await fetchModule.fetchRateLimit(
+			{ url, rateLimit: 0, timeout: null },
+			{ signal },
+		);
+		await fetchModule.fetchRateLimit({ url, rateLimit: 0 });
+		await fetchModule.fetchRateLimit(
+			{ url, rateLimit: 0, timeout: 60_000 },
+			{ signal },
+		);
+		await fetchModule.fetchRateLimit({ url, rateLimit: 0, timeout: 60_000 });
+		// no timeout (undefined or null): the caller signal untouched
+		strictEqual(signals[0], signal);
+		strictEqual(signals[1], signal);
+		strictEqual(signals[2], undefined);
+		// with a timeout: a new signal following the caller's
+		ok(signals[3] instanceof AbortSignal);
+		notStrictEqual(signals[3], signal);
+		strictEqual(signals[3].aborted, false);
+		ok(signals[4] instanceof AbortSignal);
+		strictEqual(signals[4].aborted, false);
+		const reason = new Error("stop");
+		controller.abort(reason);
+		strictEqual(signals[3].aborted, true);
+		strictEqual(signals[3].reason, reason);
+		strictEqual(signals[4].aborted, false);
+	});
+
+	test(`fetchResponseStream passes timeout through to each request`, async (_t) => {
+		global.fetch = (_url, init) =>
+			new Promise((_resolve, reject) => {
+				init.signal.addEventListener("abort", () => reject(init.signal.reason));
+			});
+		await rejects(
+			streamToArray(
+				fetchResponseStream({
+					url: "https://example.org/slow",
+					rateLimit: 0,
+					timeout: 5,
+				}),
+			),
+			{ name: "TimeoutError" },
+		);
+	});
+
+	// *** URL scheme allowlist *** //
+	test(`fetchRateLimit rejects non-http(s) URLs before fetching`, async (_t) => {
+		let calls = 0;
+		global.fetch = async () => {
+			calls++;
+			return okJson();
+		};
+		for (const [url, shown] of [
+			["file:///etc/passwd", "file:///etc/passwd"],
+			["data:text/plain,hi", "data:text/plain,hi"],
+			["javascript:alert(1)", "javascript:alert(1)"],
+			["ftp://example.org/x?token=secret", "ftp://example.org/x?[REDACTED]"],
+			["blob:https://example.org/uuid", "blob:https://example.org/uuid"],
+			["not a url", "[INVALID URL]"],
+			["/relative/path", "[INVALID URL]"],
+		]) {
+			await rejects(
+				fetchModule.fetchRateLimit({ url, rateLimit: 0 }),
+				(error) => {
+					strictEqual(error instanceof TypeError, true, url);
+					strictEqual(
+						error.message,
+						`fetch GET ${shown} is not an http: or https: URL`,
+					);
+					return true;
+				},
+			);
+		}
+		strictEqual(calls, 0);
+		// both allowed schemes, in any case
+		for (const url of [
+			"http://example.org/a",
+			"https://example.org/b",
+			"HTTPS://example.org/c",
+		]) {
+			strictEqual(
+				(await fetchModule.fetchRateLimit({ url, rateLimit: 0 })).status,
+				200,
+			);
+		}
+		strictEqual(calls, 3);
+	});
+
+	// In a browser a relative URL resolves against the page (as fetch() does),
+	// so it is checked as the absolute URL it becomes; with no location (Node)
+	// it stays rejected (covered above).
+	test(`fetchRateLimit resolves relative URLs against globalThis.location`, async (_t) => {
+		const urls = [];
+		global.fetch = async (url) => {
+			urls.push(url);
+			return okJson();
+		};
+		const descriptor = Object.getOwnPropertyDescriptor(globalThis, "location");
+		try {
+			Object.defineProperty(globalThis, "location", {
+				value: { href: "https://app.example.org/page/" },
+				configurable: true,
+			});
+			strictEqual(
+				(await fetchModule.fetchRateLimit({ url: "/api/items", rateLimit: 0 }))
+					.status,
+				200,
+			);
+			deepStrictEqual(urls, ["/api/items"]);
+			Object.defineProperty(globalThis, "location", {
+				value: { href: "file:///index.html" },
+				configurable: true,
+			});
+			await rejects(fetchModule.fetchRateLimit({ url: "x", rateLimit: 0 }), {
+				name: "TypeError",
+				message: "fetch GET file:///x is not an http: or https: URL",
+			});
+		} finally {
+			if (descriptor) Object.defineProperty(globalThis, "location", descriptor);
+			else delete globalThis.location;
+		}
+	});
+
+	test(`fetchResponseStream and fetchWritableStream reject non-http(s) URLs`, async (_t) => {
+		let calls = 0;
+		global.fetch = async () => {
+			calls++;
+			return okJson();
+		};
+		await rejects(
+			streamToArray(fetchResponseStream({ url: "file:///etc/passwd" })),
+			{
+				name: "TypeError",
+				message: "fetch GET file:///etc/passwd is not an http: or https: URL",
+			},
+		);
+		const stream = await fetchWritableStream({
+			url: "data:text/plain,x",
+			method: "PUT",
+		});
+		await rejects(pipeline([createReadableStream(["a"]), stream]), {
+			name: "TypeError",
+			message: "fetch PUT data:text/plain,x is not an http: or https: URL",
+		});
+		strictEqual(calls, 0);
+	});
+
+	// Pagination targets go through the same origin pin, so a next link can
+	// never switch scheme (an origin includes it).
+	test(`fetchResponseStream refuses a non-http(s) pagination next URL`, async (_t) => {
+		let calls = 0;
+		global.fetch = async () => {
+			calls++;
+			return new Response(
+				JSON.stringify({ items: [1], next: "file:///etc/passwd" }),
+				{
+					status: 200,
+					headers: new Headers({ "Content-Type": "application/json" }),
+				},
+			);
+		};
+		await rejects(
+			streamToArray(
+				fetchResponseStream({
+					url: "https://example.org/page",
+					nextPath: "next",
+					dataPath: "items",
+					rateLimit: 0,
+				}),
+			),
+			{
+				message:
+					"Pagination URL origin (null) does not match initial URL origin (https://example.org)",
+			},
+		);
+		strictEqual(calls, 1);
 	});
 });

@@ -1,7 +1,6 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import type {
-	DatastreamPassThrough,
 	DatastreamTransform,
 	StreamOptions,
 	StreamResult,
@@ -47,13 +46,16 @@ export interface CsvError {
 	count?: number;
 }
 
+// Both detect streams decode bytes to text (string chunks pass through as-is)
+// and emit text, so they are transforms, not pass-throughs.
+// csvDetectHeaderStream also strips the header row from the output.
 export function csvDetectDelimitersStream(
 	options?: {
 		maxBufferSize?: number | null;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamPassThrough & {
+): DatastreamTransform<string | Uint8Array, string> & {
 	result: () => StreamResult<CsvDelimiters>;
 };
 
@@ -72,7 +74,7 @@ export function csvDetectHeaderStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamPassThrough & {
+): DatastreamTransform<string | Uint8Array, string> & {
 	result: () => StreamResult<{ header: string[] }>;
 };
 

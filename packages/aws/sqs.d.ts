@@ -19,6 +19,9 @@ export function awsSQSReceiveMessageStream(
 	streamOptions?: StreamOptions,
 ): Promise<DatastreamReadable>;
 
+// Batches by count only (DeleteMessageBatch carries no message bytes).
+// On destroy/abort, entries still buffered are attached to the error as
+// `failedMessages` (not sent).
 export function awsSQSDeleteMessageStream(
 	options: {
 		client?: unknown;
@@ -30,6 +33,9 @@ export function awsSQSDeleteMessageStream(
 	streamOptions?: StreamOptions,
 ): DatastreamWritable;
 
+// Batches by the SQS message size (MessageBody + attribute names, types, values).
+// On destroy/abort, entries still buffered are attached to the error as
+// `failedMessages` (not sent).
 export function awsSQSSendMessageStream(
 	options: {
 		client?: unknown;

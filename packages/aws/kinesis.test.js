@@ -1,4 +1,4 @@
-import { deepStrictEqual, rejects } from "node:assert";
+import { deepStrictEqual, rejects, strictEqual } from "node:assert";
 import test, { describe } from "node:test";
 import {
 	GetRecordsCommand,
@@ -13,11 +13,18 @@ import {
 } from "@datastream/aws/kinesis";
 import {
 	createReadableStream,
+	isReadable,
+	pipejoin,
 	pipeline,
 	streamToArray,
 } from "@datastream/core";
 import { mockClient } from "aws-sdk-client-mock";
 import { variant } from "../variant.js";
+
+// The stream reads ahead of the consumer, so a mock that keeps resolving empty
+// pages with no poll delay would spin forever (starving the consumer): end
+// such sequences with a poll that never answers, like an idle long poll.
+const neverResolves = () => new Promise(() => {});
 
 describe(`@datastream/aws/kinesis (${variant})`, () => {
 	test(`awsKinesisGetRecordsStream should get chunk`, async (_t) => {
@@ -90,7 +97,7 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 			.resolvesOnce({ Records: [{ Data: "a" }], NextShardIterator: "iter2" })
 			.resolvesOnce({ Records: [], NextShardIterator: "iter3" })
 			.resolvesOnce({ Records: [{ Data: "b" }], NextShardIterator: "iter4" })
-			.resolves({ Records: [], NextShardIterator: "iter5" });
+			.callsFake(neverResolves);
 
 		const options = {
 			ShardIterator: "iter1",
@@ -424,7 +431,12 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(GetRecordsCommand);
-		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+		// Forwarded as a signal that follows streamOptions.signal (and also
+		// aborts when the stream is destroyed early).
+		const sent = calls[0].args[1]?.abortSignal;
+		deepStrictEqual(sent.aborted, false);
+		controller.abort();
+		deepStrictEqual(sent.aborted, true);
 	});
 
 	// *** Batch byte-cap boundary (KINESIS_MAX_BATCH_BYTES = 5MiB - 64KiB) *** //
@@ -492,6 +504,22 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		// a `>=` mutant would wrongly reject it.
 		const exact = "x".repeat(1024 * 1024);
 		const input = [{ Data: exact }];
+		await pipeline([
+			createReadableStream(input),
+			awsKinesisPutRecordsStream({ StreamName: "test-stream" }),
+		]);
+
+		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 1);
+	});
+
+	// An absent Data counts as zero bytes: a PartitionKey alone at exactly 1MiB is
+	// still within the limit.
+	test(`awsKinesisPutRecordsStream counts a missing Data as zero bytes`, async (_t) => {
+		const client = mockClient(KinesisClient);
+		awsKinesisSetClient(client);
+		client.on(PutRecordsCommand).resolves({ FailedRecordCount: 0 });
+
+		const input = [{ PartitionKey: "x".repeat(1024 * 1024) }];
 		await pipeline([
 			createReadableStream(input),
 			awsKinesisPutRecordsStream({ StreamName: "test-stream" }),
@@ -1308,8 +1336,151 @@ describe(`@datastream/aws/kinesis (${variant})`, () => {
 		deepStrictEqual(sends, 1);
 	});
 
+	test(`awsKinesisGetRecordsStream is a Readable that pipejoin accepts`, async (_t) => {
+		const client = mockClient(KinesisClient);
+		awsKinesisSetClient(client);
+		client.on(GetRecordsCommand).resolves({ Records: [{ Data: "a" }] });
+
+		const stream = await awsKinesisGetRecordsStream({ ShardIterator: "iter1" });
+		strictEqual(isReadable(stream), true);
+		deepStrictEqual(await streamToArray(pipejoin([stream])), [{ Data: "a" }]);
+	});
+
+	// A generator's return() only lands at its next yield; destroying the stream
+	// must also abort the idle poll wait so polling stops and 'close' fires.
+	test(`awsKinesisGetRecordsStream destroy stops an idle poll`, {
+		timeout: 1000,
+	}, async (_t) => {
+		const client = mockClient(KinesisClient);
+		awsKinesisSetClient(client);
+		client
+			.on(GetRecordsCommand)
+			.resolves({ Records: [], NextShardIterator: "iter" });
+
+		const stream = await awsKinesisGetRecordsStream({
+			ShardIterator: "iter1",
+			pollingActive: true,
+			pollingDelay: 60_000,
+		});
+		stream.resume();
+		await new Promise((resolve) => setImmediate(resolve));
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		deepStrictEqual(client.commandCalls(GetRecordsCommand).length, 1);
+	});
+
 	// Named exports are canonical; a default export must not come back.
 	test(`kinesis has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
+	});
+
+	// --- buffered entries on destroy / abort ---
+	// final() never runs on destroy() or an abort, so entries still buffered
+	// below the batch limit are handed to the teardown error as failedMessages
+	// (the kafkaProduceStream contract) and nothing is sent.
+	const writeEach = async (stream, chunks) => {
+		for (const chunk of chunks) {
+			await new Promise((resolve, reject) =>
+				stream.write(chunk, (error) => (error ? reject(error) : resolve())),
+			);
+		}
+	};
+	// Resolves stream.errored once closed (null when no error was raised).
+	const destroyedWith = async (stream, error) => {
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.once("error", () => {});
+		stream.destroy(error);
+		await closed;
+		return stream.errored;
+	};
+
+	test(`awsKinesisPutRecordsStream destroy(error) attaches the buffered entries`, async (_t) => {
+		const client = mockClient(KinesisClient);
+		awsKinesisSetClient(client);
+		client.on(PutRecordsCommand).resolves({});
+		const stream = awsKinesisPutRecordsStream({ StreamName: "s" });
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			Data: `${i}`,
+			PartitionKey: "p",
+		}));
+		await writeEach(stream, chunks);
+		const error = new Error("boom");
+		strictEqual(await destroyedWith(stream, error), error);
+		deepStrictEqual(error.message, "boom");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 0);
+	});
+
+	test(`awsKinesisPutRecordsStream destroy() raises an error carrying the buffered entries`, async (_t) => {
+		const client = mockClient(KinesisClient);
+		awsKinesisSetClient(client);
+		client.on(PutRecordsCommand).resolves({});
+		const stream = awsKinesisPutRecordsStream({ StreamName: "s" });
+		const chunks = Array.from({ length: 1 }, (_v, i) => ({
+			Data: `${i}`,
+			PartitionKey: "p",
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(
+			error.message,
+			"awsKinesisPutRecords destroyed with buffered records",
+		);
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 0);
+	});
+
+	test(`awsKinesisPutRecordsStream destroy() with nothing buffered raises no error`, async (_t) => {
+		const client = mockClient(KinesisClient);
+		awsKinesisSetClient(client);
+		client.on(PutRecordsCommand).resolves({});
+		const stream = awsKinesisPutRecordsStream({ StreamName: "s" });
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		strictEqual(stream.errored, null);
+		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 0);
+	});
+
+	test(`awsKinesisPutRecordsStream attaches only the entries buffered after the last flush`, async (_t) => {
+		const client = mockClient(KinesisClient);
+		awsKinesisSetClient(client);
+		client.on(PutRecordsCommand).resolves({});
+		const stream = awsKinesisPutRecordsStream({ StreamName: "s" });
+		const chunks = Array.from({ length: 501 }, (_v, i) => ({
+			Data: `${i}`,
+			PartitionKey: "p",
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(error.failedMessages, chunks.slice(500));
+		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 1);
+	});
+
+	test(`awsKinesisPutRecordsStream abort attaches the buffered entries without sending`, async (_t) => {
+		const client = mockClient(KinesisClient);
+		awsKinesisSetClient(client);
+		client.on(PutRecordsCommand).resolves({});
+		const controller = new AbortController();
+		const stream = awsKinesisPutRecordsStream(
+			{ StreamName: "s" },
+			{
+				signal: controller.signal,
+			},
+		);
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			Data: `${i}`,
+			PartitionKey: "p",
+		}));
+		await writeEach(stream, chunks);
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.once("error", () => {});
+		controller.abort();
+		await closed;
+		const error = stream.errored;
+		deepStrictEqual(error.name, "AbortError");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(PutRecordsCommand).length, 0);
 	});
 });

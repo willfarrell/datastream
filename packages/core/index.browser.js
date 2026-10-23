@@ -200,17 +200,34 @@ export const createReadableStream = (input, streamOptions = {}) => {
 	// demand, and cancel()/abort stop it via iterator.return().
 	let iterator;
 	let controller;
+	// Set on every terminal path so a late push() (after close/abort/cancel, or
+	// a second push(null)) is a no-op like node's, not "Controller is already
+	// closed".
+	let closed = false;
 	const cleanup = () => signal?.removeEventListener("abort", onAbort);
 	const close = () => {
+		closed = true;
 		cleanup();
 		controller.close();
 	};
 	const fail = (e) => {
+		closed = true;
 		cleanup();
 		controller.error(e);
 		return iterator?.return?.();
 	};
 	const onAbort = () => fail(signal.reason);
+	// Returns whether the queue still wants more, so a sync pull() keeps going.
+	// close() with chunks still queued only requests the close (desiredSize
+	// stays positive), hence the explicit false.
+	const settle = ({ value, done }) => {
+		if (done) {
+			close();
+			return false;
+		}
+		controller.enqueue(value);
+		return controller.desiredSize > 0;
+	};
 	const stream = new ReadableStream(
 		{
 			start(c) {
@@ -260,23 +277,32 @@ export const createReadableStream = (input, streamOptions = {}) => {
 					fail(new TypeError("createReadableStream: unsupported input type"));
 				}
 			},
-			async pull(controller) {
+			pull() {
 				// Manual-push mode has no iterator; push() enqueues directly.
 				if (!iterator) return;
+				// A sync iterator fills the queue to highWaterMark in one call: one
+				// next() per pull() round trip is ~3x slower on 10k-object arrays.
+				// An async next() is awaited, one per pull() (lazy, node parity).
 				let next;
-				try {
-					next = await iterator.next();
-				} catch (e) {
-					// A throwing source errors the stream without close()/cancel(), so
-					// drop the abort listener here too.
-					cleanup();
-					throw e;
-				}
-				const { value, done } = next;
-				if (done) close();
-				else controller.enqueue(value);
+				do {
+					try {
+						next = iterator.next();
+					} catch (e) {
+						// A throwing source errors the stream without close()/cancel(),
+						// so drop the abort listener here too.
+						cleanup();
+						throw e;
+					}
+					if (typeof next.then === "function") {
+						return next.then(settle, (e) => {
+							cleanup();
+							throw e;
+						});
+					}
+				} while (settle(next));
 			},
 			cancel() {
+				closed = true;
 				cleanup();
 				return iterator?.return?.();
 			},
@@ -284,6 +310,7 @@ export const createReadableStream = (input, streamOptions = {}) => {
 		readableStrategy,
 	);
 	stream.push = (chunk) => {
+		if (closed) return;
 		if (chunk === null) return close();
 		// desiredSize = highWaterMark - queued, so this mirrors the node build's
 		// readableLength check. (Node closes the controller synchronously in
@@ -342,13 +369,12 @@ export const createPassThroughStream = (passThrough, flush, streamOptions) => {
 				}
 				controller.enqueue(chunk);
 			},
-			async flush(controller) {
+			async flush() {
 				cleanup();
 				signal?.throwIfAborted();
 				if (flush) {
 					await flush();
 				}
-				controller.terminate();
 			},
 			// Called when the readable side is cancelled or the writable side is
 			// aborted/errored (e.g. a downstream sink errors).
@@ -409,7 +435,6 @@ export const createTransformStream = (transform, flush, streamOptions) => {
 					};
 					await flush(enqueue);
 				}
-				controller.terminate();
 			},
 			cancel() {
 				cleanup();

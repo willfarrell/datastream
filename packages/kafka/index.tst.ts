@@ -2,6 +2,7 @@
 /// <reference types="node" />
 import type { KafkaConnection, KafkaMessage } from "@datastream/kafka";
 import {
+	kafkaCommitStream,
 	kafkaConnect,
 	kafkaConsumeStream,
 	kafkaProduceStream,
@@ -71,11 +72,39 @@ describe("kafkaConsumeStream", () => {
 		).type.not.toBeAssignableTo<never>();
 	});
 
+	test("stop() returns Promise<void>", async () => {
+		const stream = await kafkaConsumeStream({ consumer, topics: "t" });
+		expect(stream.stop()).type.toBe<Promise<void>>();
+	});
+
 	test("does not accept signal in options", () => {
 		expect(kafkaConsumeStream).type.not.toBeCallableWith({
 			consumer,
 			topics: "t",
 			signal: new AbortController().signal,
+		});
+	});
+});
+
+describe("kafkaCommitStream", () => {
+	test("requires consumer", () => {
+		expect(kafkaCommitStream({ consumer })).type.not.toBeAssignableTo<never>();
+		expect(kafkaCommitStream).type.not.toBeCallableWith({});
+	});
+
+	test("accepts batchSize and streamOptions", () => {
+		expect(
+			kafkaCommitStream(
+				{ consumer, batchSize: 10 },
+				{ signal: new AbortController().signal },
+			),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("does not accept a non-numeric batchSize", () => {
+		expect(kafkaCommitStream).type.not.toBeCallableWith({
+			consumer,
+			batchSize: "10",
 		});
 	});
 });

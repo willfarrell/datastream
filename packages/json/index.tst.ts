@@ -66,8 +66,8 @@ describe("ndjsonFormatStream", () => {
 		expect(ndjsonFormatStream()).type.not.toBeAssignableTo<never>();
 	});
 
-	test("accepts space option", () => {
-		expect(ndjsonFormatStream({ space: 2 })).type.not.toBeAssignableTo<never>();
+	test("rejects space option", () => {
+		expect(ndjsonFormatStream).type.not.toBeCallableWith({ space: 2 });
 	});
 });
 

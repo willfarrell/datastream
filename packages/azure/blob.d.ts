@@ -1,10 +1,9 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import type {
+	DatastreamPassThrough,
 	DatastreamReadable,
-	DatastreamWritable,
 	StreamOptions,
-	StreamResult,
 } from "@datastream/core";
 
 export function azureBlobDownloadStream(
@@ -13,6 +12,16 @@ export function azureBlobDownloadStream(
 		client: unknown;
 		offset?: number;
 		count?: number;
+		[key: string]: unknown;
+	},
+	streamOptions?: StreamOptions,
+): Promise<DatastreamReadable>;
+
+export function azureBlobListStream(
+	options: {
+		// ContainerClient
+		client: unknown;
+		prefix?: string;
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
@@ -27,6 +36,7 @@ export function azureBlobUploadStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamWritable & {
-	result: () => Promise<StreamResult<unknown>>;
+): DatastreamPassThrough & {
+	// Resolves once the upload completes; contributes no key to pipeline().
+	result: () => Promise<Record<string, never>>;
 };

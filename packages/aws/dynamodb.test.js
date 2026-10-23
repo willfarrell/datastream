@@ -1,4 +1,4 @@
-import { deepStrictEqual, rejects } from "node:assert";
+import { deepStrictEqual, rejects, strictEqual } from "node:assert";
 import test, { describe } from "node:test";
 import {
 	BatchGetItemCommand,
@@ -20,6 +20,8 @@ import {
 } from "@datastream/aws/dynamodb";
 import {
 	createReadableStream,
+	isReadable,
+	pipejoin,
 	pipeline,
 	streamToArray,
 } from "@datastream/core";
@@ -731,9 +733,9 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		await new Promise((resolve) => setImmediate(resolve));
 		deepStrictEqual(sends, 1);
 
+		// streamOptions.signal destroys the stream with an AbortError.
 		const error = await consuming;
-		deepStrictEqual(error.message, "Aborted");
-		deepStrictEqual(error.cause, { code: "AbortError" });
+		deepStrictEqual(error.name, "AbortError");
 	});
 
 	// *** backoff floor: the first retry waits at least 50ms (not 3^0 == 1ms) *** //
@@ -886,7 +888,12 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(QueryCommand);
-		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+		// Forwarded as a signal that follows streamOptions.signal (and also
+		// aborts when the stream is destroyed early).
+		const sent = calls[0].args[1]?.abortSignal;
+		deepStrictEqual(sent.aborted, false);
+		controller.abort();
+		deepStrictEqual(sent.aborted, true);
 	});
 
 	test(`awsDynamoDBScanStream forwards abortSignal to client.send`, async (_t) => {
@@ -902,7 +909,12 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(ScanCommand);
-		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+		// Forwarded as a signal that follows streamOptions.signal (and also
+		// aborts when the stream is destroyed early).
+		const sent = calls[0].args[1]?.abortSignal;
+		deepStrictEqual(sent.aborted, false);
+		controller.abort();
+		deepStrictEqual(sent.aborted, true);
 	});
 
 	test(`awsDynamoDBExecuteStatementStream forwards abortSignal to client.send`, async (_t) => {
@@ -918,7 +930,12 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(ExecuteStatementCommand);
-		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+		// Forwarded as a signal that follows streamOptions.signal (and also
+		// aborts when the stream is destroyed early).
+		const sent = calls[0].args[1]?.abortSignal;
+		deepStrictEqual(sent.aborted, false);
+		controller.abort();
+		deepStrictEqual(sent.aborted, true);
 	});
 
 	test(`awsDynamoDBGetItemStream forwards abortSignal to client.send`, async (_t) => {
@@ -936,7 +953,12 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(BatchGetItemCommand);
-		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+		// Forwarded as a signal that follows streamOptions.signal (and also
+		// aborts when the stream is destroyed early).
+		const sent = calls[0].args[1]?.abortSignal;
+		deepStrictEqual(sent.aborted, false);
+		controller.abort();
+		deepStrictEqual(sent.aborted, true);
 	});
 
 	// *** executeStatement yields nothing when the response has no Items field *** //
@@ -1225,6 +1247,77 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 3);
 	});
 
+	// *** batchWrite: request-level fields (ReturnConsumedCapacity,
+	// ReturnItemCollectionMetrics) go on every BatchWriteItem request; stream
+	// options (TableName, retryMaxCount, client) do not *** //
+	test(`awsDynamoDBPutItemStream forwards request-level BatchWriteItem options, including on retry`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client
+			.on(BatchWriteItemCommand)
+			.resolvesOnce({
+				UnprocessedItems: { T: [{ PutRequest: { Item: { key: "a" } } }] },
+			})
+			.resolves({});
+
+		await pipeline([
+			createReadableStream([{ key: "a" }]),
+			awsDynamoDBPutItemStream({
+				TableName: "T",
+				retryMaxCount: 1,
+				ReturnConsumedCapacity: "TOTAL",
+				ReturnItemCollectionMetrics: "SIZE",
+			}),
+		]);
+
+		const calls = client.commandCalls(BatchWriteItemCommand);
+		deepStrictEqual(calls.length, 2);
+		deepStrictEqual(calls[0].args[0].input, {
+			ReturnConsumedCapacity: "TOTAL",
+			ReturnItemCollectionMetrics: "SIZE",
+			RequestItems: { T: [{ PutRequest: { Item: { key: "a" } } }] },
+		});
+		deepStrictEqual(calls[1].args[0].input, {
+			ReturnConsumedCapacity: "TOTAL",
+			ReturnItemCollectionMetrics: "SIZE",
+			RequestItems: { T: [{ PutRequest: { Item: { key: "a" } } }] },
+		});
+	});
+
+	test(`awsDynamoDBDeleteItemStream forwards request-level BatchWriteItem options, including on retry`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client
+			.on(BatchWriteItemCommand)
+			.resolvesOnce({
+				UnprocessedItems: { T: [{ DeleteRequest: { Key: { key: "a" } } }] },
+			})
+			.resolves({});
+
+		await pipeline([
+			createReadableStream([{ key: "a" }]),
+			awsDynamoDBDeleteItemStream({
+				TableName: "T",
+				retryMaxCount: 1,
+				ReturnConsumedCapacity: "TOTAL",
+				ReturnItemCollectionMetrics: "SIZE",
+			}),
+		]);
+
+		const calls = client.commandCalls(BatchWriteItemCommand);
+		deepStrictEqual(calls.length, 2);
+		deepStrictEqual(calls[0].args[0].input, {
+			ReturnConsumedCapacity: "TOTAL",
+			ReturnItemCollectionMetrics: "SIZE",
+			RequestItems: { T: [{ DeleteRequest: { Key: { key: "a" } } }] },
+		});
+		deepStrictEqual(calls[1].args[0].input, {
+			ReturnConsumedCapacity: "TOTAL",
+			ReturnItemCollectionMetrics: "SIZE",
+			RequestItems: { T: [{ DeleteRequest: { Key: { key: "a" } } }] },
+		});
+	});
+
 	// *** retryMaxCount: null = unlimited retries (undefined keeps the default) *** //
 	test(`awsDynamoDBGetItemStream retries without limit when retryMaxCount is null`, async (t) => {
 		const client = mockClient(DynamoDBClient);
@@ -1272,8 +1365,298 @@ describe(`@datastream/aws/dynamodb (${variant})`, () => {
 		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 12);
 	});
 
+	// The read factories resolve to a Readable (not a bare async generator), so
+	// they compose with pipejoin like any other datastream source.
+	test(`awsDynamoDB read streams are Readables that pipejoin accepts`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(QueryCommand).resolves({ Items: [{ key: "q" }] });
+		client.on(ScanCommand).resolves({ Items: [{ key: "s" }] });
+		client.on(ExecuteStatementCommand).resolves({ Items: [{ key: "e" }] });
+		client
+			.on(BatchGetItemCommand)
+			.resolves({ Responses: { T: [{ key: "g" }] }, UnprocessedKeys: {} });
+
+		const streams = [
+			await awsDynamoDBQueryStream({ TableName: "T" }),
+			await awsDynamoDBScanStream({ TableName: "T" }),
+			await awsDynamoDBExecuteStatementStream({ Statement: "SELECT" }),
+			await awsDynamoDBGetItemStream({ TableName: "T", Keys: [{ key: "g" }] }),
+		];
+		const output = [];
+		for (const stream of streams) {
+			strictEqual(isReadable(stream), true);
+			output.push(...(await streamToArray(pipejoin([stream]))));
+		}
+		deepStrictEqual(output, [
+			{ key: "q" },
+			{ key: "s" },
+			{ key: "e" },
+			{ key: "g" },
+		]);
+	});
+
+	// Destroying the stream mid-request aborts the in-flight send: a generator's
+	// return() would otherwise wait for the next page.
+	test(`awsDynamoDBScanStream destroy aborts the in-flight request`, async (_t) => {
+		let sent;
+		awsDynamoDBSetClient({
+			send: (_command, { abortSignal }) => {
+				sent = abortSignal;
+				return new Promise((_resolve, reject) => {
+					abortSignal.addEventListener("abort", () =>
+						reject(abortSignal.reason),
+					);
+				});
+			},
+		});
+		const stream = await awsDynamoDBScanStream({ TableName: "T" });
+		stream.resume();
+		await new Promise((resolve) => setImmediate(resolve));
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		strictEqual(sent.aborted, true);
+	});
+
 	// Named exports are canonical; a default export must not come back.
 	test(`dynamodb has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
+	});
+
+	// --- buffered entries on destroy / abort ---
+	// final() never runs on destroy() or an abort, so entries still buffered
+	// below the batch limit are handed to the teardown error as failedMessages
+	// (the kafkaProduceStream contract) and nothing is sent.
+	const writeEach = async (stream, chunks) => {
+		for (const chunk of chunks) {
+			await new Promise((resolve, reject) =>
+				stream.write(chunk, (error) => (error ? reject(error) : resolve())),
+			);
+		}
+	};
+	// Resolves stream.errored once closed (null when no error was raised).
+	const destroyedWith = async (stream, error) => {
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.once("error", () => {});
+		stream.destroy(error);
+		await closed;
+		return stream.errored;
+	};
+
+	test(`awsDynamoDBPutItemStream destroy(error) attaches the buffered entries`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const stream = awsDynamoDBPutItemStream({ TableName: "t" });
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			id: { S: `${i}` },
+		}));
+		await writeEach(stream, chunks);
+		const error = new Error("boom");
+		strictEqual(await destroyedWith(stream, error), error);
+		deepStrictEqual(error.message, "boom");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 0);
+	});
+
+	test(`awsDynamoDBPutItemStream destroy() raises an error carrying the buffered entries`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const stream = awsDynamoDBPutItemStream({ TableName: "t" });
+		const chunks = Array.from({ length: 1 }, (_v, i) => ({
+			id: { S: `${i}` },
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(
+			error.message,
+			"awsDynamoDBPutItem destroyed with buffered items",
+		);
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 0);
+	});
+
+	test(`awsDynamoDBPutItemStream destroy() with nothing buffered raises no error`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const stream = awsDynamoDBPutItemStream({ TableName: "t" });
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		strictEqual(stream.errored, null);
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 0);
+	});
+
+	test(`awsDynamoDBPutItemStream attaches only the entries buffered after the last flush`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const stream = awsDynamoDBPutItemStream({ TableName: "t" });
+		const chunks = Array.from({ length: 26 }, (_v, i) => ({
+			id: { S: `${i}` },
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(error.failedMessages, chunks.slice(25));
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 1);
+	});
+
+	test(`awsDynamoDBPutItemStream abort attaches the buffered entries without sending`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const controller = new AbortController();
+		const stream = awsDynamoDBPutItemStream(
+			{ TableName: "t" },
+			{
+				signal: controller.signal,
+			},
+		);
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			id: { S: `${i}` },
+		}));
+		await writeEach(stream, chunks);
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.once("error", () => {});
+		controller.abort();
+		await closed;
+		const error = stream.errored;
+		deepStrictEqual(error.name, "AbortError");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 0);
+	});
+
+	test(`awsDynamoDBDeleteItemStream destroy(error) attaches the buffered entries`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const stream = awsDynamoDBDeleteItemStream({ TableName: "t" });
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			id: { S: `${i}` },
+		}));
+		await writeEach(stream, chunks);
+		const error = new Error("boom");
+		strictEqual(await destroyedWith(stream, error), error);
+		deepStrictEqual(error.message, "boom");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 0);
+	});
+
+	test(`awsDynamoDBDeleteItemStream destroy() raises an error carrying the buffered entries`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const stream = awsDynamoDBDeleteItemStream({ TableName: "t" });
+		const chunks = Array.from({ length: 1 }, (_v, i) => ({
+			id: { S: `${i}` },
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(
+			error.message,
+			"awsDynamoDBDeleteItem destroyed with buffered keys",
+		);
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 0);
+	});
+
+	test(`awsDynamoDBDeleteItemStream destroy() with nothing buffered raises no error`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const stream = awsDynamoDBDeleteItemStream({ TableName: "t" });
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		strictEqual(stream.errored, null);
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 0);
+	});
+
+	test(`awsDynamoDBDeleteItemStream attaches only the entries buffered after the last flush`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const stream = awsDynamoDBDeleteItemStream({ TableName: "t" });
+		const chunks = Array.from({ length: 26 }, (_v, i) => ({
+			id: { S: `${i}` },
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(error.failedMessages, chunks.slice(25));
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 1);
+	});
+
+	test(`awsDynamoDBDeleteItemStream abort attaches the buffered entries without sending`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client.on(BatchWriteItemCommand).resolves({});
+		const controller = new AbortController();
+		const stream = awsDynamoDBDeleteItemStream(
+			{ TableName: "t" },
+			{
+				signal: controller.signal,
+			},
+		);
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			id: { S: `${i}` },
+		}));
+		await writeEach(stream, chunks);
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.once("error", () => {});
+		controller.abort();
+		await closed;
+		const error = stream.errored;
+		deepStrictEqual(error.name, "AbortError");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 0);
+	});
+
+	// The buffer is cleared before each request, so a failed request surfaces
+	// its own error without its items being reported as unsent.
+	test(`awsDynamoDBPutItemStream does not report a failed request as unsent`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		const sendError = new Error("send failed");
+		client.on(BatchWriteItemCommand).rejects(sendError);
+		const items = Array.from({ length: 26 }, (_v, i) => ({
+			id: { S: `${i}` },
+		}));
+		await rejects(
+			() =>
+				pipeline([
+					createReadableStream(items),
+					awsDynamoDBPutItemStream({ TableName: "t" }),
+				]),
+			(error) => {
+				strictEqual(error, sendError);
+				strictEqual(error.failedMessages, undefined);
+				return true;
+			},
+		);
+		deepStrictEqual(client.commandCalls(BatchWriteItemCommand).length, 1);
+	});
+
+	// retryCount was internal retry state: retries always start from zero.
+	test(`awsDynamoDBGetItemStream ignores a retryCount option`, async (_t) => {
+		const client = mockClient(DynamoDBClient);
+		awsDynamoDBSetClient(client);
+		client
+			.on(BatchGetItemCommand)
+			.resolvesOnce({
+				Responses: { t: [] },
+				UnprocessedKeys: { t: { Keys: [{ id: "a" }] } },
+			})
+			.resolves({ Responses: { t: [{ id: "a" }] } });
+		const stream = await awsDynamoDBGetItemStream({
+			TableName: "t",
+			Keys: [{ id: "a" }],
+			retryCount: 5,
+			retryMaxCount: 1,
+		});
+		deepStrictEqual(await streamToArray(stream), [{ id: "a" }]);
+		deepStrictEqual(client.commandCalls(BatchGetItemCommand).length, 2);
 	});
 });

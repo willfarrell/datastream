@@ -1,4 +1,4 @@
-import { deepStrictEqual, rejects } from "node:assert";
+import { deepStrictEqual, rejects, strictEqual } from "node:assert";
 import test, { describe } from "node:test";
 import {
 	DynamoDBStreamsClient,
@@ -9,9 +9,14 @@ import {
 	awsDynamoDBStreamsGetRecordsStream,
 	awsDynamoDBStreamsSetClient,
 } from "@datastream/aws/dynamodb-streams";
-import { streamToArray } from "@datastream/core";
+import { isReadable, pipejoin, streamToArray } from "@datastream/core";
 import { mockClient } from "aws-sdk-client-mock";
 import { variant } from "../variant.js";
+
+// The stream reads ahead of the consumer, so a mock that keeps resolving empty
+// pages with no poll delay would spin forever (starving the consumer): end
+// such sequences with a poll that never answers, like an idle long poll.
+const neverResolves = () => new Promise(() => {});
 
 describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 	test(`awsDynamoDBStreamsGetRecordsStream should get chunk`, async (_t) => {
@@ -126,7 +131,7 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 			.resolvesOnce({ Records: [{ eventID: "1" }], NextShardIterator: "iter2" })
 			.resolvesOnce({ Records: [], NextShardIterator: "iter3" })
 			.resolvesOnce({ Records: [{ eventID: "2" }], NextShardIterator: "iter4" })
-			.resolves({ Records: [], NextShardIterator: "iter5" });
+			.callsFake(neverResolves);
 
 		const options = {
 			ShardIterator: "iter1",
@@ -228,7 +233,12 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		await streamToArray(stream);
 
 		const calls = client.commandCalls(GetRecordsCommand);
-		deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+		// Forwarded as a signal that follows streamOptions.signal (and also
+		// aborts when the stream is destroyed early).
+		const sent = calls[0].args[1]?.abortSignal;
+		deepStrictEqual(sent.aborted, false);
+		controller.abort();
+		deepStrictEqual(sent.aborted, true);
 	});
 
 	// *** options spread through to the command *** //
@@ -395,6 +405,44 @@ describe(`@datastream/aws/dynamodb-streams (${variant})`, () => {
 		const output = await streamToArray(stream);
 
 		deepStrictEqual(output, [{ eventID: "1" }]);
+	});
+
+	test(`awsDynamoDBStreamsGetRecordsStream is a Readable that pipejoin accepts`, async (_t) => {
+		const client = mockClient(DynamoDBStreamsClient);
+		awsDynamoDBStreamsSetClient(client);
+		client.on(GetRecordsCommand).resolves({ Records: [{ eventID: "1" }] });
+
+		const stream = await awsDynamoDBStreamsGetRecordsStream({
+			ShardIterator: "iter1",
+		});
+		strictEqual(isReadable(stream), true);
+		deepStrictEqual(await streamToArray(pipejoin([stream])), [
+			{ eventID: "1" },
+		]);
+	});
+
+	// A generator's return() only lands at its next yield; destroying the stream
+	// must also abort the idle poll wait so polling stops and 'close' fires.
+	test(`awsDynamoDBStreamsGetRecordsStream destroy stops an idle poll`, {
+		timeout: 1000,
+	}, async (_t) => {
+		const client = mockClient(DynamoDBStreamsClient);
+		awsDynamoDBStreamsSetClient(client);
+		client
+			.on(GetRecordsCommand)
+			.resolves({ Records: [], NextShardIterator: "iter" });
+
+		const stream = await awsDynamoDBStreamsGetRecordsStream({
+			ShardIterator: "iter1",
+			pollingActive: true,
+			pollingDelay: 60_000,
+		});
+		stream.resume();
+		await new Promise((resolve) => setImmediate(resolve));
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		deepStrictEqual(client.commandCalls(GetRecordsCommand).length, 1);
 	});
 
 	// Named exports are canonical; a default export must not come back.

@@ -29,7 +29,7 @@ All options and configuration are assumed to be trusted as they are configured b
 
 ## Trust Boundaries
 
-datastream processes data through streams. The configuration of datastream is trusted; the data flowing through the streams (files, HTTP responses, queue messages, compressed or encrypted payloads) is not. Parsers and decoders therefore ship with finite default limits: buffer sizes, message and body sizes, decompressed output, pagination page counts and error-list lengths. Exceeding a limit throws a `RangeError`; passing `null` removes a limit and should only be done for trusted input. Each package's documentation lists its limits and defaults. It's still up to the implementing developer to validate that data is structured correctly for their use (for example with `@datastream/validate`). User inputs to all packages are fuzzed.
+datastream processes data through streams. The configuration of datastream is trusted; the data flowing through the streams (files, HTTP responses, queue messages, compressed or encrypted payloads) is not. Parsers and decoders therefore ship with finite default limits: buffer sizes, message and body sizes, decompressed output, pagination page counts and error-list lengths. Exceeding a size or count limit throws a `RangeError`, while error lists (`maxErrorRows`, `maxErrorKeys`) are truncated at their cap instead; passing `null` removes a limit and should only be done for trusted input. Each package's documentation lists its limits and defaults. It's still up to the implementing developer to validate that data is structured correctly for their use (for example with `@datastream/validate`). User inputs to all packages are fuzzed.
 
 ## Reporting a Vulnerability
 

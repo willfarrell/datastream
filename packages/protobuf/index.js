@@ -2,18 +2,13 @@
 // SPDX-License-Identifier: MIT
 import { createTransformStream } from "@datastream/core";
 
-// Resolve a ProtobufTypeInput once: a static Type is returned as-is (the hot
-// path skips recomputation), while a function is invoked per chunk and may
-// return either a Type or a Promise<Type>.
-const makeResolveType = (Type) =>
-	typeof Type === "function" ? Type : () => Type;
-
+const encode = (type, chunk, enqueue) =>
+	enqueue(type.encode(type.create(chunk)).finish());
 export const protobufEncodeStream = ({ Type } = {}, streamOptions = {}) => {
-	const resolveType = makeResolveType(Type);
-	const transform = async (chunk, enqueue) => {
-		const type = await resolveType(chunk);
-		enqueue(type.encode(type.create(chunk)).finish());
-	};
+	const transform =
+		typeof Type === "function"
+			? async (chunk, enqueue) => encode(await Type(chunk), chunk, enqueue)
+			: (chunk, enqueue) => encode(Type, chunk, enqueue);
 	return createTransformStream(transform, streamOptions);
 };
 
@@ -25,35 +20,52 @@ export const protobufDecodeStream = (
 	{ Type, payload, maxMessageSize = DEFAULT_MAX_MESSAGE_SIZE } = {},
 	streamOptions = {},
 ) => {
-	const resolveType = makeResolveType(Type);
 	const getPayload = payload ?? ((chunk) => chunk);
 	// Checked per message, not cumulatively: a cumulative cap with any finite
 	// default would eventually kill every long-lived consumer.
 	const messageLimit = maxMessageSize ?? Number.POSITIVE_INFINITY;
-	const transform = async (chunk, enqueue) => {
+	const checkedPayload = (chunk) => {
 		const bytes = getPayload(chunk);
 		if (bytes.length > messageLimit) {
 			throw new RangeError(
 				`Protobuf message exceeds maxMessageSize (${maxMessageSize} bytes)`,
 			);
 		}
-		const type = await resolveType(chunk);
-		enqueue(type.decode(bytes));
+		return bytes;
 	};
+	const transform =
+		typeof Type === "function"
+			? async (chunk, enqueue) => {
+					const bytes = checkedPayload(chunk);
+					enqueue((await Type(chunk)).decode(bytes));
+				}
+			: (chunk, enqueue) => enqueue(Type.decode(checkedPayload(chunk)));
 	return createTransformStream(transform, streamOptions);
 };
 
 // Base-128 varint, matching the protobuf length-delimited wire format. Uses
 // arithmetic (not bitwise) so lengths beyond 2^31 encode/decode correctly.
-const encodeVarint = (value) => {
-	const bytes = [];
+// Bytes needed to encode `value` as a varint (1 for 0..127, 2 for ..16383).
+const varintLength = (value) => {
+	let n = 1;
 	let v = value;
 	while (v > 0x7f) {
-		bytes.push((v % 0x80) | 0x80);
 		v = Math.floor(v / 0x80);
+		n += 1;
 	}
-	bytes.push(v);
-	return Uint8Array.from(bytes);
+	return n;
+};
+// Writes `value` as a varint into `out` from index 0; the caller sized it with
+// varintLength so the last byte is the one without a continuation bit.
+const writeVarint = (out, value) => {
+	let i = 0;
+	let v = value;
+	while (v > 0x7f) {
+		out[i] = (v % 0x80) | 0x80;
+		v = Math.floor(v / 0x80);
+		i += 1;
+	}
+	out[i] = v;
 };
 
 export const protobufLengthPrefixFrameStream = (
@@ -61,10 +73,10 @@ export const protobufLengthPrefixFrameStream = (
 	streamOptions = {},
 ) => {
 	const transform = (chunk, enqueue) => {
-		const prefix = encodeVarint(chunk.length);
-		const framed = new Uint8Array(prefix.length + chunk.length);
-		framed.set(prefix, 0);
-		framed.set(chunk, prefix.length);
+		const prefixLength = varintLength(chunk.length);
+		const framed = new Uint8Array(prefixLength + chunk.length);
+		writeVarint(framed, chunk.length);
+		framed.set(chunk, prefixLength);
 		enqueue(framed);
 	};
 	return createTransformStream(transform, streamOptions);
@@ -82,9 +94,13 @@ export const protobufLengthPrefixUnframeStream = (
 	// is speed (and which mutation testing cannot distinguish from the slow path).
 	const pending = [];
 	let pendingLen = 0;
+	// Bytes already consumed off the front of pending[0]: tracked as an offset so
+	// consuming never re-slices the head chunk.
+	let headOffset = 0;
 
 	// Byte at absolute position `pos` (0 <= pos < pendingLen) across the chunks.
 	const byteAt = (pos) => {
+		pos += headOffset;
 		let index = 0;
 		while (pos >= pending[index].byteLength) {
 			pos -= pending[index].byteLength;
@@ -93,19 +109,23 @@ export const protobufLengthPrefixUnframeStream = (
 		return pending[index][pos];
 	};
 
+	// Consume `n` bytes off the front of pending[0] (n is at most what is left of
+	// it), dropping the chunk once it is used up.
+	const consume = (n) => {
+		headOffset += n;
+		pendingLen -= n;
+		if (headOffset === pending[0].byteLength) {
+			pending.shift();
+			headOffset = 0;
+		}
+	};
+
 	// Drop the first `count` bytes off the front of the buffered chunks.
 	const skip = (count) => {
 		while (count > 0) {
-			const head = pending[0];
-			const n = Math.min(head.byteLength, count);
+			const n = Math.min(pending[0].byteLength - headOffset, count);
 			count -= n;
-			pendingLen -= n;
-			const rest = head.subarray(n);
-			if (rest.byteLength === 0) {
-				pending.shift();
-			} else {
-				pending[0] = rest;
-			}
+			consume(n);
 		}
 	};
 
@@ -116,17 +136,11 @@ export const protobufLengthPrefixUnframeStream = (
 		let filled = 0;
 		while (filled < count) {
 			const head = pending[0];
-			const n = Math.min(head.byteLength, count - filled);
-			out.set(head.subarray(0, n), filled);
+			const n = Math.min(head.byteLength - headOffset, count - filled);
+			out.set(head.subarray(headOffset, headOffset + n), filled);
 			filled += n;
-			const rest = head.subarray(n);
-			if (rest.byteLength === 0) {
-				pending.shift();
-			} else {
-				pending[0] = rest;
-			}
+			consume(n);
 		}
-		pendingLen -= count;
 		return out;
 	};
 

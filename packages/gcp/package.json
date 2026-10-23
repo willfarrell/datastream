@@ -1,0 +1,70 @@
+{
+	"name": "@datastream/gcp",
+	"version": "0.8.0",
+	"description": "Google Cloud streaming integrations for Cloud Storage, Pub/Sub, and BigQuery (Node, bring your own SDK client)",
+	"type": "module",
+	"sideEffects": false,
+	"engines": {
+		"node": ">=26"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.node.mjs",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"node": "./index.node.mjs"
+		},
+		"./storage": {
+			"types": "./storage.d.ts",
+			"node": "./storage.node.mjs"
+		},
+		"./pubsub": {
+			"types": "./pubsub.d.ts",
+			"node": "./pubsub.node.mjs"
+		},
+		"./bigquery": {
+			"types": "./bigquery.d.ts",
+			"node": "./bigquery.node.mjs"
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"*.node.mjs",
+		"*.node.mjs.map",
+		"*.d.ts",
+		"client.js"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test",
+		"test:bench": "node --experimental-bench --bench '*.bench.js'"
+	},
+	"license": "MIT",
+	"keywords": [
+		"gcp",
+		"google cloud",
+		"cloud storage",
+		"gcs",
+		"pubsub",
+		"bigquery",
+		"Node Stream API"
+	],
+	"author": {
+		"name": "datastream contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "github:willfarrell/datastream",
+		"directory": "packages/gcp"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"dependencies": {
+		"@datastream/core": "0.8.0"
+	}
+}

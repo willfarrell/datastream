@@ -1,34 +1,34 @@
 ---
 title: Parquet — read and write
-description: Read and write Apache Parquet files using datastream with hyparquet and parquet-wasm.
+description: Stream Apache Parquet files in and out of datastream pipelines with DuckDB.
 ---
+
+[`@datastream/duckdb`](/docs/packages/duckdb) handles Parquet through SQL: `read_parquet(...)` in `duckdbQueryStream` streams rows out of a file, and `COPY ... TO '...' (FORMAT parquet)` writes one. Rows are pulled from DuckDB one result chunk at a time, so neither direction loads the whole file into memory in JavaScript. The examples below are for Node.js. In the browser, file paths refer to duckdb-wasm's virtual file system (see the [duckdb page](/docs/packages/duckdb)).
 
 ### Read Parquet file into CSV
 
-Read a Parquet file from S3, extract specific columns, and write as CSV:
+Select columns from a Parquet file and write them as CSV:
 
 ```javascript
-import { pipeline, streamToBuffer, createReadableStream } from '@datastream/core'
-import { awsS3GetObjectStream } from '@datastream/aws/s3'
-import { csvInjectHeaderStream, csvFormatStream } from '@datastream/csv'
+import { pipeline } from '@datastream/core'
+import { duckdbConnect, duckdbQueryStream } from '@datastream/duckdb'
+import {
+  csvObjectToArrayStream,
+  csvInjectHeaderStream,
+  csvFormatStream,
+} from '@datastream/csv'
 import { fileWriteStream } from '@datastream/file'
-import { parquetRead } from 'hyparquet'
 
-const buffer = await streamToBuffer(
-  await awsS3GetObjectStream({ Bucket: 'data-lake', Key: 'users.parquet' }),
-)
-
+const db = await duckdbConnect()
 const columns = ['id', 'name', 'email']
-const rows = []
-await parquetRead({
-  // hyparquet reads from any { byteLength, slice(start, end) }, such as an ArrayBuffer
-  file: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
-  columns,
-  onComplete: (data) => rows.push(...data), // one array per row, in `columns` order
-})
 
 await pipeline([
-  createReadableStream(rows),
+  duckdbQueryStream({
+    db,
+    sql: 'SELECT id, name, email FROM read_parquet(?) ORDER BY id',
+    params: ['./users.parquet'], // bind the path; never interpolate untrusted input into SQL
+  }),
+  csvObjectToArrayStream({ headers: columns }),
   csvInjectHeaderStream({ header: columns }),
   csvFormatStream(),
   await fileWriteStream({ path: './users.csv' }), // file streams are async: always await
@@ -37,60 +37,49 @@ await pipeline([
 
 ### Write CSV to Parquet
 
-Read a CSV file, parse into objects, and write as Parquet to S3. `pipejoin` returns the joined stream so `streamToArray` can collect the rows (`pipeline` resolves to the result object instead):
+Parse a CSV file, insert the rows into a DuckDB table with `duckdbAppenderStream`, `COPY` the table to a Parquet file, then upload the file to S3:
 
 ```javascript
-import {
-  pipejoin,
-  pipeline,
-  streamToArray,
-  createReadableStream,
-} from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import { fileReadStream } from '@datastream/file'
 import {
   csvDetectDelimitersStream,
   csvDetectHeaderStream,
   csvParseStream,
+  csvArrayToObjectStream,
   csvCoerceValuesStream,
 } from '@datastream/csv'
-import { objectFromEntriesStream } from '@datastream/object'
+import { duckdbConnect, duckdbAppenderStream } from '@datastream/duckdb'
 import { awsS3PutObjectStream } from '@datastream/aws/s3'
-import { tableFromJSON, tableToIPC } from 'apache-arrow'
-import { Table, writeParquet } from 'parquet-wasm'
+
+const db = await duckdbConnect()
+await db.run('CREATE TABLE users (id INTEGER, name VARCHAR, email VARCHAR)')
 
 const detectDelimiters = csvDetectDelimitersStream()
-const detectHeader = csvDetectHeaderStream({
+const delimiters = {
   delimiterChar: () => detectDelimiters.result().value.delimiterChar,
   newlineChar: () => detectDelimiters.result().value.newlineChar,
   quoteChar: () => detectDelimiters.result().value.quoteChar,
   escapeChar: () => detectDelimiters.result().value.escapeChar,
-})
-
-const rows = await streamToArray(
-  pipejoin([
-    await fileReadStream({ path: './users.csv' }),
-    detectDelimiters,
-    detectHeader,
-    csvParseStream({
-      delimiterChar: () => detectDelimiters.result().value.delimiterChar,
-      newlineChar: () => detectDelimiters.result().value.newlineChar,
-      quoteChar: () => detectDelimiters.result().value.quoteChar,
-      escapeChar: () => detectDelimiters.result().value.escapeChar,
-    }),
-    objectFromEntriesStream({
-      keys: () => detectHeader.result().value.header,
-    }),
-    csvCoerceValuesStream(),
-  ]),
-)
-
-// parquet-wasm takes its own Table, built from Arrow IPC bytes.
-// In the browser, call its default export (initWasm) once before use.
-const arrowTable = tableFromJSON(rows)
-const parquetBuffer = writeParquet(Table.fromIPCStream(tableToIPC(arrowTable, 'stream')))
+}
+const detectHeader = csvDetectHeaderStream(delimiters)
 
 await pipeline([
-  createReadableStream(parquetBuffer),
+  await fileReadStream({ path: './users.csv' }),
+  detectDelimiters,
+  detectHeader,
+  csvParseStream(delimiters),
+  csvArrayToObjectStream({ headers: () => detectHeader.result().value.header }),
+  csvCoerceValuesStream({ columns: { id: 'number' } }),
+  await duckdbAppenderStream({ db, table: 'users' }),
+])
+
+await db.run("COPY users TO './users.parquet' (FORMAT parquet)")
+
+await pipeline([
+  await fileReadStream({ path: './users.parquet' }),
   awsS3PutObjectStream({ Bucket: 'data-lake', Key: 'users.parquet' }),
 ])
 ```
+
+When the input is a CSV file DuckDB can read itself and needs no stream processing, skip the pipeline: `COPY (SELECT * FROM read_csv('./users.csv')) TO './users.parquet' (FORMAT parquet)`.

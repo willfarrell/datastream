@@ -416,6 +416,15 @@ describe(`@datastream/base64 (${variant})`, () => {
 		);
 	});
 
+	// Padding followed by more data inside one chunk is rejected by the
+	// "=" placement check (the alphabet scan alone would accept it).
+	test(`base64DecodeStream rejects padding mid-chunk`, async (_t) => {
+		await rejects(
+			pipeline([createReadableStream(["YWJjYQ==ZGVm"]), base64DecodeStream()]),
+			{ message: 'Invalid base64 string: "YWJjYQ==ZGVm"' },
+		);
+	});
+
 	// Each aligned quartet decodes as soon as it is complete: two aligned chunks
 	// in, two byte chunks out (not one merged chunk from flush).
 	test(`base64DecodeStream emits one chunk per aligned input chunk`, async (_t) => {

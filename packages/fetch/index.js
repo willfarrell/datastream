@@ -53,8 +53,9 @@ let defaults = {
 	// Limits: null = unlimited
 	maxPages: 10_000, // JSON pagination: max pages fetched per request config
 	maxBodySize: 16_777_216, // bytes; max JSON page body
-	retryMaxCount: 10, // max attempts on 429 before throwing
-	retryAfterMax: 60_000, // ms; upper bound for a 429 Retry-After wait (<= 2^31-1)
+	retryMaxCount: 10, // max attempts on 429 / 5xx / network error before throwing
+	retryAfterMax: 60_000, // ms; upper bound for a Retry-After wait (<= 2^31-1)
+	timeout: undefined, // ms; per attempt (body included); undefined/null = none
 
 	// fetch
 	method: "GET",
@@ -92,8 +93,34 @@ export const fetchWritableStream = async (options, streamOptions = {}) => {
 	// Aborting/destroying the writable before it finishes cancels the request
 	// (and errors its body) through this controller; see abort() below.
 	const controller = new AbortController();
-	// The body errors on this signal in both builds.
-	const body = createReadableStream(undefined, { signal: controller.signal });
+	// The request body is a plain web ReadableStream (fetch accepts one in both
+	// builds) rather than a createReadableStream push-mode stream: push mode has
+	// no pull hook, so it could only throw once its queue filled. Here write()
+	// waits while the queue is at highWaterMark until fetch pulls the next
+	// chunk, so a slow server slows the writer instead of failing the upload.
+	let bodyController;
+	// Resolves the write waiting for room in the queue (a no-op otherwise).
+	let resume = () => {};
+	const release = () => resume();
+	// Set when fetch cancels the body: enqueue()/close() would then throw.
+	let cancelled = false;
+	const body = new ReadableStream(
+		{
+			start(c) {
+				bodyController = c;
+			},
+			pull: release,
+			cancel() {
+				cancelled = true;
+				release();
+			},
+		},
+		{ highWaterMark: streamOptions.highWaterMark },
+	);
+	controller.signal.addEventListener("abort", () => {
+		bodyController.error(controller.signal.reason);
+		release();
+	});
 	// Duplex: half - For browser compatibility - https://developer.chrome.com/articles/fetch-streaming-requests/#half-duplex
 	options = mergeOptions(options);
 	// Not awaited: a server may read the whole body before responding, so the
@@ -115,22 +142,37 @@ export const fetchWritableStream = async (options, streamOptions = {}) => {
 		},
 	);
 	// Record an early failure (e.g. an immediate 401) so the next write throws
-	// it; otherwise nobody reads the body and writes pile up until the queue
-	// limit error hides the real cause. final() still awaits the rejection.
+	// it (a write waiting on a body nobody reads is woken to throw it too).
+	// final() still awaits the rejection. Once a response has arrived, fetch
+	// may never read the rest of the body, so writes stop waiting for it.
 	let fetchError;
-	response.catch((e) => {
-		fetchError = e;
-	});
+	let responded = false;
+	response.then(
+		() => {
+			responded = true;
+			release();
+		},
+		(e) => {
+			fetchError = e;
+			release();
+		},
+	);
 	let value;
-	const write = (chunk) => {
+	const write = async (chunk) => {
 		if (fetchError) throw fetchError;
-		body.push(chunk);
+		// fetch stopped reading (e.g. the server answered early): drop the rest.
+		if (cancelled) return;
+		bodyController.enqueue(chunk);
+		if (responded || bodyController.desiredSize > 0) return;
+		await new Promise((resolve) => {
+			resume = resolve;
+		});
+		if (fetchError) throw fetchError;
 	};
 	// Signal end-of-body so the duplex request body terminates and the
-	// in-flight upload can complete. createReadableStream treats a pushed
-	// `null` as close on both the Node and Web builds.
+	// in-flight upload can complete.
 	const final = async () => {
-		body.push(null);
+		if (!cancelled) bodyController.close();
 		value = await response;
 	};
 	// Torn down before finishing (destroy/abort, upstream error, signal): end
@@ -168,14 +210,15 @@ const fetchItem = async (options, streamOptions) => {
 	return fetchUnknown(options, streamOptions);
 };
 
-async function* drainResponse(response) {
+// A consumer error must release the body (its socket). The JSON page
+// generator holds nothing, so fetchGenerator delegates to it directly.
+async function* drainResponse(body) {
 	try {
-		for await (const chunk of response) {
+		for await (const chunk of body) {
 			yield chunk;
 		}
 	} catch (error) {
-		await response.cancel?.();
-		await response.return?.();
+		await body.cancel();
 		throw error;
 	}
 }
@@ -196,12 +239,22 @@ async function* fetchGenerator(fetchOptions, streamOptions) {
 		options = mergeOptions(options);
 		options.rateLimitTimestamp ??= rateLimitTimestamp;
 		const response = await fetchItem(options, streamOptions);
-		yield* drainResponse(response); // stream chunk-by-chunk (backpressure)
+		yield* response; // stream chunk-by-chunk (backpressure)
 		rateLimitTimestamp = options.rateLimitTimestamp;
 	}
 }
 
 async function* fetchConcurrent(fetchOptions, concurrency, streamOptions) {
+	// Shared by every item so the first error, or the consumer stopping early,
+	// cancels the in-flight siblings instead of waiting for them to finish
+	// downloading (and paginating) in the finally below.
+	const controller = new AbortController();
+	streamOptions = {
+		...streamOptions,
+		signal: AbortSignal.any(
+			[controller.signal, streamOptions.signal].filter(Boolean),
+		),
+	};
 	let clock = 0;
 	// Starts are spaced by the previous item's rateLimit; a zero wait still
 	// yields a macrotask, which is negligible next to a network round trip.
@@ -217,7 +270,7 @@ async function* fetchConcurrent(fetchOptions, concurrency, streamOptions) {
 		options.rateLimit = 0;
 		const response = await fetchItem(options, streamOptions);
 		const output = [];
-		for await (const chunk of drainResponse(response)) {
+		for await (const chunk of response) {
 			output.push(chunk); // buffer so results can be yielded in array order
 		}
 		return output;
@@ -244,6 +297,7 @@ async function* fetchConcurrent(fetchOptions, concurrency, streamOptions) {
 			}
 		}
 	} finally {
+		controller.abort();
 		await Promise.allSettled(inFlight);
 	}
 }
@@ -262,7 +316,7 @@ const fetchUnknown = async (options, streamOptions) => {
 		options.prefetchResponse = response; // hack
 		return fetchJson(options, streamOptions);
 	}
-	return response.body;
+	return drainResponse(response.body);
 };
 
 // RFC 8288: each link is `<target>` followed by its `;`-separated params, up to
@@ -356,7 +410,7 @@ const paginateUsingQuery = (options) => {
 	if (!offset) return null;
 
 	offset = Number.parseInt(offset, 10) + options.offsetAmount;
-	url.searchParams.delete(options.offsetParam);
+	// set() replaces every existing value in place (no delete() needed).
 	url.searchParams.set(options.offsetParam, offset);
 	return url.toString();
 };
@@ -423,6 +477,161 @@ const redirectStatuses = new Set([301, 302, 303, 307, 308]);
 const maxRedirects = 20;
 const replayableMethods = new Set(["GET", "HEAD"]);
 
+// A streamed request body (fetchWritableStream's ReadableStream, a Node
+// Readable, an async generator) is consumed by the first request, so it cannot
+// be re-sent on a retry or a body-preserving redirect.
+const isStreamBody = (body) =>
+	typeof body?.getReader === "function" ||
+	typeof body?.[Symbol.asyncIterator] === "function";
+const cannotReplay = (response, options, safeUrl) =>
+	new Error(
+		`fetch ${response.status} ${options.method} ${safeUrl} cannot replay streamed request body`,
+		{
+			cause: {
+				status: response.status,
+				url: safeUrl,
+				method: options.method,
+			},
+		},
+	);
+
+// RFC 9110 §9.2.2: repeating these leaves the server as one request would.
+const idempotentMethods = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
+// Transient server failures. 429 is retried for every method instead: the
+// server refused the request without processing it.
+const retryStatuses = new Set([500, 502, 503, 504]);
+const canRetry = (options) =>
+	idempotentMethods.has(options.method.toUpperCase()) &&
+	!isStreamBody(options.body);
+
+// Counts this failed attempt; true once retryMaxCount attempts are spent.
+const retriesExhausted = (options) => {
+	options.retryCount = (options.retryCount ?? 0) + 1;
+	return (
+		options.retryCount >= (options.retryMaxCount ?? Number.POSITIVE_INFINITY)
+	);
+};
+
+const backoff = (options, streamOptions, retryAfter) =>
+	timeout(
+		retryAfterMs(retryAfter, options.retryAfterMax) ??
+			// Full jitter (AWS architecture blog) avoids retry-storm sync-up.
+			Math.random() * Math.min(1000 * 2 ** (options.retryCount - 1), 30_000),
+		streamOptions,
+	);
+
+// fetch also accepts file:, data:, blob: (and more, per platform); only
+// http(s) is a network request, and only it gets the origin pinning below.
+// A relative URL resolves against the page in a browser (as fetch() itself
+// does); with no location (Node) it stays unparseable and is rejected.
+const assertHttpUrl = (options) => {
+	const url = URL.parse(options.url, globalThis.location?.href);
+	if (url?.protocol === "http:" || url?.protocol === "https:") return;
+	throw new TypeError(
+		`fetch ${options.method} ${redactUrl(url?.href ?? options.url)} is not an http: or https: URL`,
+	);
+};
+
+// Issues the request, following (and origin-checking) redirects ourselves
+// unless the caller set `redirect`.
+const request = async (options, fetchInit, manageRedirects, initialOrigin) => {
+	let response = await fetch(options.url, fetchInit);
+	if (!manageRedirects) return response;
+	// Browsers answer redirect:"manual" with an opaque redirect (status 0,
+	// Location hidden), so let the browser follow it and check where it
+	// ended up instead. Node exposes the 3xx and is handled below.
+	if (response.type === "opaqueredirect") {
+		// Re-issuing is only safe for GET/HEAD: a POST would send its body
+		// twice (and a streamed body cannot be replayed at all).
+		if (!replayableMethods.has(options.method.toUpperCase())) {
+			const safeUrl = redactUrl(options.url);
+			throw new Error(
+				`fetch ${options.method} ${safeUrl} was redirected; browsers hide the redirect target, so only GET/HEAD can be re-requested (set redirect: "follow" to opt out)`,
+				{
+					cause: {
+						status: response.status,
+						url: safeUrl,
+						method: options.method,
+					},
+				},
+			);
+		}
+		response = await fetch(options.url, { ...fetchInit, redirect: "follow" });
+		await assertSameOriginRedirect(
+			response,
+			options,
+			response.url,
+			initialOrigin,
+		);
+		options.url = response.url;
+	}
+	let redirectCount = 0;
+	while (
+		redirectStatuses.has(response.status) &&
+		response.headers.has("Location")
+	) {
+		const safeUrl = redactUrl(options.url);
+		if (++redirectCount > maxRedirects) {
+			await response.body?.cancel();
+			throw new RangeError(
+				`fetch ${options.method} ${safeUrl} exceeded ${maxRedirects} redirects`,
+				{
+					cause: {
+						status: response.status,
+						url: safeUrl,
+						method: options.method,
+					},
+				},
+			);
+		}
+		const location = response.headers.get("Location");
+		let target;
+		try {
+			target = new URL(location, options.url);
+		} catch {
+			await response.body?.cancel();
+			throw new Error(
+				`fetch ${options.method} ${safeUrl} returned an invalid redirect Location`,
+				{
+					cause: {
+						status: response.status,
+						url: safeUrl,
+						method: options.method,
+					},
+				},
+			);
+		}
+		await assertSameOriginRedirect(
+			response,
+			options,
+			target.toString(),
+			initialOrigin,
+		);
+		await response.body?.cancel();
+		options.url = target.toString();
+		// Fetch spec: 303 (except HEAD), and 301/302 after a POST, re-request
+		// with GET and no body; resending would submit the body twice. Set on
+		// options too so a retry of the new url stays GET.
+		const upperMethod = options.method.toUpperCase();
+		if (
+			(response.status === 303 && upperMethod !== "HEAD") ||
+			((response.status === 301 || response.status === 302) &&
+				upperMethod === "POST")
+		) {
+			options.method = "GET";
+			options.body = undefined;
+			fetchInit.method = "GET";
+			fetchInit.body = undefined;
+		}
+		// 307/308 (and 301/302 for non-POST) re-send the body.
+		if (isStreamBody(fetchInit.body)) {
+			throw cannotReplay(response, options, safeUrl);
+		}
+		response = await fetch(options.url, fetchInit);
+	}
+	return response;
+};
+
 export const fetchRateLimit = async (options = {}, streamOptions = {}) => {
 	// Apply defaults FIRST so rateLimit (and every other option) is populated
 	// before it is read; otherwise a direct call without rateLimit computes
@@ -432,6 +641,7 @@ export const fetchRateLimit = async (options = {}, streamOptions = {}) => {
 	// options.rateLimitTimestamp to carry rate limiting between configs — see
 	// the timestamp we compute below.
 	Object.assign(options, mergeOptions(options));
+	assertHttpUrl(options);
 
 	const now = Date.now();
 	if (now < (options.rateLimitTimestamp ?? 0)) {
@@ -476,139 +686,70 @@ export const fetchRateLimit = async (options = {}, streamOptions = {}) => {
 		integrity,
 		keepalive,
 		duplex,
-		signal: streamOptions.signal,
+		// A fresh timeout per attempt, so a retry is not born already expired.
+		signal:
+			(options.timeout ?? null) === null
+				? streamOptions.signal
+				: AbortSignal.any(
+						[AbortSignal.timeout(options.timeout), streamOptions.signal].filter(
+							Boolean,
+						),
+					),
 	};
-	let response = await fetch(options.url, fetchInit);
-
-	// Manually follow / validate redirects when we own redirect handling.
-	if (manageRedirects) {
-		// Browsers answer redirect:"manual" with an opaque redirect (status 0,
-		// Location hidden), so let the browser follow it and check where it
-		// ended up instead. Node exposes the 3xx and is handled below.
-		if (response.type === "opaqueredirect") {
-			// Re-issuing is only safe for GET/HEAD: a POST would send its body
-			// twice (and a streamed body cannot be replayed at all).
-			if (!replayableMethods.has(options.method.toUpperCase())) {
-				const safeUrl = redactUrl(options.url);
-				throw new Error(
-					`fetch ${options.method} ${safeUrl} was redirected; browsers hide the redirect target, so only GET/HEAD can be re-requested (set redirect: "follow" to opt out)`,
-					{
-						cause: {
-							status: response.status,
-							url: safeUrl,
-							method: options.method,
-						},
-					},
-				);
-			}
-			response = await fetch(options.url, { ...fetchInit, redirect: "follow" });
-			await assertSameOriginRedirect(
-				response,
-				options,
-				response.url,
-				initialOrigin,
-			);
-			options.url = response.url;
-		}
-		let redirectCount = 0;
-		while (
-			redirectStatuses.has(response.status) &&
-			response.headers.has("Location")
+	let response;
+	try {
+		response = await request(
+			options,
+			fetchInit,
+			manageRedirects,
+			initialOrigin,
+		);
+	} catch (error) {
+		// fetch rejects with a TypeError on a network failure (DNS, connection
+		// reset, offline). An abort or timeout is never retried, even when the
+		// caller's abort reason is itself a TypeError.
+		if (
+			!(error instanceof TypeError) ||
+			fetchInit.signal?.aborted ||
+			!canRetry(options) ||
+			retriesExhausted(options)
 		) {
-			const safeUrl = redactUrl(options.url);
-			if (++redirectCount > maxRedirects) {
-				await response.body?.cancel();
-				throw new RangeError(
-					`fetch ${options.method} ${safeUrl} exceeded ${maxRedirects} redirects`,
-					{
-						cause: {
-							status: response.status,
-							url: safeUrl,
-							method: options.method,
-						},
-					},
-				);
-			}
-			const location = response.headers.get("Location");
-			let target;
-			try {
-				target = new URL(location, options.url);
-			} catch {
-				await response.body?.cancel();
-				throw new Error(
-					`fetch ${options.method} ${safeUrl} returned an invalid redirect Location`,
-					{
-						cause: {
-							status: response.status,
-							url: safeUrl,
-							method: options.method,
-						},
-					},
-				);
-			}
-			await assertSameOriginRedirect(
-				response,
-				options,
-				target.toString(),
-				initialOrigin,
-			);
-			await response.body?.cancel();
-			options.url = target.toString();
-			// Fetch spec: 303 (except HEAD), and 301/302 after a POST, re-request
-			// with GET and no body; resending would submit the body twice. Set on
-			// options too so a 429 retry of the new url stays GET.
-			const upperMethod = options.method.toUpperCase();
-			if (
-				(response.status === 303 && upperMethod !== "HEAD") ||
-				((response.status === 301 || response.status === 302) &&
-					upperMethod === "POST")
-			) {
-				options.method = "GET";
-				options.body = undefined;
-				fetchInit.method = "GET";
-				fetchInit.body = undefined;
-			}
-			response = await fetch(options.url, fetchInit);
+			throw error;
 		}
+		await backoff(options, streamOptions);
+		return fetchRateLimit(options, streamOptions);
 	}
 
 	if (!response.ok) {
 		const safeUrl = redactUrl(options.url);
-		// 429 Too Many Requests
-		if (response.status === 429) {
-			options.retryCount = (options.retryCount ?? 0) + 1;
-			const retryMaxCount = options.retryMaxCount ?? Number.POSITIVE_INFINITY;
-			if (options.retryCount >= retryMaxCount) {
-				await response.body?.cancel();
+		const cause = {
+			status: response.status,
+			url: safeUrl,
+			method: options.method,
+		};
+		await response.body?.cancel();
+		if (
+			response.status === 429 ||
+			(retryStatuses.has(response.status) && canRetry(options))
+		) {
+			if (retriesExhausted(options)) {
 				throw new RangeError(
-					`fetch ${response.status} ${options.method} ${safeUrl} max retries (${retryMaxCount}) exceeded`,
-					{
-						cause: {
-							status: response.status,
-							url: safeUrl,
-							method: options.method,
-						},
-					},
+					`fetch ${response.status} ${options.method} ${safeUrl} max retries (${options.retryMaxCount}) exceeded`,
+					{ cause },
 				);
 			}
-			await response.body?.cancel();
-			// Full jitter (AWS architecture blog) avoids retry-storm sync-up.
-			const backoffMs =
-				retryAfterMs(
-					response.headers.get("Retry-After"),
-					options.retryAfterMax,
-				) ??
-				Math.random() * Math.min(1000 * 2 ** (options.retryCount - 1), 30_000);
-			await timeout(backoffMs, streamOptions);
+			if (isStreamBody(options.body)) {
+				throw cannotReplay(response, options, safeUrl);
+			}
+			await backoff(
+				options,
+				streamOptions,
+				response.headers.get("Retry-After"),
+			);
 			return fetchRateLimit(options, streamOptions);
 		}
-		await response.body?.cancel();
 		throw new Error(`fetch ${response.status} ${options.method} ${safeUrl}`, {
-			cause: {
-				status: response.status,
-				url: safeUrl,
-				method: options.method,
-			},
+			cause,
 		});
 	}
 	// Retries are per request: a later page gets the full retry budget again.

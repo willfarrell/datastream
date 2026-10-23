@@ -1,9 +1,11 @@
 import { deepStrictEqual, rejects, strictEqual } from "node:assert";
+import { createHash } from "node:crypto";
 import { getEventListeners } from "node:events";
 import test, { describe } from "node:test";
 import {
 	CreateMultipartUploadCommand,
 	GetObjectCommand,
+	ListObjectsV2Command,
 	PutObjectCommand,
 	S3Client,
 	UploadPartCommand,
@@ -12,12 +14,14 @@ import * as awsModule from "@datastream/aws/s3";
 import {
 	awsS3ChecksumStream,
 	awsS3GetObjectStream,
+	awsS3ListObjectsStream,
 	awsS3PutObjectStream,
 	awsS3SetClient,
 } from "@datastream/aws/s3";
 import {
 	createReadableStream,
 	pipeline,
+	streamToArray,
 	streamToString,
 } from "@datastream/core";
 import { mockClient } from "aws-sdk-client-mock";
@@ -83,6 +87,7 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		const options = {
 			Bucket: "bucket",
 			Key: "file.ext",
+			partSize: 5 * 1024 * 1024,
 		};
 
 		client
@@ -114,6 +119,7 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		const options = {
 			Bucket: "bucket",
 			Key: "file.ext",
+			partSize: 5 * 1024 * 1024,
 			onProgress: () => {},
 		};
 
@@ -147,6 +153,7 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			Bucket: "bucket",
 			Key: "file.ext",
 			tags: [{ Key: "env", Value: "test" }],
+			partSize: 5 * 1024 * 1024,
 		};
 
 		client
@@ -177,6 +184,7 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		const options = {
 			Bucket: "bucket",
 			Key: "file.ext",
+			partSize: 5 * 1024 * 1024,
 			client,
 		};
 
@@ -246,6 +254,87 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 				partSize: 17_179_870,
 			},
 		});
+	});
+
+	// Both streams share one default part size, so a default checksum equals the
+	// composite checksum of a default awsS3PutObjectStream upload.
+	test(`awsS3ChecksumStream default partSize is the shared 17_179_870 bytes`, async (_t) => {
+		const input = Buffer.alloc(17_179_870 + 1, "x");
+
+		const stream = [createReadableStream([input]), awsS3ChecksumStream()];
+		const result = await pipeline(stream);
+
+		deepStrictEqual(result.s3.partSize, 17_179_870);
+		deepStrictEqual(result.s3.checksums, [
+			createHash("sha256")
+				.update(input.subarray(0, 17_179_870))
+				.digest("base64"),
+			createHash("sha256").update(input.subarray(17_179_870)).digest("base64"),
+		]);
+	});
+
+	test(`awsS3PutObjectStream default partSize is the shared 17_179_870 bytes`, async (_t) => {
+		const client = mockClient(S3Client);
+		const defaultClient = new S3Client();
+		client.config ??= {};
+		client.config.requestChecksumCalculation ??=
+			defaultClient.config.requestChecksumCalculation;
+		client
+			.on(PutObjectCommand)
+			.rejects()
+			.on(CreateMultipartUploadCommand)
+			.resolves({ UploadId: "1" })
+			.on(UploadPartCommand)
+			.resolves({ ETag: "1" });
+
+		const input = Buffer.alloc(17_179_870 + 1, "x");
+		const result = await pipeline([
+			createReadableStream([input]),
+			awsS3PutObjectStream({ Bucket: "bucket", Key: "file.ext", client }),
+		]);
+
+		deepStrictEqual(result, {});
+		deepStrictEqual(
+			client
+				.commandCalls(UploadPartCommand)
+				.map((call) => call.args[0].input.Body.byteLength),
+			[17_179_870, 1],
+		);
+	});
+
+	// null means "default" for both streams (the checksum stream uses ??=), so a
+	// null partSize must not reach lib-storage, which would fall back to 5 MiB.
+	test(`awsS3PutObjectStream treats a null partSize as the shared default`, async (_t) => {
+		const client = mockClient(S3Client);
+		const defaultClient = new S3Client();
+		client.config ??= {};
+		client.config.requestChecksumCalculation ??=
+			defaultClient.config.requestChecksumCalculation;
+		client
+			.on(PutObjectCommand)
+			.rejects()
+			.on(CreateMultipartUploadCommand)
+			.resolves({ UploadId: "1" })
+			.on(UploadPartCommand)
+			.resolves({ ETag: "1" });
+
+		const input = Buffer.alloc(17_179_870 + 1, "x");
+		await pipeline([
+			createReadableStream([input]),
+			awsS3PutObjectStream({
+				Bucket: "bucket",
+				Key: "file.ext",
+				client,
+				partSize: null,
+			}),
+		]);
+
+		deepStrictEqual(
+			client
+				.commandCalls(UploadPartCommand)
+				.map((call) => call.args[0].input.Body.byteLength),
+			[17_179_870, 1],
+		);
 	});
 
 	test(`awsS3ChecksumStream should make multi-part checksum with small partSize`, async (_t) => {
@@ -666,6 +755,7 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		const options = {
 			Bucket: "bucket",
 			Key: "file.ext",
+			partSize: 5 * 1024 * 1024,
 			onProgress: (progress) => {
 				loaded.push(progress.loaded);
 			},
@@ -761,6 +851,7 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			Key: "file.ext",
 			client,
 			queueSize: 1,
+			partSize: 5 * 1024 * 1024,
 		});
 		await rejects(() => pipeline([createReadableStream(source()), stream]), {
 			name: "AccessDenied",
@@ -787,6 +878,7 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			// A single uploader: done() settles once it fails, without waiting on
 			// idle uploaders for input that never comes.
 			queueSize: 1,
+			partSize: 5 * 1024 * 1024,
 		});
 		stream.on("error", () => {});
 		// More than one 5MiB part, left open: forces CreateMultipartUpload.
@@ -807,14 +899,28 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 		deepStrictEqual(threw?.message, "Unsupported ChecksumAlgorithm: NOPE");
 	});
 
-	// Empty input -> no parts digested -> checksum is the empty string and there are
-	// zero part checksums. Pins `if (pendingLen > 0)` in the flush (a `>=` mutant
-	// would digest the empty buffer).
-	test(`awsS3ChecksumStream returns empty checksum for empty input`, async (_t) => {
+	// Empty input -> the flush digests the empty remainder, so the checksum is the
+	// algorithm's empty-input digest (what S3 reports for a 0-byte object), not "".
+	// Pins the `checksums.length === 0` arm of the flush guard.
+	test(`awsS3ChecksumStream returns the empty-input SHA256 digest for empty input`, async (_t) => {
 		const stream = [createReadableStream([]), awsS3ChecksumStream({})];
 		const result = await pipeline(stream);
-		deepStrictEqual(result.s3.checksum, "");
-		deepStrictEqual(result.s3.checksums.length, 0);
+		deepStrictEqual(
+			result.s3.checksum,
+			"47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+		);
+		deepStrictEqual(result.s3.checksums, [
+			"47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+		]);
+	});
+
+	test(`awsS3ChecksumStream returns the empty-input SHA1 digest for empty input`, async (_t) => {
+		const stream = [
+			createReadableStream([]),
+			awsS3ChecksumStream({ ChecksumAlgorithm: "SHA1" }),
+		];
+		const result = await pipeline(stream);
+		deepStrictEqual(result.s3.checksum, "2jmj7l5rSw0yVb/vlWAYkK/YBwk=");
 	});
 
 	// Single-part input -> exactly one part checksum and the result checksum is that
@@ -898,6 +1004,120 @@ describe(`@datastream/aws/s3 (${variant})`, () => {
 			result.s3.checksum,
 			"kE1tc6lRu6Azw5+k/yKQ/QDXDG236y62PebJpxEZQhQ=-3",
 		);
+	});
+
+	// *** awsS3ListObjectsStream *** //
+	test(`awsS3ListObjectsStream yields Contents across ContinuationToken pages`, async (_t) => {
+		const pages = [
+			{
+				Contents: [{ Key: "a" }, { Key: "b" }],
+				IsTruncated: true,
+				NextContinuationToken: "t1",
+			},
+			{ Contents: [{ Key: "c" }], IsTruncated: false },
+		];
+		// Snapshot each request at send time: the paging loop reuses one options
+		// object, so a recorded reference would only show its final state.
+		const inputs = [];
+		awsS3SetClient({
+			send: async (command) => {
+				strictEqual(command instanceof ListObjectsV2Command, true);
+				inputs.push({ ...command.input });
+				const page = pages.shift();
+				if (!page) throw new Error("listed past the last page");
+				return page;
+			},
+		});
+
+		const options = { Bucket: "bucket", Prefix: "p/" };
+		const optionsCopy = { ...options };
+		const stream = await awsS3ListObjectsStream(options);
+		const output = await streamToArray(stream);
+
+		deepStrictEqual(output, [{ Key: "a" }, { Key: "b" }, { Key: "c" }]);
+		deepStrictEqual(inputs, [
+			{ Bucket: "bucket", Prefix: "p/" },
+			{ Bucket: "bucket", Prefix: "p/", ContinuationToken: "t1" },
+		]);
+		// The token is tracked on a copy, never written back to the caller.
+		deepStrictEqual(options, optionsCopy);
+	});
+
+	test(`awsS3ListObjectsStream handles a page without Contents`, async (_t) => {
+		const client = mockClient(S3Client);
+		awsS3SetClient(client);
+		client
+			.on(ListObjectsV2Command)
+			.resolvesOnce({ IsTruncated: true, NextContinuationToken: "t1" })
+			.resolvesOnce({ KeyCount: 0 })
+			.rejects(new Error("listed past the last page"));
+
+		const stream = await awsS3ListObjectsStream({ Bucket: "bucket" });
+
+		deepStrictEqual(await streamToArray(stream), []);
+		deepStrictEqual(client.commandCalls(ListObjectsV2Command).length, 2);
+	});
+
+	test(`awsS3ListObjectsStream uses the per-call client option`, async (_t) => {
+		awsS3SetClient({
+			send: async () => {
+				throw new Error("module client used");
+			},
+		});
+		const inputs = [];
+		const client = {
+			send: async (command) => {
+				inputs.push({ ...command.input });
+				return { Contents: [{ Key: "a" }] };
+			},
+		};
+
+		const stream = await awsS3ListObjectsStream({ Bucket: "bucket", client });
+
+		deepStrictEqual(await streamToArray(stream), [{ Key: "a" }]);
+		deepStrictEqual(inputs, [{ Bucket: "bucket" }]);
+	});
+
+	test(`awsS3ListObjectsStream forwards abortSignal to client.send`, async (_t) => {
+		const client = mockClient(S3Client);
+		awsS3SetClient(client);
+		client.on(ListObjectsV2Command).resolves({ Contents: [{ Key: "a" }] });
+
+		const controller = new AbortController();
+		const stream = await awsS3ListObjectsStream(
+			{ Bucket: "bucket" },
+			{ signal: controller.signal },
+		);
+		await streamToArray(stream);
+
+		const sent =
+			client.commandCalls(ListObjectsV2Command)[0].args[1]?.abortSignal;
+		strictEqual(sent.aborted, false);
+		controller.abort();
+		strictEqual(sent.aborted, true);
+	});
+
+	// Destroying the stream mid-request aborts the in-flight send: a generator's
+	// return() would otherwise wait for the next page.
+	test(`awsS3ListObjectsStream destroy aborts the in-flight request`, async (_t) => {
+		let sent;
+		awsS3SetClient({
+			send: (_command, { abortSignal }) => {
+				sent = abortSignal;
+				return new Promise((_resolve, reject) => {
+					abortSignal.addEventListener("abort", () =>
+						reject(abortSignal.reason),
+					);
+				});
+			},
+		});
+		const stream = await awsS3ListObjectsStream({ Bucket: "bucket" });
+		stream.resume();
+		await new Promise((resolve) => setImmediate(resolve));
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		strictEqual(sent.aborted, true);
 	});
 
 	// Named exports are canonical; a default export must not come back.

@@ -1,6 +1,10 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
 import type {
+	DatastreamPassThrough,
+	DatastreamTransform,
+} from "@datastream/core";
+import type {
 	CsvCoerceType,
 	CsvDelimiters,
 	CsvError,
@@ -50,6 +54,15 @@ describe("csvDetectDelimitersStream", () => {
 		expect(stream.result).type.not.toBeAssignableTo<never>();
 	});
 
+	test("is a Transform: bytes or text in, decoded text out", () => {
+		expect(csvDetectDelimitersStream()).type.toBeAssignableTo<
+			DatastreamTransform<string | Uint8Array, string>
+		>();
+		expect(csvDetectDelimitersStream()).type.not.toBeAssignableTo<
+			DatastreamPassThrough<Uint8Array>
+		>();
+	});
+
 	test("rejects removed chunkSize", () => {
 		expect(csvDetectDelimitersStream).type.not.toBeCallableWith({
 			chunkSize: 2048,
@@ -79,6 +92,15 @@ describe("csvDetectHeaderStream", () => {
 	test("returns stream with result", () => {
 		const stream = csvDetectHeaderStream();
 		expect(stream.result).type.not.toBeAssignableTo<never>();
+	});
+
+	test("is a Transform: bytes or text in, decoded text out", () => {
+		expect(csvDetectHeaderStream()).type.toBeAssignableTo<
+			DatastreamTransform<string | Uint8Array, string>
+		>();
+		expect(csvDetectHeaderStream()).type.not.toBeAssignableTo<
+			DatastreamPassThrough<Uint8Array>
+		>();
 	});
 
 	test("accepts maxBufferSize", () => {

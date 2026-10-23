@@ -1,6 +1,8 @@
 /// <reference types="node" />
+
 import {
 	azureBlobDownloadStream,
+	azureBlobListStream,
 	azureBlobUploadStream,
 	azureCosmosDeleteItemStream,
 	azureCosmosQueryStream,
@@ -11,10 +13,16 @@ import {
 	azureQueueDeleteMessageStream,
 	azureQueueReceiveMessagesStream,
 	azureQueueSendMessageStream,
+	azureServiceBusAbandonMessageStream,
 	azureServiceBusCompleteMessageStream,
+	azureServiceBusDeadLetterMessageStream,
 	azureServiceBusReceiveMessagesStream,
 	azureServiceBusSendMessagesStream,
 } from "@datastream/azure";
+import type {
+	DatastreamPassThrough,
+	DatastreamReadable,
+} from "@datastream/core";
 import { describe, expect, test } from "tstyche";
 
 const client = {};
@@ -30,8 +38,27 @@ describe("Blob", () => {
 			() => Promise<unknown>
 		>();
 	});
+	test("azureBlobUploadStream returns a pass-through with key-less result", () => {
+		const stream = azureBlobUploadStream({ client });
+		expect(stream).type.toBeAssignableTo<DatastreamPassThrough>();
+		expect<ReturnType<typeof stream.result>>().type.toBe<
+			Promise<Record<string, never>>
+		>();
+	});
+	test("azureBlobListStream returns a readable promise", () => {
+		expect(azureBlobListStream({ client, prefix: "a/" })).type.toBe<
+			Promise<DatastreamReadable>
+		>();
+	});
+	test("azureBlobListStream prefix is a string", () => {
+		expect(azureBlobListStream).type.not.toBeCallableWith({
+			client,
+			prefix: 1,
+		});
+	});
 	test("client is required", () => {
 		expect(azureBlobDownloadStream).type.not.toBeCallableWith({});
+		expect(azureBlobListStream).type.not.toBeCallableWith({});
 	});
 });
 
@@ -58,6 +85,29 @@ describe("Service Bus", () => {
 		expect(
 			azureServiceBusCompleteMessageStream({ client }),
 		).type.not.toBe<void>();
+	});
+	test("abandon/dead-letter return writables", () => {
+		expect(
+			azureServiceBusAbandonMessageStream({
+				client,
+				propertiesToModify: { attempt: 2 },
+			}),
+		).type.not.toBe<void>();
+		expect(
+			azureServiceBusDeadLetterMessageStream({
+				client,
+				deadLetterReason: "invalid",
+				deadLetterErrorDescription: "schema mismatch",
+			}),
+		).type.not.toBe<void>();
+		expect(azureServiceBusAbandonMessageStream).type.not.toBeCallableWith({
+			client,
+			propertiesToModify: { attempt: {} },
+		});
+		expect(azureServiceBusDeadLetterMessageStream).type.not.toBeCallableWith({
+			client,
+			deadLetterReason: 1,
+		});
 	});
 });
 

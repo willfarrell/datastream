@@ -1,39 +1,17 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import { bench, suite } from "node:bench";
+// Node has no IndexedDB; fake-indexeddb provides one for the real `idb`.
+import "fake-indexeddb/auto";
 import { createReadableStream, pipeline } from "@datastream/core";
-// Under `node --test` the package entry (index.node.mjs) throws "Not supported"
-// because there is no IndexedDB in Node. Per project convention (see
-// index.test.js), the real web implementation is exercised directly with an
-// `idb`-shaped mock so the streams do real work instead of throwing.
-import { indexedDBReadStream, indexedDBWriteStream } from "./index.browser.js";
-
-// -- Mock idb (mirrors the shapes used in index.test.js) --
-
-// Stores/indexes return async iterators of IDBCursor-shaped objects ({ value }).
-// `iterate(key)` filters by `name`, matching the real index semantics.
-const makeCursors = (records) => ({
-	async *[Symbol.asyncIterator]() {
-		for (const record of records) {
-			yield { value: record };
-		}
-	},
-});
-const makeStore = (records) => ({
-	iterate: () => makeCursors(records),
-	index: (_name) => ({
-		iterate: (key) => makeCursors(records.filter((r) => r.name === key)),
-	}),
-	add: async (record) => {
-		records.push(record);
-	},
-});
-const makeDb = (records) => ({
-	transaction: (_store, _mode) => ({
-		store: makeStore(records),
-		done: Promise.resolve(),
-	}),
-});
+// The package has no node export because there is no IndexedDB in Node.
+// Per project convention (see index.test.js), the web implementation is
+// exercised directly.
+import {
+	indexedDBConnect,
+	indexedDBReadStream,
+	indexedDBWriteStream,
+} from "./index.browser.js";
 
 const drain = async (stream) => {
 	for await (const _chunk of stream) {
@@ -43,9 +21,9 @@ const drain = async (stream) => {
 
 // -- Data generators --
 
-const OPS = 10;
 const options = { warmup: 2, samples: 30 };
-const ITEMS = 10_000;
+// fake-indexeddb is far slower than a browser IndexedDB; keep runs short.
+const ITEMS = 1_000;
 
 const records = Array.from({ length: ITEMS }, (_, i) => ({
 	id: i,
@@ -53,50 +31,47 @@ const records = Array.from({ length: ITEMS }, (_, i) => ({
 	value: `value_${i}`,
 }));
 
+const db = await indexedDBConnect("bench", 1, {
+	upgrade(db) {
+		db.createObjectStore("read", { keyPath: "id" }).createIndex("name", "name");
+		db.createObjectStore("write", { keyPath: "id" });
+	},
+});
+const seed = db.transaction("read", "readwrite");
+for (const record of records) seed.store.add(record);
+await seed.done;
+
 // -- Tests --
 
 suite("indexedDBReadStream", () => {
 	bench(`${ITEMS} records`, options, async (b) => {
 		b.start();
-		for (let op = 0; op < OPS; op++) {
-			const stream = await indexedDBReadStream({
-				db: makeDb(records),
-				store: "test-store",
-			});
-			await drain(stream);
-		}
-		b.end(OPS);
+		await drain(await indexedDBReadStream({ db, store: "read" }));
+		b.end(1);
 	});
 });
 
 suite("indexedDBReadStream index", () => {
 	bench(`${ITEMS} records, index "name"`, options, async (b) => {
+		const stream = await indexedDBReadStream({
+			db,
+			store: "read",
+			index: "name",
+			key: "even",
+		});
 		b.start();
-		for (let op = 0; op < OPS; op++) {
-			const stream = await indexedDBReadStream({
-				db: makeDb(records),
-				store: "test-store",
-				index: "name",
-				key: "even",
-			});
-			await drain(stream);
-		}
-		b.end(OPS);
+		await drain(stream);
+		b.end(1);
 	});
 });
 
 suite("indexedDBWriteStream", () => {
 	bench(`${ITEMS} records`, options, async (b) => {
+		// Empty the store first so add() doesn't hit existing keys.
+		await db.clear("write");
+		const writeStream = await indexedDBWriteStream({ db, store: "write" });
 		b.start();
-		for (let op = 0; op < OPS; op++) {
-			// Fresh empty store per iteration so the backing array doesn't grow
-			// unbounded across runs.
-			const writeStream = await indexedDBWriteStream({
-				db: makeDb([]),
-				store: "test-store",
-			});
-			await pipeline([createReadableStream(records), writeStream]);
-		}
-		b.end(OPS);
+		await pipeline([createReadableStream(records), writeStream]);
+		b.end(1);
 	});
 });

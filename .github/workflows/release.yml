@@ -88,6 +88,10 @@ jobs:
       - name: Pack
         id: pack
         run: |
+          # npm always ships a package-root LICENSE; the license text lives once at the repo root.
+          for dir in packages/*/; do
+            cp LICENSE "$dir"
+          done
           mapfile -t args < <(npm query '.workspace:not([private])' | jq -r '.[] | "--workspace", .location')
           {
             echo "packages<<EOF"
@@ -238,24 +242,43 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find . -maxdepth 1 -name '*.tgz' -print -exec gh attestation verify {} --repo ${{ github.repository }} \;
+          # A loop, not find -exec: find exits 0 even when the command fails.
+          shopt -s nullglob
+          tarballs=(./*.tgz)
+          if [ "${#tarballs[@]}" -eq 0 ]; then
+            echo "::error::No tarballs in the release artifact"
+            exit 1
+          fi
+          for tarball in "${tarballs[@]}"; do
+            gh attestation verify "$tarball" --repo "$GITHUB_REPOSITORY"
+          done
       # allowed-endpoints: >
       #   api.github.com:443
       #   fulcio.sigstore.dev:443
       #   registry.npmjs.org:443
       #   rekor.sigstore.dev:443
       #   tuf-repo-cdn.sigstore.dev:443
-      - name: npm stage publish (next)
-        if: ${{ needs.release.outputs.prerelease == 'true' }}
+      - name: npm stage publish
+        env:
+          DIST_TAG: ${{ needs.release.outputs.prerelease == 'true' && 'next' || 'latest' }}
         run: |
-          find . -maxdepth 1 -name '*.tgz' -exec npm stage publish --tag next --provenance --access public --ignore-scripts {} \;
-      # allowed-endpoints: >
-      #   api.github.com:443
-      #   fulcio.sigstore.dev:443
-      #   registry.npmjs.org:443
-      #   rekor.sigstore.dev:443
-      #   tuf-repo-cdn.sigstore.dev:443
-      - name: npm stage publish (latest)
-        if: ${{ needs.release.outputs.prerelease == 'false' }}
-        run: |
-          find . -maxdepth 1 -name '*.tgz' -exec npm stage publish --tag latest --provenance --access public --ignore-scripts {} \;
+          # Brand-new packages (e.g. @datastream/sqlite, @datastream/avro) can't be
+          # published from here the first time: npm trusted publishing (OIDC) can only
+          # be configured on a package that already exists. Bootstrap each one with a
+          # manual `npm publish` from a maintainer, add this workflow as its trusted
+          # publisher on npmjs.com, then re-run this job. Until then its publish fails
+          # and the step fails after trying the rest; nothing is skipped silently.
+          shopt -s nullglob
+          tarballs=(./*.tgz)
+          if [ "${#tarballs[@]}" -eq 0 ]; then
+            echo "::error::No tarballs in the release artifact"
+            exit 1
+          fi
+          failed=()
+          for tarball in "${tarballs[@]}"; do
+            npm stage publish --tag "$DIST_TAG" --provenance --access public --ignore-scripts "$tarball" || failed+=("$tarball")
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "::error::npm stage publish failed for: ${failed[*]}"
+            exit 1
+          fi

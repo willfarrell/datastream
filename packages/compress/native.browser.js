@@ -28,6 +28,17 @@ const textEncoder = new TextEncoder();
 export const toBytes = (chunk) =>
 	typeof chunk === "string" ? textEncoder.encode(chunk) : chunk;
 
+const SLICE_SIZE = 16_384;
+// Uint8Array view over any BufferSource so it can be sliced with subarray().
+// The WHATWG streams reject anything else with a TypeError; do so up front.
+const toView = (bytes) => {
+	if (ArrayBuffer.isView(bytes)) {
+		return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	}
+	if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);
+	throw new TypeError("chunk must be a string or BufferSource");
+};
+
 // Same Node pipeTo workaround as core's errorOnAbort: erroring a pipe
 // destination synchronously leaks an unhandledRejection for an in-flight chunk.
 // ponytail: drop once Node's webstreams pipeTo is fixed upstream.
@@ -63,7 +74,15 @@ const inputStage = (streamOptions) => {
 			},
 			transform(chunk, controller) {
 				signal?.throwIfAborted();
-				controller.enqueue(toBytes(chunk));
+				const bytes = toView(toBytes(chunk));
+				// Feed the (de)compressor in small slices: a DecompressionStream
+				// inflates each chunk synchronously, so one large chunk of a zlib bomb
+				// would allocate its whole output before outputStage could check
+				// maxOutputSize. The pipe only moves the next slice once the previous
+				// one's output was consumed, and stops once outputStage errors.
+				for (let offset = 0; offset < bytes.byteLength; offset += SLICE_SIZE) {
+					controller.enqueue(bytes.subarray(offset, offset + SLICE_SIZE));
+				}
 			},
 			flush() {
 				cleanup();

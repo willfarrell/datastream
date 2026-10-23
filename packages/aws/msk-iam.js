@@ -7,7 +7,7 @@ import { generateAuthToken } from "aws-msk-iam-sasl-signer-js";
 // AWS access key id / credential details. This leaks credential material into
 // application logs. Never enable awsDebugCreds in production; treat it as a
 // local-debugging-only flag.
-export const awsMskIamMechanism = ({ region, awsDebugCreds, ttl } = {}) => {
+export const awsMskIamMechanism = ({ region, awsDebugCreds } = {}) => {
 	if (!region) {
 		throw new TypeError("awsMskIamMechanism: region required");
 	}
@@ -17,7 +17,6 @@ export const awsMskIamMechanism = ({ region, awsDebugCreds, ttl } = {}) => {
 			const { token, expiryTime } = await generateAuthToken({
 				region,
 				awsDebugCreds,
-				ttl,
 			});
 			return { value: token, expiryTime };
 		},

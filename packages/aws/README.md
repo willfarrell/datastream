@@ -1,7 +1,7 @@
 <div align="center">
   <h1>&lt;datastream&gt; `aws`</h1>
   <img alt="datastream logo" src="https://raw.githubusercontent.com/willfarrell/datastream/main/websites/datastream.js.org/static/img/datastream-logo.svg"/>
-  <p><strong>AWS service streams for CloudWatch Logs, DynamoDB, DynamoDB Streams, Kinesis, Lambda, S3, SNS, and SQS.</strong></p>
+  <p><strong>AWS service streams for CloudWatch Logs, DynamoDB, DynamoDB Streams, Glue Schema Registry, Kinesis, Lambda, MSK IAM, S3, SNS, and SQS.</strong></p>
 <p>
 	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
 	<a href="https://github.com/willfarrell/datastream/actions/workflows/test-dast.yml"><img src="https://github.com/willfarrell/datastream/actions/workflows/test-dast.yml/badge.svg" alt="GitHub Actions dast test status"></a>
@@ -21,7 +21,7 @@
 	<a href="https://github.com/willfarrell/datastream/blob/main/.github/CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg"></a>
 	<a href="https://biomejs.dev"><img alt="Checked with Biome" src="https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome"></a>
 	<a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>
-	<a href="https://github.com/willfarrell/datastream/blob/main/package.json#L25">
+	<a href="https://github.com/willfarrell/datastream/blob/main/package.json#L22">
 	<img alt="code coverage" src="https://img.shields.io/badge/code%20coverage-100%25-brightgreen"></a>
 </p>
 <p>You can read the documentation at: <a href="https://datastream.js.org">https://datastream.js.org</a></p>

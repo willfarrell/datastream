@@ -43,11 +43,34 @@ export const kafkaConnect = async ({
 		producer,
 		consumer,
 		disconnect: async () => {
-			if (producer) await producer.disconnect();
-			if (consumer) await consumer.disconnect();
+			// Disconnect both even if one throws: a sequential await would skip the
+			// consumer disconnect (leaking its socket/heartbeat) when the producer
+			// disconnect rejects. Rethrow the first failure after both settle.
+			const results = await Promise.allSettled([
+				producer?.disconnect(),
+				consumer?.disconnect(),
+			]);
+			const failed = results.find(({ status }) => status === "rejected");
+			if (failed) throw failed.reason;
 		},
 	};
 };
+
+// kafkaCommitStreams still open, per consumer. A graceful kafkaConsumeStream
+// stop() waits for them before consumer.stop(): kafkajs refuses commitOffsets
+// once it has left the group, so stopping first would drop every final commit.
+const openCommitStreams = new WeakMap();
+
+// What kafkajs's commitOffsets throws while no consumer group exists: after a
+// STOP (stop(), or a crash before its restart) until run()/restart rejoins.
+const notInitialized = (err) =>
+	err.name === "KafkaJSNonRetriableError" &&
+	err.message ===
+		"Consumer group was not initialized, consumer#run must be called first";
+
+// kafkajs awaits eachMessage; the shared resolved promise keeps that contract
+// (and `.then`) without allocating a promise per message.
+const delivered = Promise.resolve();
 
 const normalizeMessage = (chunk) => {
 	if (chunk instanceof Uint8Array || typeof chunk === "string") {
@@ -104,9 +127,11 @@ export const kafkaProduceStream = async (
 			throw err;
 		}
 	};
-	const write = async (chunk) => {
+	// Returns a promise only when a send is in flight: an async write would
+	// allocate and settle a promise per message.
+	const write = (chunk) => {
 		batch.push(normalizeMessage(chunk));
-		if (batch.length >= batchSize) await flush();
+		if (batch.length >= batchSize) return flush();
 	};
 	const final = async () => {
 		await flush();
@@ -170,32 +195,56 @@ export const kafkaConsumeStream = async (
 	// be parked on backpressure at the same time. Track every waiting resolver
 	// (not just the latest) and release them all on the next `_read`; a single
 	// slot would drop all but the last waiter and hang those partition loops.
-	const readResolvers = new Set();
+	let readResolvers = [];
 	const waitForRead = () =>
 		new Promise((resolve) => {
-			readResolvers.add(resolve);
+			readResolvers.push(resolve);
 		});
 	const releaseReaders = () => {
-		// Snapshot then clear before resolving so a resolver that synchronously
-		// re-parks lands in a fresh Set. Iterating an empty Set is already a no-op,
-		// so no explicit size guard is needed.
-		const pending = [...readResolvers];
-		readResolvers.clear();
+		// Swap in a fresh list before resolving so a resolver that re-parks lands
+		// in the new one. (Swapping rather than Set#clear() also keeps released
+		// resolvers from being retained.) Iterating an empty list is a no-op, so
+		// no explicit length guard is needed.
+		const pending = readResolvers;
+		readResolvers = [];
 		for (const resolve of pending) resolve();
 	};
 
 	let stopped = false;
 	let runPromise;
+	// Messages kafkajs hands over after stop() (already fetched, or still
+	// streaming in while the pipeline drains) wait here until consumer.stop().
+	// Resolving would mark them handled; rejecting while the group is live would
+	// make kafkajs crash and restart the consumer mid-drain.
+	const leaving = Promise.withResolvers();
 	// Memoize consumer.stop() so every teardown path (explicit stop(), destroy(),
 	// abort) shares ONE invocation. kafkajs's consumer.stop() is not guaranteed
 	// safe to call twice concurrently, and stop()+later-destroy() previously
 	// called it twice. Best-effort: swallow errors, run at most once.
 	let consumerStopPromise;
 	const stopConsumerOnce = () => {
+		// Release the held messages first: runner.stop() waits for in-flight
+		// eachMessage callbacks, so holding them across it would deadlock.
+		leaving.resolve();
 		consumerStopPromise ??= Promise.resolve()
 			.then(() => consumer.stop())
 			.catch(() => {});
 		return consumerStopPromise;
+	};
+	// Shared by stop(), abort and destroy(). Setting `stopped` first makes new
+	// eachMessage callbacks hold instead of pushing.
+	const halt = () => {
+		stopped = true;
+		// Release any eachMessage callbacks parked on backpressure: kafkajs's
+		// runner.stop() waits for in-flight eachMessage to settle, and a parked
+		// callback can only resume via releaseReaders() — a circular wait that
+		// deadlocks when the buffer is full.
+		releaseReaders();
+		// Detach from the signal on every termination. `{ once: true }` only
+		// fires-and-removes when the signal actually aborts; for a normal
+		// stop()/drain the listener would otherwise linger forever on a
+		// long-lived/shared signal, accumulating one listener per consume stream.
+		if (signal) signal.removeEventListener("abort", abort);
 	};
 
 	const stream = new Readable({
@@ -205,19 +254,12 @@ export const kafkaConsumeStream = async (
 			releaseReaders();
 		},
 		destroy(err, cb) {
-			stopped = true;
-			// Drop the abort listener: a destroyed stream never needs to react to
-			// the signal again, and on long-lived/shared signals an un-removed
-			// listener accumulates per stream.
-			if (signal) signal.removeEventListener("abort", stop);
-			// Release any eachMessage callbacks parked on backpressure first, so
-			// they observe `stopped` and return. consumer.stop() waits for in-flight
-			// callbacks to settle; without this release it would wait on a parked
-			// callback that itself can only resume once `_read` fires — a circular
-			// wait that deadlocks. Symmetric with stop().
-			releaseReaders();
-			// Best-effort consumer.stop on destroy, memoized so a prior stop() (or
-			// a concurrent abort) does not trigger a second consumer.stop().
+			halt();
+			// A gracefully stopped readable auto-destroys as soon as it ends, before
+			// downstream final() commits; stop() leaves the group once that is done.
+			if (stream.readableEnded) return cb(err);
+			// Any other destroy is a hard stop. Memoized, so a prior stop() (or a
+			// concurrent abort) does not trigger a second consumer.stop().
 			stopConsumerOnce().then(() => cb(err));
 		},
 	});
@@ -225,14 +267,17 @@ export const kafkaConsumeStream = async (
 	runPromise = consumer.run({
 		autoCommit,
 		partitionsConsumedConcurrently,
-		eachMessage: async ({ topic, partition, message }) => {
+		eachMessage: ({ topic, partition, message }) => {
 			// Never resolve for a message we did not push: kafkajs would commit its
 			// offset (autoCommit) or treat it as handled, silently losing it. Throw
-			// so it stays uncommitted and is redelivered on the next run.
+			// (once the group is being left) so it stays uncommitted and is
+			// redelivered on the next run.
 			if (stopped) {
-				throw new Error(
-					`kafkaConsumeStream: stream stopped; message at ${topic}[${partition}]@${message.offset} not delivered`,
-				);
+				return leaving.promise.then(() => {
+					throw new Error(
+						`kafkaConsumeStream: stream stopped; message at ${topic}[${partition}]@${message.offset} not delivered`,
+					);
+				});
 			}
 			const wantsMore = stream.push({
 				topic,
@@ -243,7 +288,7 @@ export const kafkaConsumeStream = async (
 				headers: message.headers,
 				timestamp: message.timestamp,
 			});
-			if (!wantsMore) await waitForRead();
+			return wantsMore ? delivered : waitForRead();
 		},
 	});
 	// run() can reject on its own (not connected, already running); surface it
@@ -253,32 +298,97 @@ export const kafkaConsumeStream = async (
 		if (!stopped) stream.destroy(err);
 	});
 
+	// Graceful: end the readable, let the pipeline drain and every open
+	// kafkaCommitStream on this consumer commit in final(), then leave the group.
+	// Every step is idempotent, so a repeat call just waits again.
 	const stop = async () => {
-		// No early-out on a repeat call is needed: every step below is idempotent —
-		// consumer.stop() is memoized via stopConsumerOnce(), removeEventListener is
-		// a no-op once removed, stream.push(null) is a no-op after EOF, and
-		// releaseReaders() is a no-op with no parked readers. Setting `stopped`
-		// first still makes parked eachMessage callbacks observe it and return.
-		stopped = true;
-		// Detach from the signal on every normal termination. `{ once: true }`
-		// only fires-and-removes when the signal actually aborts; for a normal
-		// stop()/drain the listener would otherwise linger forever on a
-		// long-lived/shared signal, accumulating one listener per consume stream.
-		// `stop` is the exact handler reference, so this removes cleanly.
-		if (signal) signal.removeEventListener("abort", stop);
+		halt();
+		stream.push(null);
+		await Promise.all(
+			[...(openCommitStreams.get(consumer) ?? [])].map(
+				(commitStream) =>
+					new Promise((resolve) => commitStream.once("close", resolve)),
+			),
+		);
+		await stopConsumerOnce();
+		await runPromise.catch(() => {});
+	};
+	// Abort: leave the group BEFORE ending the readable, so a downstream
+	// kafkaCommitStream's final commit is refused and nothing still in flight is
+	// committed (at-least-once).
+	const abort = async () => {
+		halt();
 		await stopConsumerOnce();
 		stream.push(null);
 		await runPromise.catch(() => {});
-		// Unblock any pending eachMessage awaits so they can observe `stopped`
-		// and return.
-		releaseReaders();
 	};
 
 	if (signal) {
-		if (signal.aborted) await stop();
-		else signal.addEventListener("abort", stop);
+		if (signal.aborted) await abort();
+		else signal.addEventListener("abort", abort);
 	}
 
 	stream.stop = stop;
+	return stream;
+};
+
+export const kafkaCommitStream = async (
+	{ consumer, batchSize = 100 } = {},
+	streamOptions = {},
+) => {
+	if (!consumer) throw new TypeError("kafkaCommitStream: consumer required");
+	if (!(batchSize >= 1)) {
+		throw new TypeError("kafkaCommitStream: batchSize must be >= 1");
+	}
+
+	// Next offset to commit (`offset + 1`, as BigInt: Kafka offsets are int64
+	// strings) per topic-partition. Only ever raised within a group generation,
+	// so a redelivered or out-of-order message never moves a commit backwards.
+	const highest = new Map();
+	const pending = new Map();
+	let count = 0;
+	// A (re)join starts a new generation: kafkajs refetches from the committed
+	// offsets (which an operator may have reset backwards), and partitions may
+	// now belong to another member, so committing what was pending could move
+	// its offsets. Start over; the dropped tail is redelivered (at-least-once).
+	const offJoin = consumer.on(consumer.events.GROUP_JOIN, () => {
+		highest.clear();
+		pending.clear();
+	});
+
+	const commit = async () => {
+		count = 0;
+		if (!pending.size) return;
+		try {
+			await consumer.commitOffsets([...pending.values()]);
+		} catch (err) {
+			// Refused while kafkajs has no group (between a crash and its restart,
+			// or after stop()): keep the offsets for the next attempt. Anything
+			// else errors the stream.
+			if (notInitialized(err)) return;
+			throw err;
+		}
+		pending.clear();
+	};
+	// Returns a promise only when a commit is in flight: an async write would
+	// allocate and settle a promise per message.
+	const write = ({ topic, partition, offset }) => {
+		const key = `${topic}:${partition}`;
+		const next = BigInt(offset) + 1n;
+		if (next > (highest.get(key) ?? 0n)) {
+			highest.set(key, next);
+			pending.set(key, { topic, partition, offset: next.toString() });
+		}
+		if (++count >= batchSize) return commit();
+	};
+	// No commit on destroy/abort: those messages may not have been processed, so
+	// leaving them uncommitted gets them redelivered instead of lost.
+	const stream = createWritableStream(write, commit, streamOptions);
+	const open = openCommitStreams.getOrInsertComputed(consumer, () => new Set());
+	open.add(stream);
+	stream.once("close", () => {
+		open.delete(stream);
+		offJoin();
+	});
 	return stream;
 };

@@ -3,6 +3,9 @@
 	"version": "0.8.0",
 	"description": "Compression and decompression streams for gzip, deflate, brotli, and zstd",
 	"type": "module",
+	"sideEffects": [
+		"./brotli.browser.mjs"
+	],
 	"engines": {
 		"node": ">=26"
 	},
@@ -13,19 +16,26 @@
 	"module": "./index.browser.mjs",
 	"exports": {
 		".": {
-			"types": "./index.d.ts",
-			"browser": "./index.browser.mjs",
-			"node": "./index.node.mjs",
-			"default": "./index.browser.mjs"
+			"browser": {
+				"types": "./index.browser.d.ts",
+				"default": "./index.browser.mjs"
+			},
+			"node": {
+				"types": "./index.d.ts",
+				"default": "./index.node.mjs"
+			},
+			"default": {
+				"types": "./index.browser.d.ts",
+				"default": "./index.browser.mjs"
+			}
 		},
 		"./browser": {
-			"types": "./index.d.ts",
+			"types": "./index.browser.d.ts",
 			"default": "./index.browser.mjs"
 		},
 		"./zstd": {
 			"types": "./zstd.d.ts",
-			"node": "./zstd.node.mjs",
-			"default": "./zstd.node.mjs"
+			"node": "./zstd.node.mjs"
 		},
 		"./brotli": {
 			"types": "./brotli.d.ts",
@@ -34,7 +44,7 @@
 			"default": "./brotli.browser.mjs"
 		},
 		"./brotli/browser": {
-			"types": "./brotli.d.ts",
+			"types": "./brotli.browser.d.ts",
 			"default": "./brotli.browser.mjs"
 		},
 		"./gzip": {
@@ -44,7 +54,7 @@
 			"default": "./gzip.browser.mjs"
 		},
 		"./gzip/browser": {
-			"types": "./gzip.d.ts",
+			"types": "./gzip.browser.d.ts",
 			"default": "./gzip.browser.mjs"
 		},
 		"./deflate": {
@@ -54,7 +64,7 @@
 			"default": "./deflate.browser.mjs"
 		},
 		"./deflate/browser": {
-			"types": "./deflate.d.ts",
+			"types": "./deflate.browser.d.ts",
 			"default": "./deflate.browser.mjs"
 		}
 	},

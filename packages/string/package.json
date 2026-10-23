@@ -3,6 +3,7 @@
 	"version": "0.8.0",
 	"description": "String transform streams for splitting, replacing, counting, and deduplication",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},

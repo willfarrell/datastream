@@ -3,7 +3,6 @@
 import type {
 	DatastreamPassThrough,
 	DatastreamReadable,
-	DatastreamWritable,
 	StreamOptions,
 	StreamResult,
 } from "@datastream/core";
@@ -20,11 +19,23 @@ export function awsS3GetObjectStream(
 	streamOptions?: StreamOptions,
 ): Promise<DatastreamReadable>;
 
+// Yields ListObjectsV2 `Contents` entries across all pages.
+export function awsS3ListObjectsStream(
+	options: {
+		client?: unknown;
+		Bucket: string;
+		Prefix?: string;
+		[key: string]: unknown;
+	},
+	streamOptions?: StreamOptions,
+): Promise<DatastreamReadable>;
+
 export function awsS3PutObjectStream(
 	options: {
 		client?: unknown;
 		onProgress?: (progress: unknown) => void;
-		tags?: Record<string, string>;
+		// @aws-sdk/lib-storage Upload tags (Tag[])
+		tags?: { Key: string; Value: string }[];
 		partSize?: number;
 		queueSize?: number;
 		Bucket?: string;
@@ -32,8 +43,9 @@ export function awsS3PutObjectStream(
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamWritable & {
-	result: () => Promise<StreamResult<unknown>>;
+): DatastreamPassThrough & {
+	// Resolves once the upload completes; contributes no key to pipeline().
+	result: () => Promise<Record<string, never>>;
 };
 
 export function awsS3ChecksumStream(

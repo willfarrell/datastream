@@ -36,3 +36,25 @@ export function azureServiceBusCompleteMessageStream(
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamWritable;
+
+type ServiceBusPropertyValue = number | boolean | string | Date | null;
+
+export function azureServiceBusAbandonMessageStream(
+	options: {
+		// ServiceBusReceiver
+		client: unknown;
+		propertiesToModify?: Record<string, ServiceBusPropertyValue>;
+	},
+	streamOptions?: StreamOptions,
+): DatastreamWritable;
+
+export function azureServiceBusDeadLetterMessageStream(
+	options: {
+		// ServiceBusReceiver
+		client: unknown;
+		deadLetterReason?: string;
+		deadLetterErrorDescription?: string;
+		[key: string]: unknown;
+	},
+	streamOptions?: StreamOptions,
+): DatastreamWritable;

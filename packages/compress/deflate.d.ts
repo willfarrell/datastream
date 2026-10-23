@@ -1,16 +1,15 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import type { DatastreamTransform, StreamOptions } from "@datastream/core";
+import type {
+	DeflateCompressOptions,
+	DeflateDecompressOptions,
+} from "./deflate.browser.js";
 
-export interface DeflateCompressOptions {
-	quality?: number;
-	level?: number;
-	maxOutputSize?: number | null;
-}
-
-export interface DeflateDecompressOptions {
-	maxOutputSize?: number | null;
-}
+export type {
+	DeflateCompressOptions,
+	DeflateDecompressOptions,
+} from "./deflate.browser.js";
 
 export function deflateCompressStream(
 	options?: DeflateCompressOptions,

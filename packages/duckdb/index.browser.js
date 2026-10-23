@@ -1,7 +1,11 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import { createWritableStream, resolveLazy } from "@datastream/core";
-import { ensureTableAndColumns, quoteIdent } from "./shared.js";
+import { createReadableStream, resolveLazy } from "@datastream/core";
+import {
+	createTransactionStream,
+	ensureTableAndColumns,
+	quoteIdent,
+} from "./shared.js";
 
 // `path` is handed to AsyncDuckDB.open() (e.g. "opfs://file.duckdb");
 // ":memory:" (the default) keeps the freshly instantiated in-memory database.
@@ -15,11 +19,56 @@ export const duckdbConnect = async (path = ":memory:", { bundles } = {}) => {
 	const bundle = await selectBundle(bundles ?? getJsDelivrBundles());
 	const worker = new Worker(bundle.mainWorker);
 	const db = new AsyncDuckDB(new ConsoleLogger(), worker);
-	await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-	if (path !== ":memory:") await db.open({ path });
-	const connection = await db.connect();
-	connection.__duckdb = db;
-	return connection;
+	try {
+		await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+		if (path !== ":memory:") await db.open({ path });
+		const connection = await db.connect();
+		connection.__duckdb = db;
+		return connection;
+	} catch (error) {
+		// The caller never gets the db, so nobody else can stop its Worker thread.
+		await db.terminate();
+		throw error;
+	}
+};
+
+// Rows are arrow StructRow.toJSON() objects: BIGINT -> bigint, DATE/TIMESTAMP
+// -> epoch-ms number, DECIMAL -> arrow's raw decimal (node: Date / number).
+// `params` bind positionally through a prepared statement.
+export const duckdbQueryStream = ({ db, sql, params }, streamOptions) => {
+	// True only while this stream's own prepare/send/batch fetch is in flight
+	// (not before the first read or while paused between rows). Nothing reads it
+	// once the generator has finished, so it is not reset there.
+	let busy = false;
+	const rows = (async function* () {
+		let prepared;
+		busy = true;
+		try {
+			if (params) prepared = await db.prepare(sql);
+			const reader = prepared
+				? await prepared.send(...params)
+				: await db.send(sql, true);
+			for await (const batch of reader) {
+				busy = false;
+				for (const row of batch.toArray()) yield row.toJSON();
+				busy = true;
+			}
+		} finally {
+			if (prepared) await prepared.close();
+		}
+	})();
+	// core calls return() on cancel/abort, but a generator queues it behind an
+	// in-flight next() (a query still running in the worker). Cancel that query
+	// first so the wait ends, then let the generator run its finally.
+	// cancelSent() is connection-wide, so it is skipped when this stream has
+	// nothing in flight. Its rejection is dropped: core's abort path calls
+	// return() without handling the promise.
+	const finish = rows.return;
+	rows.return = async () => {
+		if (busy) await db.cancelSent().catch(() => {});
+		return finish.call(rows);
+	};
+	return createReadableStream(rows, streamOptions);
 };
 
 const ensureTable = (db, table, schema) =>
@@ -45,41 +94,32 @@ export const duckdbAppenderStream = async (
 ) => {
 	let prepared;
 	let columnNames;
-
-	const init = async () => {
-		const resolvedSchema = resolveLazy(schema);
-		columnNames = await ensureTable(db, table, resolvedSchema);
-		prepared = await db.prepare(buildInsertSQL(table, columnNames));
+	// final() closes the statement and a failed COMMIT then releases again, so
+	// only the first call closes it.
+	const close = async () => {
+		const statement = prepared;
+		prepared = undefined;
+		await statement?.close();
 	};
 
-	const write = async (row) => {
-		if (!prepared) await init();
-		const isArray = Array.isArray(row);
-		try {
-			await prepared.send(
-				...columnNames.map((name, i) => (isArray ? row[i] : row[name])),
-			);
-		} catch (error) {
-			// final() never runs once a write fails, so release the statement here.
-			await prepared.close();
-			throw error;
-		}
-	};
-	const final = async () => {
-		if (prepared) await prepared.close();
-	};
-	// An abort (upstream error / signal) skips both final() and write()'s catch,
-	// so release the statement there too. Closed before the caller's hook so a
-	// missing statement can't hide behind it (runAbort swallows throws).
-	const { abort = () => {} } = streamOptions;
-
-	return createWritableStream(write, final, {
-		...streamOptions,
-		abort: async (reason) => {
-			if (prepared) await prepared.close();
-			await abort(reason);
+	return createTransactionStream(
+		{
+			run: (sql) => db.query(sql),
+			init: async () => {
+				columnNames = await ensureTable(db, table, resolveLazy(schema));
+				prepared = await db.prepare(buildInsertSQL(table, columnNames));
+			},
+			write: (row) => {
+				const isArray = Array.isArray(row);
+				return prepared.send(
+					...columnNames.map((name, i) => (isArray ? row[i] : row[name])),
+				);
+			},
+			final: close,
+			release: close,
 		},
-	});
+		streamOptions,
+	);
 };
 
 export const duckdbArrowInsertStream = async (
@@ -89,10 +129,6 @@ export const duckdbArrowInsertStream = async (
 	let columnNames;
 	let pending = [];
 	let pendingRows = 0;
-
-	const init = async () => {
-		columnNames = await ensureTable(db, table, resolveLazy(schema));
-	};
 
 	const { tableFromIPC, tableToIPC, Table } = await import("apache-arrow");
 
@@ -110,17 +146,50 @@ export const duckdbArrowInsertStream = async (
 		});
 	};
 
-	const write = async (batch) => {
-		if (!columnNames) await init();
-		// Insert every `batchRows` rows instead of buffering the whole stream
-		// until final() (which then made two more full copies).
-		pending.push(batch);
-		pendingRows += batch.numRows;
-		if (pendingRows >= batchRows) await flush();
-	};
-	const final = async () => {
-		if (pending.length) await flush();
+	// insertArrowTable({ create: false }) maps columns by POSITION, but a batch's
+	// field order is arbitrary. Reorder each batch to the table's physical column
+	// order, matching names case-insensitively (DuckDB identifiers are), and
+	// reject a column count/name mismatch with the same errors as the node build.
+	const toTableOrder = (batch) => {
+		const { fields } = batch.schema;
+		const colCount = columnNames.length;
+		if (fields.length !== colCount) {
+			throw new Error(
+				`duckdb: record batch column count (${fields.length}) does not match table "${table}" column count (${colCount})`,
+			);
+		}
+		const fieldIndex = new Map(fields.map((f, i) => [f.name.toLowerCase(), i]));
+		return batch.selectAt(
+			columnNames.map((name) => {
+				const index = fieldIndex.get(name.toLowerCase());
+				if (index === undefined) {
+					throw new Error(
+						`duckdb: record batch is missing column "${name}" for table "${table}"`,
+					);
+				}
+				return index;
+			}),
+		);
 	};
 
-	return createWritableStream(write, final, streamOptions);
+	return createTransactionStream(
+		{
+			run: (sql) => db.query(sql),
+			init: async () => {
+				columnNames = await ensureTable(db, table, resolveLazy(schema));
+			},
+			write: async (batch) => {
+				batch = toTableOrder(batch);
+				// Insert every `batchRows` rows instead of buffering the whole stream
+				// until final() (which then made two more full copies).
+				pending.push(batch);
+				pendingRows += batch.numRows;
+				if (pendingRows >= batchRows) await flush();
+			},
+			final: async () => {
+				if (pending.length) await flush();
+			},
+		},
+		streamOptions,
+	);
 };

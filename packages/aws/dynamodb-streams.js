@@ -5,7 +5,7 @@ import {
 	GetRecordsCommand,
 } from "@aws-sdk/client-dynamodb-streams";
 import { timeout } from "@datastream/core";
-import { awsClientDefaults } from "./client.js";
+import { awsClientDefaults, awsReadableStream } from "./client.js";
 
 // Created on first use, so importing the module (or always passing a per-call
 // client) never constructs an unused SDK client.
@@ -26,12 +26,12 @@ export const awsDynamoDBStreamsGetRecordsStream = async (
 		client,
 		...streamsOptions
 	} = options;
-	async function* command(opts) {
+	async function* command(opts, signal) {
 		let expectMore = true;
 		while (expectMore) {
 			const response = await (client ?? getDefaultClient()).send(
 				new GetRecordsCommand(opts),
-				{ abortSignal: streamOptions.signal },
+				{ abortSignal: signal },
 			);
 			const records = response.Records ?? [];
 			for (const item of records) {
@@ -44,10 +44,13 @@ export const awsDynamoDBStreamsGetRecordsStream = async (
 				opts.ShardIterator !== null && (pollingActive || records.length > 0);
 			if (pollingActive && records.length === 0 && pollingDelay > 0) {
 				// Abortable idle wait: rejects immediately and clears the timer
-				// when streamOptions.signal aborts mid-delay.
-				await timeout(pollingDelay, { signal: streamOptions.signal });
+				// when the stream is destroyed or streamOptions.signal aborts mid-delay.
+				await timeout(pollingDelay, { signal });
 			}
 		}
 	}
-	return command({ ...streamsOptions });
+	return awsReadableStream(
+		(signal) => command({ ...streamsOptions }, signal),
+		streamOptions,
+	);
 };

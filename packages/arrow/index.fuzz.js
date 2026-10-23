@@ -18,6 +18,15 @@ const catchError = (input, e) => {
 	if (expectedErrors.includes(e.message)) {
 		return;
 	}
+	// The detected schema only samples the first rows; a later row whose value
+	// does not fit its column type is rejected rather than silently coerced.
+	if (
+		/^arrowBatchFrom(Object|Array)Stream: row \d+, field ".*" expects /s.test(
+			e.message,
+		)
+	) {
+		return;
+	}
 	console.error(input, e);
 	throw e;
 };

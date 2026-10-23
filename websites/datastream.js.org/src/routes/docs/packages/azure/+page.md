@@ -43,6 +43,22 @@ Every stream takes a `client` option: the Azure SDK client to use. The package n
 
 Every request gets `streamOptions.signal` as its `abortSignal`, so aborting the pipeline cancels the call in flight.
 
+### Unsent messages on destroy or abort
+
+The batching writers (`azureCosmosUpsertItemStream`, `azureCosmosDeleteItemStream`, `azureEventHubsSendEventsStream`, and `azureServiceBusSendMessagesStream`) hold chunks until a batch is full or the stream ends. If the stream is destroyed or the signal aborts first, the held chunks are not sent. They are put on the error as `err.failedMessages`, the same contract as [`kafkaProduceStream`](/docs/packages/kafka), so you can retry them. They are the chunks you wrote, so you can write them to a new stream as they are. A destroy without an error gets one with the message `<stream name> destroyed with a buffered batch`. A batch already being sent is not included.
+
+```javascript
+const controller = new AbortController()
+try {
+  await pipeline(
+    [source, azureServiceBusSendMessagesStream({ client: sender })],
+    { signal: controller.signal },
+  )
+} catch (e) {
+  if (e.failedMessages) await retryLater(e.failedMessages)
+}
+```
+
 ## Blob Storage
 
 ### `azureBlobDownloadStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -81,6 +97,35 @@ await pipeline([
   await azureBlobDownloadStream({ client }),
   csvParseStream(),
 ])
+```
+
+### `azureBlobListStream` <span class="badge">Readable</span> <span class="badge">async</span>
+
+Lists the blobs in a container with `ContainerClient.listBlobsFlat()` and yields each blob item. The SDK fetches the pages for you. Destroying the stream early cancels the page request in flight.
+
+#### Options
+
+Accepts `listBlobsFlat()` options (such as `includeMetadata` and `includeTags`) plus:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `client` | `ContainerClient` | none | Required. The container to list |
+| `prefix` | `string` | none | Only list blobs whose names start with this |
+
+Throws `TypeError: azureBlobListStream: client required` if `client` is missing.
+
+#### Example
+
+```javascript
+import { createTransformStream, pipejoin, streamToArray } from '@datastream/core'
+import { azureBlobListStream } from '@datastream/azure/blob'
+
+const names = await streamToArray(
+  pipejoin([
+    await azureBlobListStream({ client: containerClient, prefix: 'exports/' }),
+    createTransformStream((blob, enqueue) => enqueue(blob.name)),
+  ]),
+)
 ```
 
 ### `azureBlobUploadStream` <span class="badge">PassThrough</span>
@@ -133,7 +178,7 @@ Accepts `FeedOptions` (such as `partitionKey` and `maxItemCount`) plus:
 
 ```javascript
 import { CosmosClient } from '@azure/cosmos'
-import { pipeline, createReadableStream } from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import { azureCosmosQueryStream } from '@datastream/azure/cosmos'
 
 const client = new CosmosClient({ endpoint, aadCredentials })
@@ -141,13 +186,13 @@ const client = new CosmosClient({ endpoint, aadCredentials })
   .container('users')
 
 await pipeline([
-  createReadableStream(await azureCosmosQueryStream({
+  await azureCosmosQueryStream({
     client,
     query: {
       query: 'SELECT * FROM c WHERE c.status = @status',
       parameters: [{ name: '@status', value: 'active' }],
     },
-  })),
+  }),
 ])
 ```
 
@@ -155,7 +200,7 @@ await pipeline([
 
 Upserts items with `executeBulkOperations`, up to 100 operations per request. Each chunk is an item. The SDK reads the partition key from the item.
 
-Throttled operations (status 429) are retried with exponential backoff, from 50 ms up to about 59 s between tries. Any other failure throws `azureCosmosBulkOperations has failed operations`. The error's `cause.statusCodes` lists the failed status codes. It never includes item bodies, so personal data stays out of your logs.
+Throttled operations (status 429) are retried with exponential backoff, from 50 ms up to about 59 s between tries. Any other failure throws `azureCosmosBulkOperations has failed operations`. The error's `cause.statusCodes` lists the failed status codes. It never includes item bodies, so personal data stays out of your logs. Items still held when the stream is destroyed or aborted are on `err.failedMessages` (see [Unsent messages on destroy or abort](#unsent-messages-on-destroy-or-abort)).
 
 #### Options
 
@@ -191,24 +236,24 @@ Without `pollingActive`, the stream ends on the first empty page. When you read 
 
 ```javascript
 import { EventHubConsumerClient, earliestEventPosition } from '@azure/event-hubs'
-import { pipeline, createReadableStream } from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import { azureEventHubsReceiveEventsStream } from '@datastream/azure/event-hubs'
 
 const client = new EventHubConsumerClient('$Default', connectionString, 'my-hub')
 
 await pipeline([
-  createReadableStream(await azureEventHubsReceiveEventsStream({
+  await azureEventHubsReceiveEventsStream({
     client,
     partitionId: '0',
     startPosition: earliestEventPosition,
     maxWaitTimeInSeconds: 5,
-  })),
+  }),
 ])
 ```
 
 ### `azureEventHubsSendEventsStream` <span class="badge">Writable</span>
 
-Sends events in batches. Each chunk is an `EventData` object, such as `{ body }`. The SDK batch enforces the size limit. When a batch is full it is sent and a new one starts. A single event too big for an empty batch throws a `RangeError`.
+Sends events in batches. Each chunk is an `EventData` object, such as `{ body }`. The SDK batch enforces the size limit. When a batch is full it is sent and a new one starts. A single event too big for an empty batch throws a `RangeError`. Events still held when the stream is destroyed or aborted are on `err.failedMessages` (see [Unsent messages on destroy or abort](#unsent-messages-on-destroy-or-abort)).
 
 #### Options
 
@@ -230,9 +275,9 @@ Builds a kafkajs SASL `oauthbearer` configuration for the Event Hubs Kafka endpo
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `credential` | `TokenCredential` | none | Required. Any `@azure/identity` credential, such as `DefaultAzureCredential` |
-| `namespace` | `string` | none | Required. The Event Hubs namespace name |
+| `namespace` | `string` | none | Required. The Event Hubs namespace name, such as `my-namespace` (not the full host name) |
 
-Throws a `TypeError` if either option is missing. The token provider throws if the credential returns no token.
+Throws a `TypeError` if either option is missing. The namespace becomes the host name of the token scope, so it must follow the Azure naming rules: 6 to 50 letters, digits, or hyphens, starting with a letter and ending with a letter or digit. Anything else throws a `TypeError`. The token provider throws if the credential returns no token.
 
 ```bash
 npm install @datastream/azure @datastream/kafka @azure/identity
@@ -275,7 +320,7 @@ Accepts `receiveMessages()` options plus:
 
 ```javascript
 import { QueueClient } from '@azure/storage-queue'
-import { pipeline, createReadableStream } from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import {
   azureQueueReceiveMessagesStream,
   azureQueueDeleteMessageStream,
@@ -284,10 +329,10 @@ import {
 const client = new QueueClient(queueUrl, credential)
 
 await pipeline([
-  createReadableStream(await azureQueueReceiveMessagesStream({
+  await azureQueueReceiveMessagesStream({
     client,
     numberOfMessages: 32,
-  })),
+  }),
   // process each message here
   azureQueueDeleteMessageStream({ client }),
 ])
@@ -335,7 +380,7 @@ Accepts `receiveMessages()` options plus:
 
 ```javascript
 import { ServiceBusClient } from '@azure/service-bus'
-import { pipeline, createReadableStream } from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import {
   azureServiceBusReceiveMessagesStream,
   azureServiceBusCompleteMessageStream,
@@ -344,7 +389,7 @@ import {
 const client = new ServiceBusClient(connectionString).createReceiver('my-queue')
 
 await pipeline([
-  createReadableStream(await azureServiceBusReceiveMessagesStream({ client })),
+  await azureServiceBusReceiveMessagesStream({ client }),
   // process each message here
   azureServiceBusCompleteMessageStream({ client }),
 ])
@@ -352,7 +397,7 @@ await pipeline([
 
 ### `azureServiceBusSendMessagesStream` <span class="badge">Writable</span>
 
-Sends messages in batches. Each chunk is a `ServiceBusMessage`, such as `{ body }`. The SDK batch enforces the size limit. When a batch is full it is sent and a new one starts. A single message too big for an empty batch throws a `RangeError`.
+Sends messages in batches. Each chunk is a `ServiceBusMessage`, such as `{ body }`. The SDK batch enforces the size limit. When a batch is full it is sent and a new one starts. A single message too big for an empty batch throws a `RangeError`. Messages still held when the stream is destroyed or aborted are on `err.failedMessages` (see [Unsent messages on destroy or abort](#unsent-messages-on-destroy-or-abort)).
 
 #### Options
 
@@ -370,6 +415,50 @@ Completes each message so Service Bus removes it from the queue. Each chunk is a
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `client` | `ServiceBusReceiver` | none | Required. The receiver that received the messages |
+
+### `azureServiceBusAbandonMessageStream` <span class="badge">Writable</span>
+
+Abandons each message with `abandonMessage()`. Service Bus releases the lock and delivers the message again, and its delivery count goes up by one. Each chunk is a received message. Use the same `peekLock` receiver that received it.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `client` | `ServiceBusReceiver` | none | Required. The receiver that received the messages |
+| `propertiesToModify` | `object` | none | Application properties to set on each message before it is released |
+
+### `azureServiceBusDeadLetterMessageStream` <span class="badge">Writable</span>
+
+Moves each message to the dead-letter sub-queue with `deadLetterMessage()`. Each chunk is a received message. Use the same `peekLock` receiver that received it.
+
+#### Options
+
+Accepts `deadLetterMessage()` options. Any other key is set as an application property on each message.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `client` | `ServiceBusReceiver` | none | Required. The receiver that received the messages |
+| `deadLetterReason` | `string` | none | Reason stored on each dead-lettered message |
+| `deadLetterErrorDescription` | `string` | none | Error description stored on each dead-lettered message |
+
+The reason and description apply to every message written to the stream. To give messages different reasons, split them into separate streams.
+
+#### Example
+
+```javascript
+import {
+  azureServiceBusReceiveMessagesStream,
+  azureServiceBusDeadLetterMessageStream,
+} from '@datastream/azure/service-bus'
+
+await pipeline([
+  await azureServiceBusReceiveMessagesStream({ client }),
+  // keep only the messages that failed validation here
+  azureServiceBusDeadLetterMessageStream({
+    client,
+    deadLetterReason: 'ValidationFailed',
+    deadLetterErrorDescription: 'Body does not match the order schema',
+  }),
+])
+```
 
 ## Glossary
 

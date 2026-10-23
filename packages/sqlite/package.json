@@ -1,0 +1,54 @@
+{
+	"name": "@datastream/sqlite",
+	"version": "0.8.0",
+	"description": "SQLite query and insert streams (Node, via node:sqlite)",
+	"type": "module",
+	"sideEffects": false,
+	"engines": {
+		"node": ">=26"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.node.mjs",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"node": "./index.node.mjs"
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"*.node.mjs",
+		"*.node.mjs.map",
+		"*.d.ts"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test",
+		"test:bench": "node --experimental-bench --bench 'index.bench.js'"
+	},
+	"license": "MIT",
+	"keywords": [
+		"sqlite",
+		"sql",
+		"node:sqlite",
+		"Node Stream API"
+	],
+	"author": {
+		"name": "datastream contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "github:willfarrell/datastream",
+		"directory": "packages/sqlite"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"dependencies": {
+		"@datastream/core": "0.8.0"
+	}
+}

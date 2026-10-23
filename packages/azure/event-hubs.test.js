@@ -7,10 +7,18 @@ import {
 } from "@datastream/azure/event-hubs";
 import {
 	createReadableStream,
+	isReadable,
+	pipejoin,
 	pipeline,
 	streamToArray,
 } from "@datastream/core";
 import { variant } from "../variant.js";
+
+const settle = async () => {
+	for (let i = 0; i < 20; i++) {
+		await new Promise((resolve) => setImmediate(resolve));
+	}
+};
 
 // Fake EventHubConsumerClient: `drive(handlers)` runs once subscribed.
 const consumer = (drive) => {
@@ -134,6 +142,8 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 			{ signal: controller.signal },
 		);
 		await rejects(streamToArray(stream));
+		// Never subscribed.
+		strictEqual(client.state.args, undefined);
 	});
 
 	test(`azureEventHubsSendEventsStream batches events`, async () => {
@@ -150,13 +160,159 @@ describe(`@datastream/azure/event-hubs (${variant})`, () => {
 					tryAdd: (event) => items.length < 2 && !!items.push(event),
 				};
 			},
-			sendBatch: async (batch) => sent.push(batch.items),
+			sendBatch: async (batch, options) => {
+				deepStrictEqual(options, { abortSignal: undefined });
+				sent.push(batch.items);
+			},
 		};
 		await pipeline([
 			createReadableStream([{ body: 1 }, { body: 2 }, { body: 3 }]),
 			azureEventHubsSendEventsStream({ client, partitionKey: "k" }),
 		]);
 		deepStrictEqual(sent, [[{ body: 1 }, { body: 2 }], [{ body: 3 }]]);
+	});
+
+	test(`azureEventHubsReceiveEventsStream is a Readable that pipejoin accepts`, async () => {
+		const client = consumer(async (handlers) => {
+			await handlers.processEvents([{ body: 1 }]);
+			await handlers.processEvents([]);
+		});
+		const stream = await azureEventHubsReceiveEventsStream({ client });
+		strictEqual(isReadable(stream), true);
+		deepStrictEqual(await streamToArray(pipejoin([stream])), [{ body: 1 }]);
+	});
+
+	// A generator's return() only lands at its next yield; destroying the stream
+	// while no events arrive must still close the subscription and emit 'close'.
+	test(`azureEventHubsReceiveEventsStream destroy closes an idle subscription`, {
+		timeout: 1000,
+	}, async () => {
+		const client = consumer(() => {});
+		const stream = await azureEventHubsReceiveEventsStream({
+			client,
+			pollingActive: true,
+		});
+		stream.resume();
+		await new Promise((resolve) => setImmediate(resolve));
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		ok(client.state.closed);
+	});
+
+	// processEvents holds the SDK pump until the consumer drains the page (so it
+	// cannot read ahead of a slow pipeline), and ending the stream releases it.
+	test(`azureEventHubsReceiveEventsStream holds processEvents until the page drains`, {
+		timeout: 1000,
+	}, async () => {
+		let delivered;
+		const events = Array.from({ length: 100 }, (_, body) => ({ body }));
+		const client = consumer((handlers) => {
+			delivered = handlers.processEvents(events);
+		});
+		const stream = await azureEventHubsReceiveEventsStream({
+			client,
+			pollingActive: true,
+		});
+		const iterator = stream[Symbol.asyncIterator]();
+		deepStrictEqual((await iterator.next()).value, { body: 0 });
+		let resolved = false;
+		delivered.then(() => {
+			resolved = true;
+		});
+		await settle();
+		// Read-ahead buffers only highWaterMark events, not the whole page.
+		strictEqual(resolved, false);
+		await iterator.return();
+		await delivered;
+		ok(client.state.closed);
+	});
+
+	// The SDK may deliver before the generator first waits for events.
+	test(`azureEventHubsReceiveEventsStream accepts callbacks fired inside subscribe`, async () => {
+		const delivered = [];
+		const client = {
+			subscribe: (handlers) => {
+				delivered.push(
+					handlers.processEvents([]),
+					handlers.processError(new Error("boom")),
+				);
+				return { close: async () => {} };
+			},
+		};
+		const stream = await azureEventHubsReceiveEventsStream({ client });
+		await rejects(streamToArray(stream), { message: "boom" });
+		await Promise.all(delivered);
+	});
+
+	test(`azureEventHubsReceiveEventsStream ignores an empty processError`, {
+		timeout: 1000,
+	}, async () => {
+		const client = consumer(async (handlers) => {
+			await handlers.processError(undefined);
+			await handlers.processEvents([{ body: "a" }]);
+			await handlers.processEvents([]);
+		});
+		const stream = await azureEventHubsReceiveEventsStream({ client });
+		deepStrictEqual(await streamToArray(stream), [{ body: "a" }]);
+	});
+
+	// A long-lived signal must not keep a finished stream's abort handler.
+	test(`azureEventHubsReceiveEventsStream drops its abort listener once done`, async () => {
+		const controller = new AbortController();
+		const client = consumer(async (handlers) => {
+			await handlers.processEvents([{ body: 1 }]);
+			await handlers.processEvents([]);
+		});
+		const stream = await azureEventHubsReceiveEventsStream(
+			{ client },
+			{ signal: controller.signal },
+		);
+		deepStrictEqual(await streamToArray(stream), [{ body: 1 }]);
+		let inspected = false;
+		controller.abort({
+			get retryable() {
+				inspected = true;
+				return true;
+			},
+		});
+		strictEqual(inspected, false);
+	});
+
+	test(`azureEventHubsSendEventsStream rejects an event too big for a batch`, async () => {
+		const client = {
+			createBatch: async () => ({
+				count: 0,
+				maxSizeInBytes: 1024,
+				tryAdd: () => false,
+			}),
+		};
+		await rejects(
+			pipeline([
+				createReadableStream([{ body: 1 }]),
+				azureEventHubsSendEventsStream({ client }),
+			]),
+			{
+				name: "RangeError",
+				message: "azureEventHubsSendEvents event exceeds batch limit",
+			},
+		);
+	});
+
+	test(`azureEventHubsSendEventsStream destroy attaches unsent events`, async () => {
+		const client = {
+			createBatch: async () => ({ count: 0, tryAdd: () => true }),
+		};
+		const stream = azureEventHubsSendEventsStream({ client });
+		const error = new Promise((resolve) => stream.once("error", resolve));
+		await new Promise((resolve) => stream.write({ body: 1 }, resolve));
+		stream.destroy();
+		const e = await error;
+		strictEqual(
+			e.message,
+			"azureEventHubsSendEvents destroyed with a buffered batch",
+		);
+		deepStrictEqual(e.failedMessages, [{ body: 1 }]);
 	});
 
 	test(`event-hubs has no default export`, () => {

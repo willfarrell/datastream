@@ -11,6 +11,23 @@ Foundation package providing pipeline orchestration, stream factories, and utili
 npm install @datastream/core
 ```
 
+## TypeScript
+
+The package ships separate types for each build, picked by export condition:
+
+- With `"moduleResolution": "bundler"` and no `customConditions` (the Vite and webpack default), TypeScript resolves the browser types, which match the browser runtime: web streams only, `streamToBuffer` resolves a `Uint8Array`, and there is no `backpressureGauge`.
+- Node.js projects that use bundler resolution must set `"customConditions": ["node"]` to get the Node.js types. `"moduleResolution": "node16"` / `"nodenext"` get the Node.js types automatically.
+- `@datastream/core/browser` always resolves the browser types, which don't need `@types/node`.
+
+```json
+{
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "customConditions": ["node"]
+  }
+}
+```
+
 ## Pipeline
 
 ### `pipeline(streams, streamOptions)` <span class="badge">async</span>
@@ -23,7 +40,7 @@ Connects all streams, waits for completion, and returns combined `.result()` val
 |--------|------|---------|-------------|
 | `highWaterMark` | `number` | — | Backpressure threshold |
 | `chunkSize` | `number` | — | Slice size when `createReadableStream` chunks a string or bytes |
-| `signal` | `AbortSignal` | — | Abort the pipeline |
+| `signal` | `AbortSignal` | — | Abort the pipeline. It rejects with an `AbortError`, also when the signal was already aborted when the streams were created |
 
 #### Example
 
@@ -271,11 +288,17 @@ const upload = createWritableStream(write, close, {
 
 ### `isReadable(stream)`
 
-Returns `true` if the stream is Readable.
+Returns `true` if the stream is readable. The check, and the type it narrows to, depend on the platform:
+
+- Node.js: `stream instanceof Readable` (so a `Transform` or `Duplex` counts). Narrows to `Readable`.
+- Browser: `stream instanceof ReadableStream`, or any value with a truthy `readable` property (such as a `TransformStream`). Narrows to `ReadableStream | { readable: unknown }`.
 
 ### `isWritable(stream)`
 
-Returns `true` if the stream is Writable.
+Returns `true` if the stream is writable. The check, and the type it narrows to, depend on the platform:
+
+- Node.js: `stream instanceof Writable` (so a `Transform` or `Duplex` counts). Narrows to `Writable`.
+- Browser: `stream instanceof WritableStream`, or any value with a truthy `writable` property (such as a `TransformStream`). Narrows to `WritableStream | { writable: unknown }`.
 
 ### `makeOptions(options)`
 

@@ -4,6 +4,7 @@ import {
 	createPassThroughStream,
 	createReadableStream,
 } from "@datastream/core";
+import { azureReadableStream } from "./client.js";
 
 export const azureBlobDownloadStream = async (options, streamOptions = {}) => {
 	const { client, offset, count, ...downloadOptions } = options;
@@ -32,7 +33,9 @@ export const azureBlobDownloadStream = async (options, streamOptions = {}) => {
 		if (signal.aborted) {
 			teardownBody();
 		} else {
-			signal.addEventListener("abort", teardownBody, { once: true });
+			// No `once`: an abort destroys the stream (Readable.from honors the
+			// signal), so the 'close' handler below always drops the listener.
+			signal.addEventListener("abort", teardownBody);
 			// Drop the listener once the stream is done so a long-lived signal shared
 			// across many downloads does not accumulate listeners (each pinning a body).
 			stream.once("close", () =>
@@ -41,6 +44,20 @@ export const azureBlobDownloadStream = async (options, streamOptions = {}) => {
 		}
 	}
 	return stream;
+};
+
+// client = ContainerClient; listBlobsFlat pages internally. The signal aborts
+// an in-flight page request when the stream is destroyed early, and the
+// generator's return() (on destroy) closes the SDK iterator via for-await.
+export const azureBlobListStream = async (options, streamOptions = {}) => {
+	const { client, ...listOptions } = options;
+	if (!client) {
+		throw new TypeError("azureBlobListStream: client required");
+	}
+	async function* command(signal) {
+		yield* client.listBlobsFlat({ ...listOptions, abortSignal: signal });
+	}
+	return azureReadableStream(command, streamOptions);
 };
 
 export const azureBlobUploadStream = (options, streamOptions = {}) => {

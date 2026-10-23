@@ -17,13 +17,22 @@ Each algorithm is also published as a subpath: `@datastream/compress/gzip`, `/de
 import { gzipCompressStream } from '@datastream/compress/gzip'
 ```
 
+## TypeScript
+
+The package root (`@datastream/compress`) ships separate types for each build, picked by export condition:
+
+- With `"moduleResolution": "bundler"` and no `customConditions` (the Vite and webpack default), TypeScript resolves the browser types, which match the browser runtime: no zstd, and every stream is a `TransformStream`.
+- Node.js projects that use bundler resolution must set `"customConditions": ["node"]` to get the Node.js types (including zstd). `"moduleResolution": "node16"` / `"nodenext"` get the Node.js types automatically.
+- `@datastream/compress/browser` always resolves the browser types, which don't need `@types/node`.
+
 ## gzip
 
 ### `gzipCompressStream` <span class="badge">Transform</span>
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `quality` | `number` | `-1` | Compression level (-1 to 9). -1 = default, 0 = none, 9 = best. Node.js only: the browser's `CompressionStream` has no level setting |
+| `quality` | `number` | `-1` | Compression level (-1 to 9). -1 = default, 0 = none, 9 = best. The browser build ignores it: `CompressionStream` has no level setting |
+| `level` | `number` | `quality` | Compression level under its `node:zlib` name. Overrides `quality` when both are set. Ignored by the browser build |
 | `maxOutputSize` | `number \| null` | none | Maximum compressed output in bytes. The stream errors when exceeded |
 
 ### `gzipDecompressStream` <span class="badge">Transform</span>
@@ -60,7 +69,8 @@ await pipeline([
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `quality` | `number` | `-1` | Compression level (-1 to 9). Node.js only, as for gzip |
+| `quality` | `number` | `-1` | Compression level (-1 to 9). Ignored by the browser build, as for gzip |
+| `level` | `number` | `quality` | Compression level under its `node:zlib` name. Overrides `quality` when both are set. Ignored by the browser build |
 | `maxOutputSize` | `number \| null` | none | Maximum compressed output in bytes. The stream errors when exceeded |
 
 ### `deflateDecompressStream` <span class="badge">Transform</span>
@@ -83,6 +93,7 @@ await pipeline([
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `maxOutputSize` | `number \| null` | `268435456` (256 MiB) | Maximum decompressed output in bytes. The stream errors when exceeded. `null` disables the limit |
+| `params` | `object` | none | Brotli parameters passed to `node:zlib` (keys from `zlib.constants`). Node.js only |
 
 ## zstd <span class="badge">Node.js only</span>
 
@@ -93,6 +104,7 @@ Requires Node.js with zstd support (`node:zlib`). The `@datastream/compress/zstd
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `quality` | `number` | `3` | Compression level |
+| `params` | `object` | none | zstd parameters passed to `node:zlib` (keys from `zlib.constants`). Overrides `quality` when set |
 | `maxOutputSize` | `number \| null` | none | Maximum compressed output in bytes. The stream errors when exceeded |
 
 ### `zstdDecompressStream` <span class="badge">Transform</span>
@@ -100,12 +112,13 @@ Requires Node.js with zstd support (`node:zlib`). The `@datastream/compress/zstd
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `maxOutputSize` | `number \| null` | `268435456` (256 MiB) | Maximum decompressed output in bytes. The stream errors when exceeded. `null` disables the limit |
+| `params` | `object` | none | zstd parameters passed to `node:zlib` (keys from `zlib.constants`) |
 
 ## Output size protection
 
 ### Decompression bombs
 
-A malicious compressed payload known as a "decompression bomb" can be as small as a few kilobytes but expand to gigabytes when decompressed, exhausting memory and crashing the process. Decompression streams stop at 256 MiB of output by default, so decompression is aborted before memory is exhausted. Lower the limit to what you expect for untrusted input, and only pass `null` for input you trust. The limit behaves the same in the Node.js and browser builds; when it is exceeded the stream errors with a `RangeError`: `Decompression output exceeds maxOutputSize (… bytes)`. The compression limit errors the same way (`Compression output exceeds maxOutputSize (… bytes)`).
+A malicious compressed payload known as a "decompression bomb" can be as small as a few kilobytes but expand to gigabytes when decompressed, exhausting memory and crashing the process. Decompression streams stop at 256 MiB of output by default, so decompression is aborted before memory is exhausted. Lower the limit to what you expect for untrusted input, and only pass `null` for input you trust. The limit behaves the same in the Node.js and browser builds; when it is exceeded the stream errors with a `RangeError`: `Decompression output exceeds maxOutputSize (… bytes)`. The compression limit errors the same way (`Compression output exceeds maxOutputSize (… bytes)`). The browser build feeds input to the native `DecompressionStream` in 16 KiB slices, so one large compressed chunk cannot inflate far past the limit before it is checked.
 
 ```javascript
 import { gzipDecompressStream } from '@datastream/compress/gzip'

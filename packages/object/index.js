@@ -20,6 +20,19 @@ const defineValue = (object, key, value) => {
 	});
 };
 
+// Fresh object whose own data properties are `keys` (a "__proto__" key
+// included, which defineProperty keeps an own key). Spreading it copies them as
+// own data properties and a plain assignment to an existing own data property
+// never reaches Object.prototype's "__proto__" accessor, so per-row objects
+// built from a fixed key list need no defineProperty call.
+const createTemplate = (keys) => {
+	const template = {};
+	for (const key of keys) {
+		defineValue(template, key, undefined);
+	}
+	return template;
+};
+
 export const objectCountStream = ({ resultKey } = {}, streamOptions = {}) => {
 	let value = 0;
 	const passThrough = () => {
@@ -75,16 +88,17 @@ export const objectPivotLongToWideStream = (
 			throw new Error("Expected chunk to be array, use with objectBatchStream");
 		}
 		const row = { ...chunks[0] };
+		// Drop the long-format columns BEFORE adding pivoted ones, so a pivoted
+		// column named like a key or valueParam is not deleted afterwards.
+		for (const key of keys) {
+			delete row[key];
+		}
+		delete row[valueParam];
 
 		for (const chunk of chunks) {
 			const keyParam = keys.map((key) => chunk[key]).join(delimiter);
 			defineValue(row, keyParam, chunk[valueParam]);
 		}
-
-		for (const key of keys) {
-			delete row[key];
-		}
-		delete row[valueParam];
 
 		enqueue(row);
 	};
@@ -124,15 +138,16 @@ export const objectKeyValueStream = ({ key, value }, streamOptions = {}) => {
 };
 
 export const objectKeyValuesStream = ({ key, values }, streamOptions = {}) => {
+	// No template when values is undefined: the whole chunk is the value.
+	const template = values && createTemplate(values);
 	const transform = (chunk, enqueue) => {
-		const value =
-			typeof values === "undefined"
-				? chunk
-				: values.reduce((value, key) => {
-						// defineValue: a "__proto__" value key must stay an own property
-						defineValue(value, key, chunk[key]);
-						return value;
-					}, {});
+		let value = chunk;
+		if (typeof values !== "undefined") {
+			value = { ...template };
+			for (const name of values) {
+				value[name] = chunk[name];
+			}
+		}
 		chunk = {
 			[chunk[key]]: value,
 		};
@@ -168,13 +183,14 @@ export const objectKeyJoinStream = (
 
 export const objectKeyMapStream = ({ keys }, streamOptions = {}) => {
 	const transform = (chunk, enqueue) => {
-		const value = {};
+		const entries = [];
 		for (const key of Object.keys(chunk)) {
 			// hasOwn: inherited names (constructor, toString, __proto__) are not mappings
 			const newKey = Object.hasOwn(keys, key) ? keys[key] : key;
-			defineValue(value, newKey, chunk[key]);
+			entries.push([newKey, chunk[key]]);
 		}
-		enqueue(value);
+		// fromEntries defines own data properties, so a "__proto__" key stays own
+		enqueue(Object.fromEntries(entries));
 	};
 	return createTransformStream(transform, streamOptions);
 };
@@ -182,7 +198,11 @@ export const objectKeyMapStream = ({ keys }, streamOptions = {}) => {
 export const objectValueMapStream = ({ key, values }, streamOptions = {}) => {
 	const transform = (chunk, enqueue) => {
 		if (Object.hasOwn(values, chunk[key])) {
-			chunk[key] = values[chunk[key]];
+			// Copy, never mutate the incoming chunk. Spread keeps a "__proto__"
+			// own key as data; a computed key defines one too when it is the
+			// mapped key (only the literal `__proto__:` form sets the prototype).
+			// An existing key keeps its position, as defineProperty would.
+			chunk = { ...chunk, [key]: values[chunk[key]] };
 		}
 		enqueue(chunk);
 	};
@@ -194,13 +214,14 @@ export const objectPickStream = ({ keys }, streamOptions = {}) => {
 	// __proto__) must not match
 	const keySet = new Set(keys);
 	const transform = (chunk, enqueue) => {
-		const value = {};
+		const entries = [];
 		for (const key of Object.keys(chunk)) {
 			if (keySet.has(key)) {
-				defineValue(value, key, chunk[key]);
+				entries.push([key, chunk[key]]);
 			}
 		}
-		enqueue(value);
+		// fromEntries defines own data properties, so a "__proto__" key stays own
+		enqueue(Object.fromEntries(entries));
 	};
 	return createTransformStream(transform, streamOptions);
 };
@@ -210,13 +231,14 @@ export const objectOmitStream = ({ keys }, streamOptions = {}) => {
 	// must not be treated as omitted
 	const keySet = new Set(keys);
 	const transform = (chunk, enqueue) => {
-		const value = {};
+		const entries = [];
 		for (const key of Object.keys(chunk)) {
 			if (!keySet.has(key)) {
-				defineValue(value, key, chunk[key]);
+				entries.push([key, chunk[key]]);
 			}
 		}
-		enqueue(value);
+		// fromEntries defines own data properties, so a "__proto__" key stays own
+		enqueue(Object.fromEntries(entries));
 	};
 	return createTransformStream(transform, streamOptions);
 };
@@ -224,11 +246,13 @@ export const objectOmitStream = ({ keys }, streamOptions = {}) => {
 
 export const objectFromEntriesStream = ({ keys }, streamOptions = {}) => {
 	let resolvedKeys;
+	let template;
 	const transform = (chunk, enqueue) => {
 		resolvedKeys ??= typeof keys === "function" ? keys() : keys;
-		const value = {};
+		template ??= createTemplate(resolvedKeys);
+		const value = { ...template };
 		for (let i = 0; i < resolvedKeys.length; i++) {
-			defineValue(value, resolvedKeys[i], chunk[i]);
+			value[resolvedKeys[i]] = chunk[i];
 		}
 		enqueue(value);
 	};

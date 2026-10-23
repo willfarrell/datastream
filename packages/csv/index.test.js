@@ -613,16 +613,16 @@ describe(`@datastream/csv (${variant})`, () => {
 	});
 
 	test(`csvParseStream should handle quoted field as last field before newline with custom escape`, async (_t) => {
-		const streams = [
-			createReadableStream('a,"b"\nc,d\n'),
-			csvParseStream({ escapeChar: "\\", newlineChar: "\n" }),
-		];
+		const parse = csvParseStream({ escapeChar: "\\", newlineChar: "\n" });
+		const streams = [createReadableStream('a,"b"\nc,d\n'), parse];
 		const stream = pipejoin(streams);
 		const output = await streamToArray(stream);
 		deepStrictEqual(output, [
 			["a", "b"],
 			["c", "d"],
 		]);
+		// The closing quote is followed by the newline, not unexpected text.
+		deepStrictEqual(parse.result().value, {});
 	});
 
 	test(`csvParseStream should handle escaped quoted field as last field before newline`, async (_t) => {
@@ -1048,6 +1048,27 @@ describe(`@datastream/csv (${variant})`, () => {
 			detect,
 		];
 		await pipeline(streams);
+
+		strictEqual(detect.result().value.quoteChar, "'");
+	});
+
+	test(`csvDetectDelimitersStream detects the quote char from the first line only`, async (_t) => {
+		const text = "name,note\nbob,'hi, there'\n";
+		const whole = csvDetectDelimitersStream();
+		await pipeline([createReadableStream(text), whole]);
+		const split = csvDetectDelimitersStream();
+		await pipeline([
+			createReadableStream(["name,note\n", "bob,'hi, there'\n"]),
+			split,
+		]);
+
+		strictEqual(whole.result().value.quoteChar, '"');
+		deepStrictEqual(whole.result().value, split.result().value);
+	});
+
+	test(`csvDetectDelimitersStream detects a quoted last header field before CRLF`, async (_t) => {
+		const detect = csvDetectDelimitersStream();
+		await pipeline([createReadableStream("a,'b'\r\n1,2\r\n"), detect]);
 
 		strictEqual(detect.result().value.quoteChar, "'");
 	});
@@ -2263,6 +2284,17 @@ describe(`@datastream/csv (${variant})`, () => {
 		deepStrictEqual(result.errors, {});
 	});
 
+	// The quoted-field value is assembled during the closing-quote scan (one
+	// segment per "" pair) instead of a replaceAll pass.
+	test(`csvQuotedParser should unescape consecutive "" pairs in one field`, (_t) => {
+		const text = '"a""b""c",x';
+		const result = csvQuotedParser(`${text}\r\n`, {}, true);
+		deepStrictEqual(result.rows, [['a"b"c', "x"]]);
+		const partial = csvQuotedParser(text, {}, false);
+		deepStrictEqual(partial.rows, []);
+		strictEqual(partial.tail, text);
+	});
+
 	// *** csvParseStream - unterminated quote with fewer fields than numCols (escapeIsQuote=true) *** //
 	test(`csvParseStream should handle unterminated quote with fewer fields than established numCols`, async (_t) => {
 		const streams = [
@@ -2824,6 +2856,17 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(output, '"a::b"::plain\r\n');
 	});
 
+	// The containment scan is one regexp built from the delimiter, so a
+	// regexp-special delimiter must be escaped (an unescaped "." matches any char).
+	test(`csvFormatStream should quote value containing a regexp-special delimiter`, async (_t) => {
+		const streams = [
+			createReadableStream([["a.b", "plain"]]),
+			csvFormatStream({ delimiterChar: "." }),
+		];
+		const output = await streamToString(pipejoin(streams));
+		strictEqual(output, '"a.b".plain\r\n');
+	});
+
 	test(`csvFormatStream multi-char delimiter should quote on quote char`, async (_t) => {
 		const streams = [
 			createReadableStream([['has"quote', "plain"]]),
@@ -3160,10 +3203,10 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(detect.result().value.newlineChar, "\r\n");
 	});
 
-	test(`csvDetectDelimitersStream should detect quote opening after newline`, async (_t) => {
-		// The only properly-bracketed quote is on row 2, opening right after the LF
+	test(`csvDetectDelimitersStream should detect quote closing right before LF`, async (_t) => {
+		// The only properly-bracketed quote ends the header line, right before the LF
 		const detect = csvDetectDelimitersStream();
-		const streams = [createReadableStream("a,b\n'c',d\n"), detect];
+		const streams = [createReadableStream("a,'b'\nc,d\n"), detect];
 		await pipeline(streams);
 		strictEqual(detect.result().value.quoteChar, "'");
 	});
@@ -4152,13 +4195,13 @@ describe(`@datastream/csv (${variant})`, () => {
 	// --- csvDetectDelimitersStream quote boundary precision ---
 	test(`csvDetectDelimitersStream detects quote closing at end of text`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
-		await pipeline([createReadableStream("x,y\nz,'w'"), detect]);
+		await pipeline([createReadableStream("x,'y'"), detect]);
 		strictEqual(detect.result().value.quoteChar, "'");
 	});
 
-	test(`csvDetectDelimitersStream detects quote opening after CR-only newline`, async (_t) => {
+	test(`csvDetectDelimitersStream detects quote closing before CR-only newline`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
-		await pipeline([createReadableStream("a,b\r'c',d\r"), detect]);
+		await pipeline([createReadableStream("a,'b'\rc,d\r"), detect]);
 		strictEqual(detect.result().value.quoteChar, "'");
 		strictEqual(detect.result().value.newlineChar, "\r");
 	});
@@ -4175,10 +4218,24 @@ describe(`@datastream/csv (${variant})`, () => {
 		strictEqual(detect.result().value.quoteChar, "'");
 	});
 
-	test(`csvDetectDelimitersStream detects quote opening after newline`, async (_t) => {
+	test(`csvDetectDelimitersStream ignores a quote at index 1 that is not at a field start`, async (_t) => {
+		// "'" at index 1 follows "a", not a delimiter, so it cannot open a field.
+		const detect = csvDetectDelimitersStream();
+		await pipeline([createReadableStream("a'b',c\n1,2\n"), detect]);
+		strictEqual(detect.result().value.quoteChar, '"');
+	});
+
+	test(`csvDetectDelimitersStream ignores a quote at index 1 that does not close a field`, async (_t) => {
+		// "''a": the quote at index 1 is followed by "a", not a field end.
+		const detect = csvDetectDelimitersStream();
+		await pipeline([createReadableStream("''a,b\n1,2\n"), detect]);
+		strictEqual(detect.result().value.quoteChar, '"');
+	});
+
+	test(`csvDetectDelimitersStream ignores a quote that only brackets a field after the first line`, async (_t) => {
 		const detect = csvDetectDelimitersStream();
 		await pipeline([createReadableStream("a,b\n'c',d\n"), detect]);
-		strictEqual(detect.result().value.quoteChar, "'");
+		strictEqual(detect.result().value.quoteChar, '"');
 	});
 
 	test(`csvDetectDelimitersStream does NOT detect a quote that never closes at a field end`, async (_t) => {

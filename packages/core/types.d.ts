@@ -1,0 +1,66 @@
+// Copyright 2026 will Farrell, and datastream contributors.
+// SPDX-License-Identifier: MIT
+// Platform-neutral declarations shared by index.d.ts (node) and
+// index.browser.d.ts (web). No node:* imports or Node globals (Buffer) here, so
+// browser projects type-check without @types/node.
+
+// Core types used across all packages
+export interface StreamOptions {
+	highWaterMark?: number;
+	chunkSize?: number;
+	signal?: AbortSignal;
+	[key: string]: unknown;
+}
+
+export interface StreamResult<T = unknown> {
+	key: string;
+	value: T;
+}
+
+export interface ResultStream<T = unknown> {
+	result: () => StreamResult<T> | Promise<StreamResult<T>>;
+}
+
+// Stream converters
+export interface StreamCollectorOptions {
+	/** Unlimited when undefined or null; exceeding it rejects with a RangeError. */
+	maxBufferSize?: number | null;
+}
+
+export interface WritableStreamOptions extends StreamOptions {
+	/**
+	 * Runs once when the writable is torn down before it finishes by something
+	 * other than its own write/close failing: an upstream/pipe error, a writer
+	 * abort (browser) / destroy() (node), or `signal` firing. Receives the abort
+	 * reason (undefined if none). May be async; its own failure is ignored.
+	 */
+	abort?: (reason: unknown) => void | Promise<void>;
+}
+
+// Accepted by createReadableStream in both builds.
+export type ReadableInput<T> =
+	| string
+	| ArrayBufferLike
+	| ArrayBufferView
+	| T[]
+	| Iterable<T>
+	| AsyncIterable<T>;
+
+// Options helper
+export function makeOptions(options?: StreamOptions): Record<string, unknown>;
+
+// Timeout
+export function timeout(
+	ms: number,
+	options?: { signal?: AbortSignal },
+): Promise<void>;
+
+// Shared helpers
+export function resolveLazy<T>(value: T | (() => T)): T;
+// Streaming UTF-8 decode: byte chunks keep multi-byte chars split across
+// chunks intact, string chunks pass through; flush() emits trailing bytes.
+export function createChunkDecoder(options?: TextDecoderOptions): {
+	decode: (chunk: string | AllowSharedBufferSource) => string;
+	flush: () => string;
+};
+export function concatBytes(chunks: readonly Uint8Array[]): Uint8Array;

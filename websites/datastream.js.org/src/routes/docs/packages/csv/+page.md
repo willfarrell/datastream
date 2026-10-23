@@ -11,7 +11,7 @@ Parse, format, detect, clean, and coerce CSV data.
 npm install @datastream/csv
 ```
 
-## `csvDetectDelimitersStream` <span class="badge">PassThrough</span>
+## `csvDetectDelimitersStream` <span class="badge">Transform</span>
 
 Auto-detects the delimiter, newline, quote, and escape characters from the first line of data. Input chunks can be strings or UTF-8 bytes (`Uint8Array`/`Buffer`); output is always decoded text, so multi-byte characters split across byte chunks stay intact.
 

@@ -1,4 +1,4 @@
-import { deepStrictEqual, ok, strictEqual, throws } from "node:assert";
+import { deepStrictEqual, ok, rejects, strictEqual, throws } from "node:assert";
 import test, { describe } from "node:test";
 import {
 	arrowBatchFromArrayStream,
@@ -13,7 +13,20 @@ import {
 	pipeline,
 	streamToArray,
 } from "@datastream/core";
-import { Field, Float64, Int32, RecordBatch, Schema, Utf8 } from "apache-arrow";
+import {
+	Bool,
+	Field,
+	Float64,
+	Int8,
+	Int32,
+	Int64,
+	RecordBatch,
+	Schema,
+	TimestampMillisecond,
+	Uint8,
+	Uint32,
+	Utf8,
+} from "apache-arrow";
 import { variant } from "../variant.js";
 
 describe(`@datastream/arrow (${variant})`, () => {
@@ -963,5 +976,137 @@ describe(`@datastream/arrow (${variant})`, () => {
 			rows,
 			mixedStrings.map((a) => [a]),
 		);
+	});
+	// *** values validated against the sealed schema type *** //
+	// The Arrow builders coerce silently (Int32 wraps 3000000000 to -1294967296,
+	// truncates 2.7 to 2, turns "oops" into 0), so a row that does not fit the
+	// schema inferred from the first sampleSize rows must error, not corrupt.
+	test(`detect + batchFromObject rejects a later row that overflows the sampled Int32`, async () => {
+		const detect = arrowDetectSchemaStream({ sampleSize: 2 });
+		await rejects(
+			pipeline([
+				createReadableStream([{ id: 1 }, { id: 2 }, { id: 3_000_000_000 }]),
+				detect,
+				arrowBatchFromObjectStream({
+					schema: () => detect.result().value.schema,
+				}),
+			]),
+			{
+				name: "RangeError",
+				message:
+					'arrowBatchFromObjectStream: row 2, field "id" expects Int32, got 3000000000',
+			},
+		);
+	});
+
+	test(`arrowBatchFromArrayStream names the stream, row and column of a bad value`, async () => {
+		await rejects(
+			pipeline([
+				createReadableStream([[1], [2], [2.7]]),
+				arrowBatchFromArrayStream({
+					schema: new Schema([new Field("column0", new Int32(), true)]),
+				}),
+			]),
+			{
+				name: "TypeError",
+				message:
+					'arrowBatchFromArrayStream: row 2, field "column0" expects Int32, got 2.7',
+			},
+		);
+	});
+
+	const batchOne = (type, value, nullable = true) =>
+		streamToArray(
+			pipejoin([
+				createReadableStream([{ v: value }]),
+				arrowBatchFromObjectStream({
+					schema: new Schema([new Field("v", type, nullable)]),
+				}),
+				arrowToObjectStream(),
+			]),
+		).then((rows) => rows[0].v);
+	const prefix = 'arrowBatchFromObjectStream: row 0, field "v" expects';
+
+	test(`arrowBatchFromObjectStream accepts values that fit their column type`, async () => {
+		const date = new Date(1_000);
+		const cases = [
+			[new Int8(), 127, 127],
+			[new Int8(), -128, -128],
+			[new Uint8(), 0, 0],
+			[new Uint8(), 255, 255],
+			[new Int32(), 2_147_483_647, 2_147_483_647],
+			[new Int32(), -2_147_483_648, -2_147_483_648],
+			[new Uint32(), 3_000_000_000, 3_000_000_000],
+			// 64-bit ints are left to the builder (they take bigint).
+			[new Int64(), 5n, 5n],
+			[new Float64(), 2.7, 2.7],
+			[new Bool(), false, false],
+			[new TimestampMillisecond(), date, date],
+			[new TimestampMillisecond(), 2_000, new Date(2_000)],
+			// Utf8 is unchecked: non-strings keep their String() form.
+			[new Utf8(), 5, "5"],
+		];
+		for (const [type, value, expected] of cases) {
+			deepStrictEqual(
+				await batchOne(type, value),
+				expected,
+				`${type} ${value}`,
+			);
+		}
+	});
+
+	test(`arrowBatchFromObjectStream rejects values that do not fit their column type`, async () => {
+		const cases = [
+			[new Int8(), 128, "RangeError", "Int8, got 128"],
+			[new Int8(), -129, "RangeError", "Int8, got -129"],
+			[new Uint8(), 256, "RangeError", "Uint8, got 256"],
+			[new Uint8(), -1, "RangeError", "Uint8, got -1"],
+			[new Int32(), 2_147_483_648, "RangeError", "Int32, got 2147483648"],
+			[new Int32(), -2_147_483_649, "RangeError", "Int32, got -2147483649"],
+			[new Int32(), "oops", "TypeError", 'Int32, got "oops"'],
+			[new Int32(), true, "TypeError", "Int32, got true"],
+			[new Int32(), {}, "TypeError", "Int32, got [object Object]"],
+			[new Float64(), "1", "TypeError", 'Float64, got "1"'],
+			[new Bool(), 1, "TypeError", "Bool, got 1"],
+			[
+				new TimestampMillisecond(),
+				new Date(Number.NaN),
+				"TypeError",
+				"Timestamp<MILLISECOND>, got [object Date]",
+			],
+			[
+				new TimestampMillisecond(),
+				1.5,
+				"TypeError",
+				"Timestamp<MILLISECOND>, got 1.5",
+			],
+		];
+		for (const [type, value, name, message] of cases) {
+			await rejects(batchOne(type, value), {
+				name,
+				message: `${prefix} ${message}`,
+			});
+		}
+	});
+
+	test(`arrowBatchFromObjectStream allows nulls only in nullable fields`, async () => {
+		for (const value of [null, undefined, ""]) {
+			strictEqual(await batchOne(new Int32(), value), null);
+		}
+		strictEqual(await batchOne(new Utf8(), ""), "");
+		strictEqual(await batchOne(new Utf8(), "", false), "");
+		strictEqual(await batchOne(new Int32(), 1, false), 1);
+		const cases = [
+			[new Int32(), null, "non-null Int32, got null"],
+			[new Int32(), undefined, "non-null Int32, got undefined"],
+			[new Int32(), "", 'non-null Int32, got ""'],
+			[new Utf8(), null, "non-null Utf8, got null"],
+		];
+		for (const [type, value, message] of cases) {
+			await rejects(batchOne(type, value, false), {
+				name: "TypeError",
+				message: `${prefix} ${message}`,
+			});
+		}
 	});
 });

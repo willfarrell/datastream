@@ -195,6 +195,31 @@ describe(`@datastream/file (${variant})`, () => {
 		});
 	});
 
+	// A symlinked basePath (e.g. macOS /tmp) is allowed; path === basePath must
+	// still fail as traversal, not fall through to the symlink check.
+	nodeTest(
+		`fileReadStream and fileWriteStream reject path equal to a symlinked basePath`,
+		async () => {
+			const realBase = join(testDir, "realbase");
+			const linkBase = join(testDir, "linkbase");
+			mkdirSync(realBase);
+			symlinkSync(realBase, linkBase);
+			try {
+				await rejects(
+					() => fileReadStream({ path: linkBase, basePath: linkBase }),
+					{ message: "Path traversal detected" },
+				);
+				await rejects(
+					() => fileWriteStream({ path: linkBase, basePath: linkBase }),
+					{ message: "Path traversal detected" },
+				);
+			} finally {
+				rmSync(linkBase, { force: true });
+				rmSync(realBase, { recursive: true, force: true });
+			}
+		},
+	);
+
 	// *** Symlink rejection *** //
 	nodeTest(`fileReadStream should reject symlinks`, async () => {
 		const linkPath = join(testDir, "link.csv");
@@ -242,6 +267,28 @@ describe(`@datastream/file (${variant})`, () => {
 			await streamToString(stream);
 		},
 	);
+
+	// Extensions are case-insensitive on the file systems users pick from, so
+	// "REPORT.CSV" is a .csv file (and a ".JSON" accept entry matches ".json").
+	nodeTest(`extension check is case-insensitive`, async () => {
+		const upperFile = join(testDir, "UPPER.CSV");
+		writeFileSync(upperFile, testContent);
+		strictEqual(
+			await streamToString(
+				await fileReadStream({ path: upperFile, types: csvTypes }),
+			),
+			testContent,
+		);
+		const writable = await fileWriteStream({
+			path: join(testDir, "out.json"),
+			types: [{ accept: { "application/json": [".JSON"] } }],
+		});
+		strictEqual(isWritable(writable), true);
+		writable.destroy();
+		await rejects(() => fileReadStream({ path: upperFile, types: jsonTypes }), {
+			message: "Invalid extension",
+		});
+	});
 
 	nodeTest(`fileWriteStream should reject non-matching extension`, async () => {
 		await rejects(
@@ -781,6 +828,31 @@ describe(`@datastream/file (${variant})`, () => {
 			} finally {
 				pickedName = "in.csv";
 			}
+		});
+
+		test(`extension check is case-insensitive`, async () => {
+			pickedName = "IN.CSV";
+			try {
+				strictEqual(
+					await streamToString(await fileReadStream({ types: csvTypes })),
+					testContent,
+				);
+			} finally {
+				pickedName = "in.csv";
+			}
+			strictEqual(
+				isWritable(
+					await fileWriteStream({
+						path: "out.json",
+						types: [{ accept: { "application/json": [".JSON"] } }],
+					}),
+				),
+				true,
+			);
+			await rejects(
+				fileWriteStream({ path: "OUT.TXT", types: csvTypes }),
+				/Invalid extension/,
+			);
 		});
 
 		test(`fileWriteStream accepts an extensionless path when types allow ""`, async () => {

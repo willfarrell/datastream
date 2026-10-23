@@ -457,6 +457,13 @@ describe(`@datastream/encrypt (${variant})`, () => {
 		);
 	});
 
+	test(`decryptStream should throw for invalid aad`, async (_t) => {
+		await rejects(
+			() => decryptStream({ key, iv: randomBytes(12), aad: "not-a-buffer" }),
+			/aad must be/,
+		);
+	});
+
 	test(`decryptStream should throw for invalid key length`, async (_t) => {
 		await rejects(
 			() => decryptStream({ key: randomBytes(16), iv: randomBytes(12) }),

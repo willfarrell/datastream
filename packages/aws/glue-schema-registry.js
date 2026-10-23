@@ -58,8 +58,10 @@ export const awsGlueSchemaRegistryResolver = ({
 			return hit.value;
 		}
 		// Drop the stale entry so it doesn't sit ahead of fresh keys in the
-		// Map's FIFO order and get re-inserted at the tail below. delete() is a
-		// no-op when the key is absent, so the (stale-only) hit is implied.
+		// Map's FIFO order: the refreshed key is set() at the tail below, keeping
+		// eviction true-FIFO. delete() is a no-op when the key is absent, so the
+		// (stale-only) hit is implied. In-flight dedup means nothing re-inserts
+		// the key before that set().
 		cache.delete(schemaVersionId);
 		const pending = inflight.get(schemaVersionId);
 		if (pending) return pending;
@@ -74,9 +76,6 @@ export const awsGlueSchemaRegistryResolver = ({
 					schemaDefinition: resp.SchemaDefinition,
 					dataFormat: resp.DataFormat,
 				};
-				// delete-then-set so a refreshed key lands at the tail of the
-				// Map's insertion order, keeping eviction true-FIFO.
-				cache.delete(schemaVersionId);
 				// maxCacheSize <= 0 disables caching; evicting down to a non-positive
 				// cap would otherwise spin forever on an empty Map.
 				if (cacheCap > 0) {

@@ -139,7 +139,10 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 						return null;
 					}
 					this.lastIndex = index + pattern.length;
-					return Object.assign([pattern], { index, input: text });
+					const match = [pattern];
+					match.index = index;
+					match.input = text;
+					return match;
 				},
 			}
 		: pattern;
@@ -151,46 +154,62 @@ export const stringReplaceStream = (options, streamOptions = {}) => {
 	const wholeStream =
 		typeof replacement === "string" && /\$[`']/.test(replacement);
 	// String.prototype.replace's template expansion ($$, $&, $`, $', $n, $nn,
-	// $<name>), done per match so the RegExp can be run over the whole buffer
-	const expand = (template, match, text) =>
-		template.replace(
-			/\$(?:[$&`']|(\d\d?)|<([^>]*)>)/g,
-			(token, digits, name) => {
-				if (token === "$$") {
-					return "$";
-				}
-				if (token === "$&") {
-					return match[0];
-				}
-				if (token === "$`") {
-					return text.slice(0, match.index);
-				}
-				if (token === "$'") {
-					return text.slice(match.index + match[0].length);
-				}
-				if (name !== undefined) {
+	// $<name>), compiled once into literal and token parts that each match
+	// joins, instead of a regex pass over the template per match. The first
+	// match fixes what the tokens mean: `match.length` (group count) and
+	// whether the RegExp has named groups are the same for every match of one
+	// RegExp. Empty literal parts are kept so no part needs a guard.
+	const compile = (template, match) => {
+		const parts = [];
+		let last = 0;
+		for (const token of template.matchAll(/\$(?:[$&`']|(\d\d?)|<([^>]*)>)/g)) {
+			parts.push(template.slice(last, token.index));
+			last = token.index + token[0].length;
+			const [text, digits, name] = token;
+			if (text === "$$") {
+				parts.push("$");
+			} else if (text === "$&") {
+				parts.push((match) => match[0]);
+			} else if (text === "$`") {
+				parts.push((match, text) => text.slice(0, match.index));
+			} else if (text === "$'") {
+				parts.push((match, text) => text.slice(match.index + match[0].length));
+			} else if (name !== undefined) {
+				if (match.groups === undefined) {
 					// Without named groups "$<" is literal and the rest still expands
-					return match.groups === undefined
-						? `$<${expand(`${name}>`, match, text)}`
-						: (match.groups[name] ?? "");
+					parts.push("$<", ...compile(`${name}>`, match));
+				} else {
+					parts.push((match) => match.groups[name] ?? "");
 				}
+			} else {
 				const index = Number(digits);
-				if (index > 0 && index < match.length) {
-					return match[index] ?? "";
-				}
-				// "$nn" that isn't a group falls back to "$n" and a literal digit
 				const first = Number(digits[0]);
-				if (first > 0 && first < match.length) {
-					return (match[first] ?? "") + digits.slice(1);
+				if (index > 0 && index < match.length) {
+					parts.push((match) => match[index] ?? "");
+				} else if (first > 0 && first < match.length) {
+					// "$nn" that isn't a group falls back to "$n" and a literal digit
+					parts.push((match) => (match[first] ?? "") + digits.slice(1));
+				} else {
+					parts.push(text);
 				}
-				return token;
-			},
-		);
+			}
+		}
+		parts.push(template.slice(last));
+		return parts;
+	};
+	let parts;
 	const substitute =
 		typeof replacement === "function"
 			? (match, position, text) =>
 					replacement(...match, position, text, match.groups)
-			: (match, _position, text) => expand(replacement, match, text);
+			: (match, _position, text) => {
+					parts ??= compile(replacement, match);
+					let output = "";
+					for (const part of parts) {
+						output += typeof part === "string" ? part : part(match, text);
+					}
+					return output;
+				};
 	// Raw (not yet replaced) text; replacing twice would corrupt output
 	let buffer = "";
 	// Tail of already-emitted raw text, so lookbehind, ^ and \b see what

@@ -4,6 +4,9 @@ import type { DatastreamWritable, StreamOptions } from "@datastream/core";
 
 export function awsSNSSetClient(snsClient: unknown): void;
 
+// Batches by the SNS message size (Message + attribute names, types, values).
+// On destroy/abort, entries still buffered are attached to the error as
+// `failedMessages` (not sent).
 export function awsSNSPublishMessageStream(
 	options: {
 		client?: unknown;

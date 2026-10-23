@@ -5,14 +5,17 @@ import {
 	createReadableStream,
 } from "@datastream/core";
 
+// js-ipfs, kubo-rpc-client and helia all take AbortOptions ({ signal }), so an
+// aborted pipeline also cancels the request instead of letting it run on.
 export const ipfsGetStream = async ({ node, cid }, streamOptions = {}) => {
-	const source = await node.get(cid);
+	const source = await node.get(cid, { signal: streamOptions.signal });
 	return createReadableStream(source, streamOptions);
 };
 
 // wireTeardown(stream, teardown, streamOptions) hooks the platform's stream
 // lifecycle (node: error/close events; browser: the abort signal) so a parked
-// node.add is released on teardown.
+// node.add is released on teardown. It returns an unwire function, called once
+// node.add settles (nothing is left to release after that).
 export const makeIpfsAddStream =
 	(wireTeardown) =>
 	async ({ node, resultKey } = {}, streamOptions = {}) => {
@@ -68,7 +71,9 @@ export const makeIpfsAddStream =
 		// Promise.resolve so a client whose add() returns synchronously (or any
 		// non-Promise thenable) is normalized — mirrors ipfsGetStream's `await
 		// node.get`, and avoids a cryptic "add(...).then is not a function".
-		const addPromise = Promise.resolve(node.add(source())).then(
+		const addPromise = Promise.resolve(
+			node.add(source(), { signal: streamOptions.signal }),
+		).then(
 			(result) => {
 				// The consumer is finished; release any parked producer so a client
 				// that resolves without draining the source can't deadlock the
@@ -152,7 +157,8 @@ export const makeIpfsAddStream =
 			onProduced();
 			onPulled();
 		};
-		wireTeardown(stream, teardown, streamOptions);
+		const unwire = wireTeardown(stream, teardown, streamOptions);
+		addPromise.then(unwire, unwire);
 
 		stream.result = () => ({
 			key: resultKey ?? "cid",

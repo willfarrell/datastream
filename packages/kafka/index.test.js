@@ -1,9 +1,15 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert";
+import { EventEmitter } from "node:events";
 import test, { describe } from "node:test";
-import { streamToArray } from "@datastream/core";
 import {
+	createReadableStream,
+	pipeline,
+	streamToArray,
+} from "@datastream/core";
+import {
+	kafkaCommitStream,
 	kafkaConnect,
 	kafkaConsumeStream,
 	kafkaProduceStream,
@@ -194,6 +200,52 @@ describe("@datastream/kafka", () => {
 		strictEqual(consumerMock.disconnectCalled, 0);
 	});
 
+	test("kafkaConnect: disconnect() still disconnects consumer when producer.disconnect throws", async () => {
+		const { Kafka, producerMock, consumerMock } = makeFakeKafka({
+			disconnectProducer: async () => {
+				throw new Error("producer disconnect failed");
+			},
+		});
+		const conn = await kafkaConnect({ groupId: "g1", Kafka });
+		await rejects(() => conn.disconnect(), {
+			message: "producer disconnect failed",
+		});
+		strictEqual(producerMock.disconnectCalled, 1);
+		strictEqual(
+			consumerMock.disconnectCalled,
+			1,
+			"consumer still disconnected",
+		);
+	});
+
+	test("kafkaConnect: disconnect() rethrows the first rejection when both fail", async () => {
+		const { Kafka } = makeFakeKafka({
+			disconnectProducer: async () => {
+				throw new Error("producer disconnect failed");
+			},
+			disconnectConsumer: async () => {
+				throw new Error("consumer disconnect failed");
+			},
+		});
+		const conn = await kafkaConnect({ groupId: "g1", Kafka });
+		await rejects(() => conn.disconnect(), {
+			message: "producer disconnect failed",
+		});
+	});
+
+	test("kafkaConnect: disconnect() rethrows consumer error when only consumer fails", async () => {
+		const { Kafka, producerMock } = makeFakeKafka({
+			disconnectConsumer: async () => {
+				throw new Error("consumer disconnect failed");
+			},
+		});
+		const conn = await kafkaConnect({ groupId: "g1", Kafka });
+		await rejects(() => conn.disconnect(), {
+			message: "consumer disconnect failed",
+		});
+		strictEqual(producerMock.disconnectCalled, 1);
+	});
+
 	test("kafkaConnect: producer connect error triggers teardown and rethrows", async () => {
 		const { Kafka, producerMock } = makeFakeKafka({
 			connectProducer: async () => {
@@ -237,6 +289,7 @@ describe("@datastream/kafka", () => {
 	test("module has only named exports", async () => {
 		const mod = await import("@datastream/kafka");
 		deepStrictEqual(Object.keys(mod).sort(), [
+			"kafkaCommitStream",
 			"kafkaConnect",
 			"kafkaConsumeStream",
 			"kafkaProduceStream",
@@ -1050,6 +1103,138 @@ describe("@datastream/kafka", () => {
 		strictEqual(received.length, 2);
 	});
 
+	test("kafkaConsumeStream: stop() does not deadlock when consumer.stop waits for a parked eachMessage", async () => {
+		// kafkajs runner.stop() waits for any in-flight eachMessage. Under
+		// backpressure that callback is parked in waitForRead(); stop() must
+		// release it before awaiting consumer.stop() or the two wait on each other.
+		let inFlight = Promise.resolve();
+		const consumer = makeMessageConsumer([]);
+		const baseStop = consumer.stop;
+		consumer.stop = async () => {
+			await inFlight;
+			await baseStop();
+		};
+		const stream = await kafkaConsumeStream(
+			{ consumer, topics: "t" },
+			{ highWaterMark: 1 },
+		);
+		// Nobody reads the stream: the first push fills the buffer (HWM 1) and
+		// the callback parks waiting for _read.
+		inFlight = consumer._eachMessage({
+			topic: "t",
+			partition: 0,
+			message: {
+				offset: "0",
+				key: null,
+				value: "v0",
+				headers: {},
+				timestamp: "0",
+			},
+		});
+		let parked = true;
+		inFlight.then(() => {
+			parked = false;
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		ok(parked, "eachMessage is parked on backpressure");
+
+		let timer;
+		const timeout = new Promise((_resolve, reject) => {
+			timer = setTimeout(() => reject(new Error("stop() deadlocked")), 1000);
+		});
+		try {
+			await Promise.race([stream.stop(), timeout]);
+		} finally {
+			clearTimeout(timer);
+		}
+		strictEqual(parked, false, "parked eachMessage released");
+		strictEqual(consumer.stopCalled, 1);
+		stream.destroy();
+	});
+
+	test("kafkaConsumeStream: destroy() does not deadlock when consumer.stop waits for a parked eachMessage", async () => {
+		let inFlight = Promise.resolve();
+		const consumer = makeMessageConsumer([]);
+		const baseStop = consumer.stop;
+		consumer.stop = async () => {
+			await inFlight;
+			await baseStop();
+		};
+		const stream = await kafkaConsumeStream(
+			{ consumer, topics: "t" },
+			{ highWaterMark: 1 },
+		);
+		inFlight = consumer._eachMessage({
+			topic: "t",
+			partition: 0,
+			message: {
+				offset: "0",
+				key: null,
+				value: "v0",
+				headers: {},
+				timestamp: "0",
+			},
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		let timer;
+		const timeout = new Promise((_resolve, reject) => {
+			timer = setTimeout(() => reject(new Error("destroy deadlocked")), 1000);
+		});
+		try {
+			await Promise.race([closed, timeout]);
+		} finally {
+			clearTimeout(timer);
+		}
+		await inFlight;
+		strictEqual(consumer.stopCalled, 1);
+	});
+
+	test("kafkaConsumeStream: abort does not deadlock when consumer.stop waits for a parked eachMessage", async () => {
+		let inFlight = Promise.resolve();
+		const consumer = makeMessageConsumer([]);
+		const baseStop = consumer.stop;
+		consumer.stop = async () => {
+			await inFlight;
+			await baseStop();
+		};
+		const controller = new AbortController();
+		const stream = await kafkaConsumeStream(
+			{ consumer, topics: "t" },
+			{ highWaterMark: 1, signal: controller.signal },
+		);
+		inFlight = consumer._eachMessage({
+			topic: "t",
+			partition: 0,
+			message: {
+				offset: "0",
+				key: null,
+				value: "v0",
+				headers: {},
+				timestamp: "0",
+			},
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		controller.abort();
+
+		let timer;
+		const timeout = new Promise((_resolve, reject) => {
+			timer = setTimeout(() => reject(new Error("abort deadlocked")), 1000);
+		});
+		try {
+			await Promise.race([inFlight, timeout]);
+		} finally {
+			clearTimeout(timer);
+		}
+		// consumer.stop() ran (after the parked callback settled) and the stream
+		// ended rather than hanging.
+		await new Promise((resolve) => setImmediate(resolve));
+		strictEqual(consumer.stopCalled, 1);
+		stream.destroy();
+	});
+
 	// ---------------------------------------------------------------------------
 	// kafkaConsumeStream: stopConsumerOnce memoization
 	// ---------------------------------------------------------------------------
@@ -1682,5 +1867,562 @@ describe("@datastream/kafka", () => {
 		const err = await new Promise((resolve) => stream.once("error", resolve));
 		strictEqual(err.message, "run rejected");
 		strictEqual(stream.destroyed, true);
+	});
+
+	// ---------------------------------------------------------------------------
+	// kafkaCommitStream
+	// ---------------------------------------------------------------------------
+
+	/** Fake kafkajs consumer exposing commitOffsets + the GROUP_JOIN instrumentation event. */
+	const makeCommitConsumer = ({ commitOffsets = async () => {} } = {}) => {
+		const consumer = {
+			commits: [],
+			listeners: new Map(),
+			removed: [],
+			events: { STOP: "consumer.stop", GROUP_JOIN: "consumer.group_join" },
+			on: (eventName, listener) => {
+				consumer.listeners.set(eventName, listener);
+				return () => {
+					consumer.removed.push(eventName);
+					consumer.listeners.delete(eventName);
+				};
+			},
+			commitOffsets: async (offsets) => {
+				consumer.commits.push(offsets);
+				return commitOffsets(offsets);
+			},
+		};
+		return consumer;
+	};
+
+	const msg = (topic, partition, offset) => ({
+		topic,
+		partition,
+		offset,
+		key: null,
+		value: "v",
+		headers: {},
+		timestamp: "0",
+	});
+
+	test("kafkaCommitStream: throws TypeError when consumer is missing", async () => {
+		await rejects(() => kafkaCommitStream(), {
+			name: "TypeError",
+			message: "kafkaCommitStream: consumer required",
+		});
+		await rejects(() => kafkaCommitStream({}), {
+			name: "TypeError",
+			message: "kafkaCommitStream: consumer required",
+		});
+	});
+
+	test("kafkaCommitStream: throws TypeError when batchSize < 1", async () => {
+		const consumer = makeCommitConsumer();
+		await rejects(() => kafkaCommitStream({ consumer, batchSize: 0 }), {
+			name: "TypeError",
+			message: "kafkaCommitStream: batchSize must be >= 1",
+		});
+		await rejects(
+			() => kafkaCommitStream({ consumer, batchSize: Number.NaN }),
+			{
+				name: "TypeError",
+				message: "kafkaCommitStream: batchSize must be >= 1",
+			},
+		);
+	});
+
+	test("kafkaCommitStream: commits highest offset + 1 per topic-partition in final()", async () => {
+		const consumer = makeCommitConsumer();
+		const stream = await kafkaCommitStream({ consumer });
+		await pipeline([
+			createReadableStream([
+				msg("a", 0, "4"),
+				msg("a", 1, "7"),
+				msg("a", 0, "5"),
+				msg("b", 0, "0"),
+				msg("a", 1, "8"),
+			]),
+			stream,
+		]);
+		deepStrictEqual(consumer.commits, [
+			[
+				{ topic: "a", partition: 0, offset: "6" },
+				{ topic: "a", partition: 1, offset: "9" },
+				{ topic: "b", partition: 0, offset: "1" },
+			],
+		]);
+	});
+
+	test("kafkaCommitStream: commits every batchSize messages and the rest in final()", async () => {
+		const consumer = makeCommitConsumer();
+		const stream = await kafkaCommitStream({ consumer, batchSize: 2 });
+		await pipeline([
+			createReadableStream([
+				msg("t", 0, "0"),
+				msg("t", 0, "1"),
+				msg("t", 0, "2"),
+				msg("t", 0, "3"),
+				msg("t", 0, "4"),
+			]),
+			stream,
+		]);
+		deepStrictEqual(consumer.commits, [
+			[{ topic: "t", partition: 0, offset: "2" }],
+			[{ topic: "t", partition: 0, offset: "4" }],
+			[{ topic: "t", partition: 0, offset: "5" }],
+		]);
+	});
+
+	test("kafkaCommitStream: batchSize defaults to 100", async () => {
+		const consumer = makeCommitConsumer();
+		const stream = await kafkaCommitStream({ consumer });
+		const chunks = [];
+		for (let i = 0; i < 101; i++) chunks.push(msg("t", 0, String(i)));
+		await pipeline([createReadableStream(chunks), stream]);
+		deepStrictEqual(consumer.commits, [
+			[{ topic: "t", partition: 0, offset: "100" }],
+			[{ topic: "t", partition: 0, offset: "101" }],
+		]);
+	});
+
+	test("kafkaCommitStream: never commits an offset lower than one already committed", async () => {
+		const consumer = makeCommitConsumer();
+		const stream = await kafkaCommitStream({ consumer, batchSize: 1 });
+		await pipeline([
+			createReadableStream([
+				msg("t", 0, "10"),
+				// redelivered / out-of-order: lower and equal offsets are ignored
+				msg("t", 0, "5"),
+				msg("t", 0, "10"),
+			]),
+			stream,
+		]);
+		deepStrictEqual(consumer.commits, [
+			[{ topic: "t", partition: 0, offset: "11" }],
+		]);
+	});
+
+	test("kafkaCommitStream: computes offset + 1 beyond Number precision", async () => {
+		const consumer = makeCommitConsumer();
+		const stream = await kafkaCommitStream({ consumer });
+		await pipeline([
+			createReadableStream([msg("t", 0, "9007199254740993")]),
+			stream,
+		]);
+		deepStrictEqual(consumer.commits, [
+			[{ topic: "t", partition: 0, offset: "9007199254740994" }],
+		]);
+	});
+
+	test("kafkaCommitStream: empty stream commits nothing", async () => {
+		const consumer = makeCommitConsumer();
+		const stream = await kafkaCommitStream({ consumer });
+		await pipeline([createReadableStream([]), stream]);
+		deepStrictEqual(consumer.commits, []);
+	});
+
+	test("kafkaCommitStream: listens for GROUP_JOIN only and removes it when the stream closes", async () => {
+		const consumer = makeCommitConsumer();
+		const stream = await kafkaCommitStream({ consumer });
+		strictEqual(
+			typeof consumer.listeners.get("consumer.group_join"),
+			"function",
+		);
+		strictEqual(consumer.listeners.has("consumer.stop"), false);
+		await pipeline([createReadableStream([]), stream]);
+		await new Promise((resolve) => setImmediate(resolve));
+		deepStrictEqual(consumer.removed, ["consumer.group_join"]);
+	});
+
+	test("kafkaCommitStream: destroy() drops pending offsets and removes the GROUP_JOIN listener", async () => {
+		const consumer = makeCommitConsumer();
+		const stream = await kafkaCommitStream({ consumer });
+		await new Promise((resolve) => stream.write(msg("t", 0, "0"), resolve));
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		deepStrictEqual(consumer.commits, []);
+		deepStrictEqual(consumer.removed, ["consumer.group_join"]);
+	});
+
+	test("kafkaCommitStream: commitOffsets rejection errors the stream", async () => {
+		const consumer = makeCommitConsumer({
+			commitOffsets: async () => {
+				throw new Error("commit failed");
+			},
+		});
+		const stream = await kafkaCommitStream({ consumer });
+		await rejects(
+			() => pipeline([createReadableStream([msg("t", 0, "0")]), stream]),
+			{ message: "commit failed" },
+		);
+	});
+
+	test("kafkaCommitStream: commits what kafkaConsumeStream emitted", async () => {
+		const commitConsumer = makeCommitConsumer();
+		const consumer = makeMessageConsumer([]);
+		consumer.commitOffsets = commitConsumer.commitOffsets;
+		consumer.events = commitConsumer.events;
+		consumer.on = commitConsumer.on;
+		const source = await kafkaConsumeStream({ consumer, topics: "t" });
+		const sink = await kafkaCommitStream({ consumer, batchSize: 1 });
+		setTimeout(async () => {
+			await consumer._eachMessage({
+				topic: "t",
+				partition: 3,
+				message: { offset: "41", key: null, value: "v", headers: {} },
+			});
+			await source.stop();
+		}, 0);
+		await pipeline([source, sink]);
+		deepStrictEqual(commitConsumer.commits, [
+			[{ topic: "t", partition: 3, offset: "42" }],
+		]);
+	});
+
+	// ---------------------------------------------------------------------------
+	// kafkaCommitStream / kafkaConsumeStream: kafkajs group lifecycle
+	// ---------------------------------------------------------------------------
+
+	const NOT_INITIALIZED =
+		"Consumer group was not initialized, consumer#run must be called first";
+	const kafkajsError = (message) =>
+		Object.assign(new Error(message), { name: "KafkaJSNonRetriableError" });
+
+	/**
+	 * Fake mirroring kafkajs src/consumer/index.js: run() creates the group
+	 * (GROUP_JOIN), stop() and a crash drop it (STOP), and commitOffsets throws
+	 * KafkaJSNonRetriableError while no group exists. `log` records the order.
+	 */
+	const makeKafkajsConsumer = () => {
+		const emitter = new EventEmitter();
+		const consumer = {
+			log: [],
+			group: false,
+			eachMessage: null,
+			events: { STOP: "consumer.stop", GROUP_JOIN: "consumer.group_join" },
+			on: (eventName, listener) => {
+				emitter.on(eventName, listener);
+				return () => emitter.off(eventName, listener);
+			},
+			subscribe: async () => {},
+			run: async ({ eachMessage }) => {
+				consumer.eachMessage = eachMessage;
+				consumer.join();
+			},
+			join: () => {
+				consumer.group = true;
+				emitter.emit("consumer.group_join");
+			},
+			leave: () => {
+				consumer.group = false;
+				emitter.emit("consumer.stop");
+			},
+			stop: async () => {
+				consumer.log.push("stop");
+				consumer.leave();
+			},
+			commitOffsets: async (offsets) => {
+				if (!consumer.group) {
+					consumer.log.push(["refused", offsets]);
+					throw kafkajsError(NOT_INITIALIZED);
+				}
+				consumer.log.push(["commit", offsets]);
+			},
+		};
+		return consumer;
+	};
+	const deliver = (consumer, offset, partition = 0) =>
+		consumer.eachMessage({
+			topic: "t",
+			partition,
+			message: { offset, key: null, value: "v", headers: {}, timestamp: "0" },
+		});
+	const write = (stream, chunk) =>
+		new Promise((resolve, reject) =>
+			stream.write(chunk, (err) => (err ? reject(err) : resolve())),
+		);
+	const commits = (consumer) =>
+		consumer.log.filter((entry) => entry[0] === "commit").map(([, o]) => o);
+
+	test("kafkaCommitStream: keeps committing after a kafkajs crash-restart (STOP then GROUP_JOIN)", async () => {
+		const consumer = makeKafkajsConsumer();
+		await consumer.run({});
+		const stream = await kafkaCommitStream({ consumer, batchSize: 1 });
+		await write(stream, msg("t", 0, "0"));
+		// kafkajs onCrash: disconnect() -> stop() emits STOP; a commit in the gap
+		// is refused as "not initialized" and must not error the stream.
+		consumer.leave();
+		await write(stream, msg("t", 0, "1"));
+		consumer.join();
+		await write(stream, msg("t", 0, "2"));
+		await write(stream, msg("t", 0, "3"));
+		await new Promise((resolve) => stream.end(resolve));
+		deepStrictEqual(consumer.log, [
+			["commit", [{ topic: "t", partition: 0, offset: "1" }]],
+			["refused", [{ topic: "t", partition: 0, offset: "2" }]],
+			["commit", [{ topic: "t", partition: 0, offset: "3" }]],
+			["commit", [{ topic: "t", partition: 0, offset: "4" }]],
+		]);
+	});
+
+	test("kafkaCommitStream: keeps refused offsets pending for the next commit", async () => {
+		const consumer = makeKafkajsConsumer();
+		const stream = await kafkaCommitStream({ consumer, batchSize: 2 });
+		await write(stream, msg("t", 0, "0"));
+		await write(stream, msg("t", 1, "0"));
+		// The group comes back without a GROUP_JOIN reset (e.g. a refused commit
+		// racing run()): the refused offsets are retried, not dropped.
+		consumer.group = true;
+		await write(stream, msg("t", 0, "1"));
+		await new Promise((resolve) => stream.end(resolve));
+		deepStrictEqual(consumer.log, [
+			[
+				"refused",
+				[
+					{ topic: "t", partition: 0, offset: "1" },
+					{ topic: "t", partition: 1, offset: "1" },
+				],
+			],
+			[
+				"commit",
+				[
+					{ topic: "t", partition: 0, offset: "2" },
+					{ topic: "t", partition: 1, offset: "1" },
+				],
+			],
+		]);
+	});
+
+	test("kafkaCommitStream: GROUP_JOIN resets high-water marks so a replay commits", async () => {
+		const consumer = makeKafkajsConsumer();
+		await consumer.run({});
+		const stream = await kafkaCommitStream({ consumer, batchSize: 1 });
+		await write(stream, msg("t", 0, "10"));
+		// Operator reset the group's offsets backwards; after the rejoin kafkajs
+		// redelivers from 5, and those commits must not be held at 11.
+		consumer.join();
+		await write(stream, msg("t", 0, "5"));
+		await write(stream, msg("t", 0, "6"));
+		await new Promise((resolve) => stream.end(resolve));
+		deepStrictEqual(commits(consumer), [
+			[{ topic: "t", partition: 0, offset: "11" }],
+			[{ topic: "t", partition: 0, offset: "6" }],
+			[{ topic: "t", partition: 0, offset: "7" }],
+		]);
+	});
+
+	test("kafkaCommitStream: GROUP_JOIN drops offsets pending from the previous generation", async () => {
+		const consumer = makeKafkajsConsumer();
+		await consumer.run({});
+		const stream = await kafkaCommitStream({ consumer });
+		await write(stream, msg("t", 0, "0"));
+		await write(stream, msg("t", 1, "0"));
+		// The partitions may now belong to another member: committing them could
+		// move its offsets. Leave them uncommitted (redelivered, at-least-once).
+		consumer.join();
+		await write(stream, msg("t", 1, "1"));
+		await new Promise((resolve) => stream.end(resolve));
+		deepStrictEqual(commits(consumer), [
+			[{ topic: "t", partition: 1, offset: "2" }],
+		]);
+	});
+
+	test("kafkaCommitStream: other KafkaJSNonRetriableError rejections error the stream", async () => {
+		const consumer = makeCommitConsumer({
+			commitOffsets: async () => {
+				throw kafkajsError("Invalid topic t");
+			},
+		});
+		const stream = await kafkaCommitStream({ consumer });
+		await rejects(
+			() => pipeline([createReadableStream([msg("t", 0, "0")]), stream]),
+			{ name: "KafkaJSNonRetriableError", message: "Invalid topic t" },
+		);
+	});
+
+	test("kafkaCommitStream: a non-kafkajs error with the not-initialized message errors the stream", async () => {
+		const consumer = makeCommitConsumer({
+			commitOffsets: async () => {
+				throw new Error(NOT_INITIALIZED);
+			},
+		});
+		const stream = await kafkaCommitStream({ consumer });
+		await rejects(
+			() => pipeline([createReadableStream([msg("t", 0, "0")]), stream]),
+			{ name: "Error", message: NOT_INITIALIZED },
+		);
+	});
+
+	test("kafkaConsumeStream: graceful stop() commits the tail before consumer.stop()", async () => {
+		const consumer = makeKafkajsConsumer();
+		const source = await kafkaConsumeStream({ consumer, topics: "t" });
+		const sink = await kafkaCommitStream({ consumer, batchSize: 100 });
+		const done = pipeline([source, sink]);
+		// 50 messages, fewer than batchSize: only final() commits them.
+		for (let i = 0; i < 50; i++) await deliver(consumer, String(i));
+		await source.stop();
+		await done;
+		deepStrictEqual(consumer.log, [
+			["commit", [{ topic: "t", partition: 0, offset: "50" }]],
+			"stop",
+		]);
+	});
+
+	// An ended-then-destroyed readable that closes before 'end' is seen as
+	// finished by pipe, which then never ends the destination: the pipeline
+	// must still settle rather than hang.
+	test("kafkaConsumeStream: stop() then destroy() before flowing still settles the pipeline", async () => {
+		const consumer = makeKafkajsConsumer();
+		const source = await kafkaConsumeStream({ consumer, topics: "t" });
+		const sink = await kafkaCommitStream({ consumer });
+		const stopping = source.stop();
+		source.destroy();
+		const settled = await Promise.race([
+			pipeline([source, sink]).then(
+				() => "resolved",
+				() => "rejected",
+			),
+			new Promise((resolve) => setTimeout(resolve, 1000, "hung")),
+		]);
+		await stopping;
+		strictEqual(settled === "hung", false, "pipeline hung");
+		strictEqual(sink.destroyed, true);
+	});
+
+	test("kafkaConsumeStream: stop() waits for every open commit stream on the consumer", async () => {
+		const consumer = makeKafkajsConsumer();
+		const source = await kafkaConsumeStream({ consumer, topics: "t" });
+		const sink = await kafkaCommitStream({ consumer });
+		const other = await kafkaCommitStream({ consumer });
+		const done = pipeline([source, sink]);
+		await deliver(consumer, "0");
+		let stopped = false;
+		const stopping = source.stop().then(() => {
+			stopped = true;
+		});
+		await done;
+		await new Promise((resolve) => setImmediate(resolve));
+		strictEqual(stopped, false, "still waiting for the other commit stream");
+		deepStrictEqual(consumer.log, [
+			["commit", [{ topic: "t", partition: 0, offset: "1" }]],
+		]);
+		other.destroy();
+		await stopping;
+		deepStrictEqual(consumer.log.at(-1), "stop");
+	});
+
+	test("kafkaConsumeStream: stop() does not wait for commit streams of another consumer", async () => {
+		const consumer = makeKafkajsConsumer();
+		const source = await kafkaConsumeStream({ consumer, topics: "t" });
+		const other = await kafkaCommitStream({ consumer: makeKafkajsConsumer() });
+		source.resume();
+		await source.stop();
+		deepStrictEqual(consumer.log, ["stop"]);
+		other.destroy();
+	});
+
+	test("kafkaConsumeStream: a message arriving while stop() drains is held, then rejected after consumer.stop()", async () => {
+		const consumer = makeKafkajsConsumer();
+		const source = await kafkaConsumeStream({ consumer, topics: "t" });
+		const sink = await kafkaCommitStream({ consumer });
+		const received = [];
+		source.on("data", (chunk) => received.push(chunk.offset));
+		await deliver(consumer, "0");
+		const stopping = source.stop();
+		// Rejecting now would make kafkajs crash/restart the consumer mid-drain;
+		// resolving would mark it handled. Hold it until the group is left.
+		let settled = false;
+		const late = deliver(consumer, "1").finally(() => {
+			settled = true;
+		});
+		late.catch(() => {});
+		await new Promise((resolve) => setImmediate(resolve));
+		strictEqual(settled, false, "held while draining");
+		sink.end();
+		await stopping;
+		await rejects(late, {
+			message:
+				"kafkaConsumeStream: stream stopped; message at t[0]@1 not delivered",
+		});
+		deepStrictEqual(received, ["0"]);
+		deepStrictEqual(consumer.log, ["stop"]);
+	});
+
+	test("kafkaConsumeStream: abort leaves the group first, so pending offsets are not committed", async () => {
+		const consumer = makeKafkajsConsumer();
+		const controller = new AbortController();
+		const source = await kafkaConsumeStream(
+			{ consumer, topics: "t" },
+			{ signal: controller.signal },
+		);
+		const sink = await kafkaCommitStream({ consumer });
+		const done = pipeline([source, sink]);
+		await deliver(consumer, "0");
+		await deliver(consumer, "1");
+		controller.abort();
+		await done;
+		deepStrictEqual(consumer.log, [
+			"stop",
+			["refused", [{ topic: "t", partition: 0, offset: "2" }]],
+		]);
+	});
+
+	test("kafkaConsumeStream: destroy() mid-drain stops the consumer without waiting for commit streams", async () => {
+		const consumer = makeKafkajsConsumer();
+		const source = await kafkaConsumeStream({ consumer, topics: "t" });
+		const sink = await kafkaCommitStream({ consumer });
+		await deliver(consumer, "0");
+		// Not read: the readable has not ended, so destroy() is a hard stop.
+		const stopping = source.stop();
+		const closed = new Promise((resolve) => source.once("close", resolve));
+		source.destroy();
+		await closed;
+		deepStrictEqual(consumer.log, ["stop"]);
+		sink.destroy();
+		await stopping;
+	});
+
+	test("kafkaConsumeStream: runPromise rejection is swallowed by abort", async () => {
+		const consumer = {
+			subscribe: async () => {},
+			stopCalled: 0,
+			stop: async () => {
+				consumer.stopCalled++;
+				consumer._runReject(new Error("run rejected"));
+			},
+			run: async () =>
+				new Promise((_resolve, reject) => {
+					consumer._runReject = reject;
+				}),
+		};
+		const controller = new AbortController();
+		const stream = await kafkaConsumeStream(
+			{ consumer, topics: "t" },
+			{ signal: controller.signal },
+		);
+		let errored = null;
+		stream.on("error", (e) => {
+			errored = e;
+		});
+		const ended = new Promise((resolve) => stream.once("end", resolve));
+		stream.resume();
+		controller.abort();
+		await ended;
+		await new Promise((resolve) => setImmediate(resolve));
+		strictEqual(errored, null);
+		strictEqual(consumer.stopCalled, 1);
+	});
+
+	test("kafkaConsumeStream: stop() does not wait for an already-closed commit stream", async () => {
+		const consumer = makeKafkajsConsumer();
+		const earlier = await kafkaCommitStream({ consumer });
+		const closed = new Promise((resolve) => earlier.once("close", resolve));
+		earlier.destroy();
+		await closed;
+		const source = await kafkaConsumeStream({ consumer, topics: "t" });
+		source.resume();
+		await source.stop();
+		deepStrictEqual(consumer.log, ["stop"]);
 	});
 });

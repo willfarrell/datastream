@@ -1,26 +1,35 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
+// Types for the node build: the platform-neutral types.d.ts plus node stream
+// variants, Buffer and backpressureGauge (needs @types/node).
 import type { Readable, Transform, Writable } from "node:stream";
+import type {
+	ReadableInput,
+	ResultStream,
+	StreamCollectorOptions,
+	StreamOptions,
+	WritableStreamOptions,
+} from "./types.js";
 
-// Core types used across all packages
-export interface StreamOptions {
-	highWaterMark?: number;
-	chunkSize?: number;
-	signal?: AbortSignal;
-	[key: string]: unknown;
-}
+export type {
+	ResultStream,
+	StreamCollectorOptions,
+	StreamOptions,
+	StreamResult,
+	WritableStreamOptions,
+} from "./types.js";
+export {
+	concatBytes,
+	createChunkDecoder,
+	makeOptions,
+	resolveLazy,
+	timeout,
+} from "./types.js";
 
-export interface StreamResult<T = unknown> {
-	key: string;
-	value: T;
-}
-
-export interface ResultStream<T = unknown> {
-	result: () => StreamResult<T> | Promise<StreamResult<T>>;
-}
-
+// Method syntax keeps push bivariant, so a DatastreamReadable<string> is still
+// assignable to DatastreamReadable<unknown>.
 export type DatastreamReadable<T = unknown> = (ReadableStream<T> | Readable) & {
-	push?: (chunk: T | null) => void;
+	push?(chunk: T | null): void;
 };
 export type DatastreamTransform<I = unknown, O = I> =
 	| TransformStream<I, O>
@@ -50,11 +59,6 @@ export function result(
 ): Promise<Record<string, unknown>>;
 
 // Stream converters
-export interface StreamCollectorOptions {
-	/** Unlimited when undefined or null; exceeding it rejects with a RangeError. */
-	maxBufferSize?: number | null;
-}
-
 export function streamToArray<T = unknown>(
 	stream: DatastreamReadable<T>,
 	options?: StreamCollectorOptions,
@@ -72,22 +76,13 @@ export function streamToBuffer(
 	options?: StreamCollectorOptions,
 ): Promise<Buffer>;
 
-// Type guards
-export function isReadable(stream: unknown): stream is ReadableStream;
-export function isWritable(stream: unknown): stream is WritableStream;
-
-// Options helper
-export function makeOptions(options?: StreamOptions): Record<string, unknown>;
+// Type guards: the node build checks `instanceof` node Readable/Writable.
+export function isReadable(stream: unknown): stream is Readable;
+export function isWritable(stream: unknown): stream is Writable;
 
 // Stream creators
 export function createReadableStream<T = unknown>(
-	input?:
-		| string
-		| ArrayBufferLike
-		| ArrayBufferView
-		| T[]
-		| Iterable<T>
-		| AsyncIterable<T>,
+	input?: ReadableInput<T>,
 	streamOptions?: StreamOptions,
 ): DatastreamReadable<T>;
 
@@ -110,16 +105,6 @@ export function createTransformStream<I = unknown, O = unknown>(
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<I, O>;
 
-export interface WritableStreamOptions extends StreamOptions {
-	/**
-	 * Runs once when the writable is torn down before it finishes by something
-	 * other than its own write/close failing: an upstream/pipe error, a writer
-	 * abort (browser) / destroy() (node), or `signal` firing. Receives the abort
-	 * reason (undefined if none). May be async; its own failure is ignored.
-	 */
-	abort?: (reason: unknown) => void | Promise<void>;
-}
-
 export function createWritableStream<T = unknown>(
 	write?: ((chunk: T) => void | Promise<void>) | null,
 	close?: (() => void | Promise<void>) | WritableStreamOptions,
@@ -134,19 +119,3 @@ export function backpressureGauge(streams: Record<string, unknown>): Record<
 		total: { timestamp?: number; duration?: number };
 	}
 >;
-
-// Timeout
-export function timeout(
-	ms: number,
-	options?: { signal?: AbortSignal },
-): Promise<void>;
-
-// Shared helpers
-export function resolveLazy<T>(value: T | (() => T)): T;
-// Streaming UTF-8 decode: byte chunks keep multi-byte chars split across
-// chunks intact, string chunks pass through; flush() emits trailing bytes.
-export function createChunkDecoder(options?: TextDecoderOptions): {
-	decode: (chunk: string | AllowSharedBufferSource) => string;
-	flush: () => string;
-};
-export function concatBytes(chunks: readonly Uint8Array[]): Uint8Array;

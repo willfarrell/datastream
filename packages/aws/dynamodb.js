@@ -9,14 +9,19 @@ import {
 	ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { createWritableStream } from "@datastream/core";
-import { awsBackoff, awsClientDefaults } from "./client.js";
+import {
+	awsBackoff,
+	awsClientDefaults,
+	awsReadableStream,
+	awsUnsentOnDestroy,
+} from "./client.js";
 
 // Created on first use, so importing the module (or always passing a per-call
 // client) never constructs an unused SDK client.
 let defaultClient;
 const getDefaultClient = () =>
 	(defaultClient ??= new DynamoDBClient(awsClientDefaults));
-export const awsDynamoDBSetClient = (ddbClient, _translateConfig) => {
+export const awsDynamoDBSetClient = (ddbClient) => {
 	defaultClient = ddbClient;
 };
 
@@ -24,12 +29,12 @@ export const awsDynamoDBSetClient = (ddbClient, _translateConfig) => {
 
 export const awsDynamoDBQueryStream = async (options, streamOptions = {}) => {
 	const { client, ...queryOptions } = options;
-	async function* command(opts) {
+	async function* command(opts, signal) {
 		let expectMore = true;
 		while (expectMore) {
 			const response = await (client ?? getDefaultClient()).send(
 				new QueryCommand(opts),
-				{ abortSignal: streamOptions.signal },
+				{ abortSignal: signal },
 			);
 			for (const item of response.Items ?? []) {
 				yield item;
@@ -38,17 +43,20 @@ export const awsDynamoDBQueryStream = async (options, streamOptions = {}) => {
 			expectMore = !!response.LastEvaluatedKey;
 		}
 	}
-	return command(queryOptions);
+	return awsReadableStream(
+		(signal) => command(queryOptions, signal),
+		streamOptions,
+	);
 };
 
 export const awsDynamoDBScanStream = async (options, streamOptions = {}) => {
 	const { client, ...scanOptions } = options;
-	async function* command(opts) {
+	async function* command(opts, signal) {
 		let expectMore = true;
 		while (expectMore) {
 			const response = await (client ?? getDefaultClient()).send(
 				new ScanCommand(opts),
-				{ abortSignal: streamOptions.signal },
+				{ abortSignal: signal },
 			);
 			for (const item of response.Items ?? []) {
 				yield item;
@@ -57,7 +65,10 @@ export const awsDynamoDBScanStream = async (options, streamOptions = {}) => {
 			expectMore = !!response.LastEvaluatedKey;
 		}
 	}
-	return command(scanOptions);
+	return awsReadableStream(
+		(signal) => command(scanOptions, signal),
+		streamOptions,
+	);
 };
 
 export const awsDynamoDBExecuteStatementStream = async (
@@ -65,12 +76,12 @@ export const awsDynamoDBExecuteStatementStream = async (
 	streamOptions = {},
 ) => {
 	const { client, ...statementOptions } = options;
-	async function* command(opts) {
+	async function* command(opts, signal) {
 		let expectMore = true;
 		while (expectMore) {
 			const response = await (client ?? getDefaultClient()).send(
 				new ExecuteStatementCommand(opts),
-				{ abortSignal: streamOptions.signal },
+				{ abortSignal: signal },
 			);
 			for (const item of response.Items ?? []) {
 				yield item;
@@ -79,7 +90,10 @@ export const awsDynamoDBExecuteStatementStream = async (
 			expectMore = !!response.NextToken;
 		}
 	}
-	return command(statementOptions);
+	return awsReadableStream(
+		(signal) => command(statementOptions, signal),
+		streamOptions,
+	);
 };
 
 export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
@@ -95,7 +109,6 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 		client,
 		TableName,
 		Keys,
-		retryCount: initialRetryCount,
 		retryMaxCount = 10,
 		ConsistentRead,
 		ProjectionExpression,
@@ -109,9 +122,9 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 		ExpressionAttributeNames,
 		AttributesToGet,
 	};
-	async function* command() {
+	async function* command(signal) {
 		let keys = Keys;
-		let retryCount = initialRetryCount ?? 0;
+		let retryCount = 0;
 		// null = retry without limit
 		const maxCount = retryMaxCount ?? Number.POSITIVE_INFINITY;
 		while (true) {
@@ -122,7 +135,7 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 						[TableName]: { ...keysAndAttributes, Keys: keys },
 					},
 				}),
-				{ abortSignal: streamOptions.signal },
+				{ abortSignal: signal },
 			);
 			for (const item of response.Responses?.[TableName] ?? []) {
 				yield item;
@@ -143,53 +156,59 @@ export const awsDynamoDBGetItemStream = async (options, streamOptions = {}) => {
 				});
 			}
 
-			await awsBackoff(retryCount, streamOptions);
+			await awsBackoff(retryCount, { signal });
 			retryCount++;
 			keys = UnprocessedKeys;
 		}
 	}
-	return command();
+	return awsReadableStream(command, streamOptions);
 };
 
-export const awsDynamoDBPutItemStream = (options, streamOptions = {}) => {
+// BatchWriteItem takes <=25 requests. The buffer holds the caller's chunks
+// (wrapped only when sent) so a teardown can hand them back as failedMessages;
+// it is cleared before each send, so a failed request is never reported as
+// unsent.
+const dynamodbBatchWriteStream = (
+	toRequest,
+	destroyMessage,
+	options,
+	streamOptions,
+) => {
 	let batch = [];
+	const send = () => {
+		const requests = batch.map(toRequest);
+		batch = [];
+		return dynamodbBatchWrite(options, requests, streamOptions);
+	};
 	const write = async (chunk) => {
 		if (batch.length === 25) {
-			await dynamodbBatchWrite(options, batch, streamOptions);
-			batch = [];
+			await send();
 		}
-		batch.push({
-			PutRequest: {
-				Item: chunk,
-			},
-		});
+		batch.push(chunk);
 	};
-	const final = () =>
-		batch.length
-			? dynamodbBatchWrite(options, batch, streamOptions)
-			: undefined;
-	return createWritableStream(write, final, streamOptions);
+	const final = () => (batch.length ? send() : undefined);
+	return awsUnsentOnDestroy(
+		createWritableStream(write, final, streamOptions),
+		() => batch,
+		destroyMessage,
+	);
 };
 
-export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) => {
-	let batch = [];
-	const write = async (chunk) => {
-		if (batch.length === 25) {
-			await dynamodbBatchWrite(options, batch, streamOptions);
-			batch = [];
-		}
-		batch.push({
-			DeleteRequest: {
-				Key: chunk,
-			},
-		});
-	};
-	const final = () =>
-		batch.length
-			? dynamodbBatchWrite(options, batch, streamOptions)
-			: undefined;
-	return createWritableStream(write, final, streamOptions);
-};
+export const awsDynamoDBPutItemStream = (options, streamOptions = {}) =>
+	dynamodbBatchWriteStream(
+		(Item) => ({ PutRequest: { Item } }),
+		"awsDynamoDBPutItem destroyed with buffered items",
+		options,
+		streamOptions,
+	);
+
+export const awsDynamoDBDeleteItemStream = (options, streamOptions = {}) =>
+	dynamodbBatchWriteStream(
+		(Key) => ({ DeleteRequest: { Key } }),
+		"awsDynamoDBDeleteItem destroyed with buffered keys",
+		options,
+		streamOptions,
+	);
 
 const dynamodbBatchWrite = async (
 	options,
@@ -198,25 +217,28 @@ const dynamodbBatchWrite = async (
 	retryCount = 0,
 ) => {
 	const { client, ...writeOptions } = options;
+	// Anything that is not a stream option (ReturnConsumedCapacity,
+	// ReturnItemCollectionMetrics) is a request-level BatchWriteItem field, sent
+	// on the first request and on every retry.
 	// undefined = default (10); null = retry without limit
-	const { retryMaxCount = 10 } = writeOptions;
+	const { TableName, retryMaxCount = 10, ...requestOptions } = writeOptions;
 	const maxCount = retryMaxCount ?? Number.POSITIVE_INFINITY;
 	const { UnprocessedItems } = await (client ?? getDefaultClient()).send(
 		new BatchWriteItemCommand({
+			...requestOptions,
 			RequestItems: {
-				[writeOptions.TableName]: batch,
+				[TableName]: batch,
 			},
 		}),
 		// streamOptions is always supplied by put/delete (defaulting to {}).
 		{ abortSignal: streamOptions.signal },
 	);
-	if (UnprocessedItems?.[writeOptions.TableName]?.length) {
+	if (UnprocessedItems?.[TableName]?.length) {
 		if (retryCount >= maxCount) {
 			throw new Error("awsDynamoDBBatchWriteItem has UnprocessedItems", {
 				cause: {
 					...writeOptions,
-					UnprocessedItemsCount:
-						UnprocessedItems[writeOptions.TableName].length,
+					UnprocessedItemsCount: UnprocessedItems[TableName].length,
 				},
 			});
 		}
@@ -224,7 +246,7 @@ const dynamodbBatchWrite = async (
 		await awsBackoff(retryCount, streamOptions);
 		return dynamodbBatchWrite(
 			options,
-			UnprocessedItems[writeOptions.TableName],
+			UnprocessedItems[TableName],
 			streamOptions,
 			retryCount + 1,
 		);

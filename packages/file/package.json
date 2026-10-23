@@ -3,6 +3,7 @@
 	"version": "0.8.0",
 	"description": "File system readable and writable streams with extension type enforcement",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},

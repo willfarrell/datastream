@@ -5,6 +5,8 @@ description: Install datastream and build your first stream pipeline in minutes.
 
 ## Install
 
+Requires Node.js 26 or newer.
+
 ```bash
 npm install @datastream/core
 ```
@@ -12,7 +14,7 @@ npm install @datastream/core
 Add packages as needed:
 
 ```bash
-npm install @datastream/csv @datastream/validate @datastream/compress @datastream/file
+npm install @datastream/csv @datastream/object @datastream/validate @datastream/compress @datastream/file
 ```
 
 ## Your first pipeline

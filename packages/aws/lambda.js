@@ -4,8 +4,7 @@ import {
 	InvokeWithResponseStreamCommand,
 	LambdaClient,
 } from "@aws-sdk/client-lambda";
-import { createReadableStream } from "@datastream/core";
-import { awsClientDefaults } from "./client.js";
+import { awsClientDefaults, awsReadableStream } from "./client.js";
 
 // Created on first use, so importing the module (or always passing a per-call
 // client) never constructs an unused SDK client.
@@ -16,19 +15,20 @@ export const awsLambdaSetClient = (lambdaClient) => {
 	defaultClient = lambdaClient;
 };
 
-export const awsLambdaReadableStream = (lambdaOptions, streamOptions = {}) => {
-	return createReadableStream(
-		awsLambdaGenerator(lambdaOptions, streamOptions),
+// Routed through awsReadableStream so destroy() before natural end aborts the
+// in-flight InvokeWithResponseStream (signal also follows streamOptions.signal).
+export const awsLambdaReadableStream = (lambdaOptions, streamOptions = {}) =>
+	awsReadableStream(
+		(signal) => awsLambdaGenerator(lambdaOptions, signal),
 		streamOptions,
 	);
-};
 export const awsLambdaResponseStream = awsLambdaReadableStream;
 
 // Fail-fast across the array form: a send() rejection or an InvokeComplete
 // ErrorCode terminates the generator and later invocations do not run. The
 // thrown Error's cause carries the offending FunctionName/index so consumers
 // can identify which invocation failed.
-async function* awsLambdaGenerator(lambdaOptions, streamOptions = {}) {
+async function* awsLambdaGenerator(lambdaOptions, signal) {
 	if (!Array.isArray(lambdaOptions)) {
 		lambdaOptions = [lambdaOptions];
 	}
@@ -36,7 +36,7 @@ async function* awsLambdaGenerator(lambdaOptions, streamOptions = {}) {
 		const { client, ...invokeOptions } = lambdaOptions[index];
 		const response = await (client ?? getDefaultClient()).send(
 			new InvokeWithResponseStreamCommand(invokeOptions),
-			{ abortSignal: streamOptions.signal },
+			{ abortSignal: signal },
 		);
 		for await (const chunk of response.EventStream) {
 			if (chunk?.PayloadChunk?.Payload) {

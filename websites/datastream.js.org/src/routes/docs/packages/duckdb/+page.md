@@ -1,9 +1,9 @@
 ---
 title: duckdb
-description: DuckDB writable streams for inserting rows and Arrow record batches.
+description: DuckDB query readable and transactional writable streams for inserting rows and Arrow record batches.
 ---
 
-DuckDB writable streams. Insert rows or Apache Arrow `RecordBatch` objects directly into a DuckDB table.
+DuckDB query and insert streams. Stream rows out of any SQL query, or insert rows or Apache Arrow `RecordBatch` objects directly into a DuckDB table. Through SQL, that covers reading and writing Parquet, CSV and JSON files.
 
 ## Install
 
@@ -57,6 +57,91 @@ const db = await duckdbConnect(':memory:', {
 ```
 
 The files ship in `@duckdb/duckdb-wasm/dist`. `bundles` is passed to duckdb-wasm's `selectBundle()`.
+
+## `duckdbQueryStream` <span class="badge">Readable</span>
+
+Runs a query and streams each result row as a plain object. Returns the readable stream directly (not a Promise).
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `db` | `Connection` | — | DuckDB connection from `duckdbConnect` (required) |
+| `sql` | `string` | — | Query to run (required) |
+| `params` | `array` | — | Values bound to positional `?` params in order |
+
+Rows are pulled from DuckDB as the stream is read, one result chunk (Node.js) or Arrow record batch (browser) at a time, so large results are not loaded into memory.
+
+Destroying the stream early (for example, `break` in a `for await` loop, a pipeline error, or an aborted `signal`) releases the result, and the browser closes the prepared statement. If the stream is waiting on DuckDB at that moment (the query is still running, or the next chunk is being fetched), the query is also stopped: Node.js calls `interrupt()` on the connection, the browser calls `cancelSent()`. A stream that was never read, or is paused between rows, is not interrupted.
+
+`interrupt()` and `cancelSent()` act on the whole connection, not one query. Destroying a stream mid-fetch stops anything else running on that connection at the same time. Give each concurrent query its own connection.
+
+Numbers, strings, booleans and `null` come out the same on both platforms, and `BIGINT` is a `bigint` on both. Some types differ:
+
+| DuckDB type | Node.js | Browser |
+|-------------|---------|---------|
+| `DATE` / `TIMESTAMP` | `Date` | epoch-millisecond `number` |
+| `DECIMAL` | `number` | Arrow's raw decimal value |
+
+Cast in SQL (for example `price::DOUBLE`, `epoch_ms(created_at)`) when you need the same value on both.
+
+### Example
+
+```javascript
+import { duckdbConnect, duckdbQueryStream } from '@datastream/duckdb'
+
+const db = await duckdbConnect()
+
+for await (const row of duckdbQueryStream({
+  db,
+  sql: 'SELECT id, name FROM people WHERE id > ?',
+  params: [100],
+})) {
+  console.log(row.id, row.name)
+}
+```
+
+## Parquet, CSV and JSON files
+
+There is no separate file API: DuckDB reads and writes these formats in SQL. Read a file with `read_parquet`, `read_csv` or `read_json` in `duckdbQueryStream`:
+
+```javascript
+import { pipeline } from '@datastream/core'
+import { duckdbConnect, duckdbQueryStream } from '@datastream/duckdb'
+
+const db = await duckdbConnect()
+
+await pipeline([
+  duckdbQueryStream({
+    db,
+    sql: "SELECT * FROM read_parquet('events.parquet') WHERE type = ?",
+    params: ['click'],
+  }),
+  // ...transform / write rows
+])
+```
+
+Write a table or query out with `COPY` (`db.run` on Node.js, `db.query` in the browser):
+
+```javascript
+await db.run(
+  "COPY (SELECT * FROM events WHERE type = 'click') TO 'clicks.parquet' (FORMAT parquet)",
+)
+```
+
+To turn a stream into a Parquet file, insert it with `duckdbAppenderStream` or `duckdbArrowInsertStream` first, then `COPY` the table. In the browser, the file paths refer to duckdb-wasm's virtual file system (register files with `db.bindings.registerFileURL` / `registerFileHandle`).
+
+## Transactions
+
+`duckdbAppenderStream` and `duckdbArrowInsertStream` each run in their own transaction on the connection, on Node.js and in the browser:
+
+- `BEGIN TRANSACTION` runs on the first write, before the table is created from `schema`.
+- `COMMIT` runs once the stream finishes.
+- `ROLLBACK` runs on any write error, upstream error, aborted `signal` or `destroy()`.
+
+A failed pipeline commits nothing, including a table the stream created. Without the transaction, the Node.js appender would already have written its auto-flushed rows (every 204,800 rows), and the browser build would have written every insert.
+
+The connection must not have a transaction open already. DuckDB has no nested transactions, so the stream fails with `duckdb: could not begin the write stream's transaction; use a connection with no open transaction`. DuckDB then aborts the caller's open transaction too. While a write stream is running, other statements on the same connection run inside its transaction, so use a separate connection for other work.
 
 ## `duckdbAppenderStream` <span class="badge">Writable</span>
 
@@ -148,5 +233,6 @@ When creating a table from an Arrow schema, types map to DuckDB columns as follo
 | Feature | Node.js | Browser |
 |---------|---------|---------|
 | `duckdbConnect` | `@duckdb/node-api` | `@duckdb/duckdb-wasm` |
+| `duckdbQueryStream` | yes | yes |
 | `duckdbAppenderStream` | yes | yes |
 | `duckdbArrowInsertStream` | yes | yes (requires `apache-arrow`) |

@@ -7,7 +7,14 @@ import {
 	SQSClient,
 } from "@aws-sdk/client-sqs";
 import { timeout } from "@datastream/core";
-import { awsBatchEntriesStream, awsClientDefaults } from "./client.js";
+import {
+	awsBatchEntriesStream,
+	awsClientDefaults,
+	awsReadableStream,
+} from "./client.js";
+
+// SQS SendMessageBatch aggregate payload limit (1MiB).
+const SQS_MAX_BATCH_BYTES = 1_048_576;
 
 // Created on first use, so importing the module (or always passing a per-call
 // client) never constructs an unused SDK client.
@@ -23,13 +30,13 @@ export const awsSQSReceiveMessageStream = async (
 	streamOptions = {},
 ) => {
 	const { pollingActive, pollingDelay = 1000, client, ...sqsOptions } = options;
-	async function* command(options) {
+	async function* command(options, signal) {
 		let expectMore = true;
 		while (expectMore) {
 			const response = await (client ?? getDefaultClient()).send(
 				new ReceiveMessageCommand(options),
 				{
-					abortSignal: streamOptions.signal,
+					abortSignal: signal,
 				},
 			);
 			const messages = response.Messages ?? [];
@@ -39,21 +46,18 @@ export const awsSQSReceiveMessageStream = async (
 			expectMore = pollingActive || messages.length > 0;
 			if (pollingActive && messages.length === 0 && pollingDelay > 0) {
 				// Abortable idle wait: rejects immediately and clears the timer
-				// when streamOptions.signal aborts mid-delay.
-				await timeout(pollingDelay, { signal: streamOptions.signal });
+				// when the stream is destroyed or streamOptions.signal aborts mid-delay.
+				await timeout(pollingDelay, { signal });
 			}
 		}
 	}
-	return command(sqsOptions);
+	return awsReadableStream(
+		(signal) => command(sqsOptions, signal),
+		streamOptions,
+	);
 };
 
-const sqsBatchStream = (
-	Command,
-	errorMessage,
-	oversizeMessage,
-	options,
-	streamOptions,
-) => {
+const sqsBatchStream = (Command, batchOptions, options, streamOptions) => {
 	const { retryMaxCount, client, ...sendOptions } = options;
 	return awsBatchEntriesStream(
 		(entries) =>
@@ -61,7 +65,7 @@ const sqsBatchStream = (
 				new Command({ ...sendOptions, Entries: entries }),
 				{ abortSignal: streamOptions.signal },
 			),
-		{ retryMaxCount, errorMessage, oversizeMessage },
+		{ retryMaxCount, ...batchOptions },
 		streamOptions,
 	);
 };
@@ -69,8 +73,14 @@ const sqsBatchStream = (
 export const awsSQSDeleteMessageStream = (options, streamOptions = {}) =>
 	sqsBatchStream(
 		DeleteMessageBatchCommand,
-		"awsSQSDeleteMessageBatch has failed entries",
-		"awsSQSDeleteMessageBatch entry exceeds 256KiB limit",
+		{
+			// DeleteMessageBatch carries no message bytes (only the 10-entry cap),
+			// even when received messages with attributes are piped straight in.
+			maxBatchBytes: Number.POSITIVE_INFINITY,
+			errorMessage: "awsSQSDeleteMessageBatch has failed entries",
+			destroyMessage:
+				"awsSQSDeleteMessageBatch destroyed with buffered entries",
+		},
 		options,
 		streamOptions,
 	);
@@ -78,8 +88,12 @@ export const awsSQSDeleteMessageStream = (options, streamOptions = {}) =>
 export const awsSQSSendMessageStream = (options, streamOptions = {}) =>
 	sqsBatchStream(
 		SendMessageBatchCommand,
-		"awsSQSSendMessageBatch has failed entries",
-		"awsSQSSendMessageBatch entry exceeds 256KiB limit",
+		{
+			maxBatchBytes: SQS_MAX_BATCH_BYTES,
+			errorMessage: "awsSQSSendMessageBatch has failed entries",
+			oversizeMessage: "awsSQSSendMessageBatch entry exceeds 1MiB limit",
+			destroyMessage: "awsSQSSendMessageBatch destroyed with buffered entries",
+		},
 		options,
 		streamOptions,
 	);

@@ -19,3 +19,10 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 14
+  - package-ecosystem: docker
+    target-branch: develop
+    directory: "/.github/docker/semgrep"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 14

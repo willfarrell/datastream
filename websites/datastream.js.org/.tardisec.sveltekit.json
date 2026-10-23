@@ -14,6 +14,7 @@
 				"report-uri": [
 					"https://9a3890fa-a783-51c2-b20f-0dbe457d526f.report-to.org"
 				],
+				"require-trusted-types-for": ["script"],
 				"script-src": ["self", "report-sample", "'report-sha256'"],
 				"script-src-attr": ["report-sample", "'report-sha256'"],
 				"style-src": ["self", "report-sample", "'report-sha256'"],

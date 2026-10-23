@@ -1,6 +1,7 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import { createWritableStream, timeout } from "@datastream/core";
+import { azureReadableStream } from "./client.js";
 
 export const azureQueueReceiveMessagesStream = async (
 	options,
@@ -12,12 +13,12 @@ export const azureQueueReceiveMessagesStream = async (
 		pollingDelay = 1000,
 		...receiveOptions
 	} = options;
-	async function* command() {
+	async function* command(signal) {
 		let expectMore = true;
 		while (expectMore) {
 			const response = await client.receiveMessages({
 				...receiveOptions,
-				abortSignal: streamOptions.signal,
+				abortSignal: signal,
 			});
 			const messages = response.receivedMessageItems ?? [];
 			for (const item of messages) {
@@ -25,11 +26,11 @@ export const azureQueueReceiveMessagesStream = async (
 			}
 			expectMore = pollingActive || messages.length > 0;
 			if (pollingActive && messages.length === 0 && pollingDelay > 0) {
-				await timeout(pollingDelay, { signal: streamOptions.signal });
+				await timeout(pollingDelay, { signal });
 			}
 		}
 	}
-	return command();
+	return azureReadableStream(command, streamOptions);
 };
 
 // Queue Storage has no batch API: one request per message.

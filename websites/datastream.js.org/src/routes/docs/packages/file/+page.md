@@ -114,11 +114,11 @@ const types = [
 ]
 ```
 
-On Node.js, if `types` is provided and the file extension doesn't match, the Promise rejects with an `"Invalid extension"` error.
+If `types` is provided and the file extension doesn't match any accepted extension, the Promise rejects with an `"Invalid extension"` error. This applies in Node.js and to the file picked in the browser. The match ignores case, so `REPORT.CSV` is accepted for `.csv` (and `.JSON` in `accept` matches `data.json`).
 
 ## Security
 
-When accepting file paths from user input, always use an absolute `path` or set `basePath` to prevent path traversal attacks (e.g., `../../etc/passwd`). Relative paths without a `basePath` constraint can resolve outside the intended directory.
+When accepting file paths from untrusted input, you must set `basePath` to prevent path traversal attacks (e.g., `../../etc/passwd`). Without `basePath`, no path checks run, so any relative or absolute `path` is used as given.
 
 `basePath` is opt-in. When provided, `path` must resolve to a file inside `basePath` (names that only start with `..`, like `..cache`, are allowed), the real path of its parent directory must also be inside the real `basePath` (so a symlinked directory cannot escape), and a symbolic link as the file itself is rejected. A missing parent directory rejects with `"Path not found"`. When omitted, no path restriction is applied.
 

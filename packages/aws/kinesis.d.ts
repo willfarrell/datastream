@@ -19,6 +19,8 @@ export function awsKinesisGetRecordsStream(
 	streamOptions?: StreamOptions,
 ): Promise<DatastreamReadable>;
 
+// On destroy/abort, entries still buffered are attached to the error as
+// `failedMessages` (not sent).
 export function awsKinesisPutRecordsStream(
 	options: {
 		client?: unknown;

@@ -29,10 +29,9 @@ export function ndjsonParseStream(
 	result: () => StreamResult<Record<string, JsonError>>;
 };
 
+/** One record per line; there is no `space` option (it would split records). */
 export function ndjsonFormatStream(
-	options?: {
-		space?: number | string;
-	},
+	options?: Record<string, never>,
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<Record<string, unknown>, string>;
 

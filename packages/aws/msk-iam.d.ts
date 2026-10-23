@@ -9,5 +9,4 @@ export interface AwsMskIamMechanism {
 export function awsMskIamMechanism(options: {
 	region: string;
 	awsDebugCreds?: boolean;
-	ttl?: number;
 }): AwsMskIamMechanism;

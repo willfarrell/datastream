@@ -5,7 +5,10 @@
 *.mjs
 *.mjs.map
 !*.config.mjs
+!.github/license.mjs
 *.tgz
+# copied from the root LICENSE at release time (.github/workflows/release.yml)
+packages/*/LICENSE
 *.tmp
 
 # Tests

@@ -1,9 +1,12 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
+
+import type { DatastreamReadable } from "@datastream/core";
 import {
 	duckdbAppenderStream,
 	duckdbArrowInsertStream,
 	duckdbConnect,
+	duckdbQueryStream,
 } from "@datastream/duckdb";
 import type { Schema } from "apache-arrow";
 import { describe, expect, test } from "tstyche";
@@ -59,5 +62,33 @@ describe("duckdbArrowInsertStream", () => {
 			table: "t",
 			batchRows: 1000,
 		});
+	});
+});
+
+describe("duckdbQueryStream", () => {
+	test("requires db and sql", () => {
+		expect(duckdbQueryStream).type.not.toBeCallableWith({ db });
+		expect(duckdbQueryStream).type.not.toBeCallableWith({ sql: "SELECT 1" });
+	});
+
+	test("accepts positional params and stream options", () => {
+		expect(duckdbQueryStream).type.toBeCallableWith(
+			{ db, sql: "SELECT ?", params: [1, "a", null] },
+			{ signal: new AbortController().signal },
+		);
+	});
+
+	test("rejects non-array params", () => {
+		expect(duckdbQueryStream).type.not.toBeCallableWith({
+			db,
+			sql: "SELECT ?",
+			params: 1,
+		});
+	});
+
+	test("returns a readable of row objects, not a Promise", () => {
+		expect(duckdbQueryStream({ db, sql: "SELECT 1" })).type.toBe<
+			DatastreamReadable<Record<string, unknown>>
+		>();
 	});
 });

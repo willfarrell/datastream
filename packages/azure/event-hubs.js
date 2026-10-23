@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import { azureBatchStream } from "./client.js";
+import { azureBatchStream, azureReadableStream } from "./client.js";
 
 // client = EventHubConsumerClient. Adapts subscribe() callbacks to a pull-based
 // generator: processEvents waits until the consumer has drained the page, so
@@ -12,8 +12,7 @@ export const azureEventHubsReceiveEventsStream = async (
 	streamOptions = {},
 ) => {
 	const { client, partitionId, pollingActive, ...subscribeOptions } = options;
-	const { signal } = streamOptions;
-	async function* command() {
+	async function* command(signal) {
 		const queue = [];
 		let error;
 		let ended = false;
@@ -48,15 +47,15 @@ export const azureEventHubsReceiveEventsStream = async (
 			},
 		};
 		const onAbort = () => handlers.processError(signal.reason);
-		signal?.addEventListener("abort", onAbort, { once: true });
+		// No `once`: abort fires at most once and the finally below removes it.
+		signal.addEventListener("abort", onAbort);
 		const subscription =
 			partitionId === undefined
 				? client.subscribe(handlers, subscribeOptions)
 				: client.subscribe(partitionId, handlers, subscribeOptions);
+		// No already-aborted check: the generator only starts on the first read,
+		// and an aborted streamOptions.signal has destroyed the stream by then.
 		try {
-			if (signal?.aborted) {
-				throw signal.reason;
-			}
 			while (true) {
 				if (queue.length) {
 					yield queue.shift();
@@ -74,12 +73,12 @@ export const azureEventHubsReceiveEventsStream = async (
 				}
 			}
 		} finally {
-			signal?.removeEventListener("abort", onAbort);
+			signal.removeEventListener("abort", onAbort);
 			drained();
 			await subscription.close();
 		}
 	}
-	return command();
+	return azureReadableStream(command, streamOptions);
 };
 
 // client = EventHubProducerClient; partitionKey/partitionId go to createBatch.
@@ -96,6 +95,8 @@ export const azureEventHubsSendEventsStream = (options, streamOptions = {}) => {
 				client.sendBatch(batch, { abortSignal: streamOptions.signal }),
 			add: (batch, chunk) => batch.tryAdd(chunk),
 			oversizeMessage: "azureEventHubsSendEvents event exceeds batch limit",
+			destroyMessage:
+				"azureEventHubsSendEvents destroyed with a buffered batch",
 		},
 		streamOptions,
 	);

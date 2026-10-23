@@ -1,8 +1,11 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
+
+import type { AwsCloudWatchLogsRejectedEvents } from "@datastream/aws";
 import {
 	awsCloudWatchLogsFilterLogEventsStream,
 	awsCloudWatchLogsGetLogEventsStream,
+	awsCloudWatchLogsPutLogEventsStream,
 	awsCloudWatchLogsSetClient,
 	awsDynamoDBDeleteItemStream,
 	awsDynamoDBExecuteStatementStream,
@@ -21,6 +24,7 @@ import {
 	awsLambdaSetClient,
 	awsS3ChecksumStream,
 	awsS3GetObjectStream,
+	awsS3ListObjectsStream,
 	awsS3PutObjectStream,
 	awsS3SetClient,
 	awsSNSPublishMessageStream,
@@ -31,6 +35,10 @@ import {
 	awsSQSSetClient,
 } from "@datastream/aws";
 import { awsGlueSchemaRegistryResolver } from "@datastream/aws/glue-schema-registry";
+import type {
+	DatastreamPassThrough,
+	DatastreamWritable,
+} from "@datastream/core";
 import { describe, expect, test } from "tstyche";
 
 describe("CloudWatch Logs", () => {
@@ -53,6 +61,41 @@ describe("CloudWatch Logs", () => {
 				logGroupName: "/test/group",
 			}),
 		).type.toBeAssignableTo<Promise<unknown>>();
+	});
+
+	test("awsCloudWatchLogsPutLogEventsStream returns writable", () => {
+		expect(
+			awsCloudWatchLogsPutLogEventsStream({
+				logGroupName: "/test/group",
+				logStreamName: "stream1",
+			}),
+		).type.toBe<DatastreamWritable<{ timestamp: number; message: string }>>();
+	});
+
+	test("AwsCloudWatchLogsRejectedEvents types the rejected-events cause", () => {
+		const cause: AwsCloudWatchLogsRejectedEvents = {
+			rejectedLogEventsInfo: { tooNewLogEventStartIndex: 1 },
+			rejected: {
+				tooNew: [{ timestamp: 1, message: "a" }],
+				tooOld: [],
+				expired: [],
+			},
+		};
+		expect(cause.rejected.tooNew).type.toBe<
+			{ timestamp: number; message: string }[]
+		>();
+		expect(cause.rejectedLogEventsInfo.tooOldLogEventEndIndex).type.toBe<
+			number | undefined
+		>();
+	});
+
+	test("awsCloudWatchLogsPutLogEventsStream requires logGroupName and logStreamName", () => {
+		expect(awsCloudWatchLogsPutLogEventsStream).type.not.toBeCallableWith({
+			logGroupName: "/test/group",
+		});
+		expect(awsCloudWatchLogsPutLogEventsStream).type.not.toBeCallableWith({
+			logStreamName: "stream1",
+		});
 	});
 });
 
@@ -85,6 +128,16 @@ describe("S3", () => {
 		).type.toBeAssignableTo<Promise<unknown>>();
 	});
 
+	test("awsS3ListObjectsStream returns promise", () => {
+		expect(
+			awsS3ListObjectsStream({ Bucket: "b", Prefix: "p/" }),
+		).type.toBeAssignableTo<Promise<unknown>>();
+	});
+
+	test("awsS3ListObjectsStream requires Bucket", () => {
+		expect(awsS3ListObjectsStream).type.not.toBeCallableWith({ Prefix: "p/" });
+	});
+
 	test("awsS3PutObjectStream returns stream", () => {
 		expect(
 			awsS3PutObjectStream({ Bucket: "b", Key: "k" }),
@@ -106,6 +159,27 @@ describe("S3", () => {
 		});
 	});
 
+	test("awsS3PutObjectStream tags are lib-storage Tag[]", () => {
+		expect(awsS3PutObjectStream).type.toBeCallableWith({
+			Bucket: "b",
+			Key: "k",
+			tags: [{ Key: "a", Value: "b" }],
+		});
+		expect(awsS3PutObjectStream).type.not.toBeCallableWith({
+			Bucket: "b",
+			Key: "k",
+			tags: { a: "b" },
+		});
+	});
+
+	test("awsS3PutObjectStream returns a pass-through with key-less result", () => {
+		const stream = awsS3PutObjectStream({ Bucket: "b", Key: "k" });
+		expect(stream).type.toBeAssignableTo<DatastreamPassThrough>();
+		expect<ReturnType<typeof stream.result>>().type.toBe<
+			Promise<Record<string, never>>
+		>();
+	});
+
 	test("awsS3ChecksumStream accepts options", () => {
 		expect(
 			awsS3ChecksumStream({ ChecksumAlgorithm: "SHA256" }),
@@ -120,6 +194,10 @@ describe("S3", () => {
 describe("DynamoDB", () => {
 	test("awsDynamoDBSetClient accepts client", () => {
 		expect(awsDynamoDBSetClient({})).type.toBe<void>();
+	});
+
+	test("awsDynamoDBSetClient takes only the client", () => {
+		expect(awsDynamoDBSetClient).type.not.toBeCallableWith({}, {});
 	});
 
 	test("awsDynamoDBQueryStream returns promise", () => {
@@ -169,6 +247,12 @@ describe("DynamoDB", () => {
 			TableName: "t",
 			Keys: [{}],
 			Unknown: true,
+		});
+		// retryCount was internal retry state, not an option.
+		expect(awsDynamoDBGetItemStream).type.not.toBeCallableWith({
+			TableName: "t",
+			Keys: [{}],
+			retryCount: 1,
 		});
 	});
 
@@ -252,6 +336,23 @@ describe("SQS", () => {
 });
 
 describe("Limits accept null (unlimited)", () => {
+	test("batch write streams accept request-level BatchWriteItem fields", () => {
+		expect(awsDynamoDBPutItemStream).type.toBeCallableWith({
+			TableName: "t",
+			ReturnConsumedCapacity: "TOTAL",
+			ReturnItemCollectionMetrics: "SIZE",
+		});
+		expect(awsDynamoDBDeleteItemStream).type.toBeCallableWith({
+			TableName: "t",
+			ReturnConsumedCapacity: "INDEXES",
+			ReturnItemCollectionMetrics: "NONE",
+		});
+		expect(awsDynamoDBPutItemStream).type.not.toBeCallableWith({
+			TableName: "t",
+			ReturnConsumedCapacity: "ALL",
+		});
+	});
+
 	test("retryMaxCount accepts number | null", () => {
 		expect(awsDynamoDBGetItemStream).type.toBeCallableWith({
 			TableName: "t",

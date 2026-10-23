@@ -115,6 +115,19 @@ describe("objectKeyJoinStream", () => {
 			}),
 		).type.not.toBeAssignableTo<never>();
 	});
+
+	test("separator is optional (defaults to ',')", () => {
+		expect(objectKeyJoinStream).type.toBeCallableWith({
+			keys: { full: ["first", "last"] },
+		});
+	});
+
+	test("rejects non-string separator", () => {
+		expect(objectKeyJoinStream).type.not.toBeCallableWith({
+			keys: { full: ["first", "last"] },
+			separator: 1,
+		});
+	});
 });
 
 describe("objectKeyMapStream", () => {

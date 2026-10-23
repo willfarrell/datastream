@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
+
+import type * as compressNode from "@datastream/compress";
 import {
 	brotliCompressStream,
 	brotliDecompressStream,
@@ -10,6 +12,10 @@ import {
 	zstdCompressStream,
 	zstdDecompressStream,
 } from "@datastream/compress";
+import * as brotliBrowser from "@datastream/compress/brotli/browser";
+import * as compressBrowser from "@datastream/compress/browser";
+import * as deflateBrowser from "@datastream/compress/deflate/browser";
+import * as gzipBrowser from "@datastream/compress/gzip/browser";
 import { describe, expect, test } from "tstyche";
 
 describe("gzip", () => {
@@ -25,6 +31,12 @@ describe("gzip", () => {
 describe("deflate", () => {
 	test("deflateCompressStream returns a stream", () => {
 		expect(deflateCompressStream()).type.not.toBeAssignableTo<never>();
+	});
+
+	// deflate.node.js and gzip.node.js both read `level ?? quality`.
+	test("deflateCompressStream and gzipCompressStream accept level", () => {
+		expect(deflateCompressStream).type.toBeCallableWith({ level: 9 });
+		expect(gzipCompressStream).type.toBeCallableWith({ level: 9 });
 	});
 
 	test("deflateDecompressStream returns a stream", () => {
@@ -115,6 +127,55 @@ describe("params (Node.js only)", () => {
 	test("brotliCompressStream does not accept params", () => {
 		expect(brotliCompressStream).type.not.toBeCallableWith({
 			params: { 1: 5 },
+		});
+	});
+});
+
+describe("browser build", () => {
+	test("does not export zstd (Node.js only)", () => {
+		expect<typeof compressBrowser>().type.not.toHaveProperty(
+			"zstdCompressStream",
+		);
+		expect<typeof compressBrowser>().type.not.toHaveProperty(
+			"zstdDecompressStream",
+		);
+		expect<typeof compressNode>().type.toHaveProperty("zstdCompressStream");
+	});
+
+	test("exports brotli, deflate and gzip as web TransformStreams", () => {
+		expect(compressBrowser.brotliCompressStream()).type.toBe<
+			TransformStream<unknown, unknown>
+		>();
+		expect(compressBrowser.deflateDecompressStream()).type.toBe<
+			TransformStream<unknown, unknown>
+		>();
+		expect(compressBrowser.gzipCompressStream()).type.toBe<
+			TransformStream<unknown, unknown>
+		>();
+	});
+
+	test("codec /browser subpaths are web TransformStreams", () => {
+		expect(brotliBrowser.brotliDecompressStream()).type.toBe<
+			TransformStream<unknown, unknown>
+		>();
+		expect(deflateBrowser.deflateCompressStream()).type.toBe<
+			TransformStream<unknown, unknown>
+		>();
+		expect(gzipBrowser.gzipDecompressStream()).type.toBe<
+			TransformStream<unknown, unknown>
+		>();
+	});
+
+	test("shares the option types with the node build", () => {
+		expect(compressBrowser.brotliDecompressStream).type.toBeCallableWith({
+			maxOutputSize: null,
+			params: { 0: true },
+		});
+		expect(compressBrowser.deflateCompressStream).type.toBeCallableWith({
+			level: 9,
+		});
+		expect(compressBrowser.gzipCompressStream).type.toBeCallableWith({
+			level: 9,
 		});
 	});
 });

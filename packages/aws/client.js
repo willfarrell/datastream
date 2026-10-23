@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import { createWritableStream, timeout } from "@datastream/core";
+import {
+	createReadableStream,
+	createWritableStream,
+	timeout,
+} from "@datastream/core";
 
 // AWS regions that expose FIPS 140-2/140-3 validated endpoints. This includes
 // the US/Canada commercial regions and BOTH GovCloud regions (which most need
@@ -41,17 +45,82 @@ export const awsBackoff = (retryCount, streamOptions) =>
 		{ signal: streamOptions.signal },
 	);
 
-// SNS PublishBatch and SQS SendMessageBatch/DeleteMessageBatch share limits:
-// <=10 entries and <=256KiB aggregate payload.
+// Readable over a paging/polling generator. Destroying a Readable.from stream
+// only reaches the generator's return() after its next yield, so an idle poll
+// (empty pages, no items) would keep running and the stream would never emit
+// 'close'. Destroy also aborts the in-flight request / idle wait via the
+// signal handed to `command(signal)` (combined with streamOptions.signal).
+export const awsReadableStream = (command, streamOptions) => {
+	const controller = new AbortController();
+	const signal = streamOptions.signal
+		? AbortSignal.any([streamOptions.signal, controller.signal])
+		: controller.signal;
+	const stream = createReadableStream(command(signal), streamOptions);
+	const destroy = stream.destroy;
+	stream.destroy = function (...args) {
+		// Not after a natural end: the forwarded signal stays un-aborted.
+		if (!this.readableEnded) controller.abort();
+		return destroy.apply(this, args);
+	};
+	return stream;
+};
+
+// Node's final() runs only on a graceful end(), never on destroy() or an
+// AbortSignal teardown, so entries still buffered below a batch limit would be
+// dropped silently. Hand them to the teardown error as `failedMessages` (the
+// kafkaProduceStream contract) so callers can recover/retry them; nothing is
+// sent. `unsent()` returns the current buffer.
+export const awsUnsentOnDestroy = (stream, unsent, errorMessage) => {
+	const destroy = stream._destroy.bind(stream);
+	stream._destroy = (error, callback) => {
+		const entries = unsent();
+		if (entries.length) {
+			error ??= new Error(errorMessage);
+			error.failedMessages = entries;
+		}
+		destroy(error, callback);
+	};
+	return stream;
+};
+
+// SNS PublishBatch and SQS SendMessageBatch/DeleteMessageBatch share the
+// <=10 entries limit. The aggregate payload limit differs per service (SNS
+// 256KiB, SQS 1MiB since Aug 2025), so callers pass it as `maxBatchBytes`.
 const BATCH_MAX_ENTRIES = 10;
-const BATCH_MAX_BYTES = 256 * 1024;
+
+// The message size SNS/SQS check against those limits: the UTF-8 body (SNS
+// Message / SQS MessageBody) plus each message attribute's name, data type and
+// string or binary value. Id, receipt handles and system attributes do not
+// count, so a delete entry measures 0. Buffer.byteLength takes strings and
+// binary values alike.
+const entryByteLength = (entry) => {
+	let bytes = Buffer.byteLength(entry.MessageBody ?? entry.Message ?? "");
+	// for-in: no per-entry [name, attribute] pair arrays (Object.entries) and no
+	// throwaway `{}` when there are no attributes (for-in over undefined is a
+	// no-op).
+	const attributes = entry.MessageAttributes;
+	for (const name in attributes) {
+		const attribute = attributes[name];
+		bytes +=
+			Buffer.byteLength(name) +
+			Buffer.byteLength(attribute.DataType) +
+			Buffer.byteLength(attribute.StringValue ?? attribute.BinaryValue ?? "");
+	}
+	return bytes;
+};
 
 // Shared SNS/SQS batch writer: flushes on count or byte limits and retries the
 // per-entry `Failed` subset (correlated by `Id`) with exponential backoff.
 // `sendEntries(entries)` issues one batch request and resolves its response.
 export const awsBatchEntriesStream = (
 	sendEntries,
-	{ retryMaxCount = 10, errorMessage, oversizeMessage },
+	{
+		retryMaxCount = 10,
+		maxBatchBytes,
+		errorMessage,
+		oversizeMessage,
+		destroyMessage,
+	},
 	streamOptions,
 ) => {
 	let batch = [];
@@ -64,42 +133,47 @@ export const awsBatchEntriesStream = (
 		batch = [];
 		batchBytes = 0;
 		let retryCount = 0;
+		// SenderFault marks a permanent (caller-side) failure: retrying cannot
+		// succeed, so set those aside and only back off on the retryable rest.
+		// Throwing on the first SenderFault would drop the retryable entries.
+		const permanent = [];
 		while (true) {
 			const response = await sendEntries(entries);
-			const failed = response.Failed ?? [];
-			if (!failed.length) {
+			const retryable = [];
+			for (const entry of response.Failed ?? []) {
+				(entry.SenderFault ? permanent : retryable).push(entry);
+			}
+			if (
+				!retryable.length ||
+				// null = retry without limit
+				retryCount >= (retryMaxCount ?? Number.POSITIVE_INFINITY)
+			) {
+				const failed = permanent.concat(retryable);
+				if (failed.length) {
+					throw new Error(errorMessage, { cause: failed });
+				}
 				return;
 			}
-			const failedIds = new Set(failed.map((entry) => entry.Id));
-			const failedEntries = entries.filter((entry) => failedIds.has(entry.Id));
-			// SenderFault marks a permanent (caller-side) failure: retrying cannot
-			// succeed, so fail the batch immediately instead of backing off.
-			if (
-				// null = retry without limit
-				retryCount >= (retryMaxCount ?? Number.POSITIVE_INFINITY) ||
-				failed.some((entry) => entry.SenderFault)
-			) {
-				throw new Error(errorMessage, { cause: failed });
-			}
+			const retryIds = new Set(retryable.map((entry) => entry.Id));
 			await awsBackoff(retryCount, streamOptions);
 			retryCount++;
-			entries = failedEntries;
+			entries = entries.filter((entry) => retryIds.has(entry.Id));
 		}
 	};
 	const write = async (chunk) => {
-		const chunkBytes = Buffer.byteLength(JSON.stringify(chunk));
+		const chunkBytes = entryByteLength(chunk);
 		// Surface an oversize single entry up front (mirroring Kinesis) instead of
 		// letting the service reject the whole batch with BatchRequestTooLong.
-		if (chunkBytes > BATCH_MAX_BYTES) {
+		if (chunkBytes > maxBatchBytes) {
 			throw new RangeError(oversizeMessage, {
 				// Reached only for an oversize entry (a non-nullish object), so
 				// reading chunk.Id directly is safe.
-				cause: { Id: chunk.Id, bytes: chunkBytes, limit: BATCH_MAX_BYTES },
+				cause: { Id: chunk.Id, bytes: chunkBytes, limit: maxBatchBytes },
 			});
 		}
 		if (
 			batch.length === BATCH_MAX_ENTRIES ||
-			(batch.length && batchBytes + chunkBytes > BATCH_MAX_BYTES)
+			(batch.length && batchBytes + chunkBytes > maxBatchBytes)
 		) {
 			await send();
 		}
@@ -107,5 +181,9 @@ export const awsBatchEntriesStream = (
 		batchBytes += chunkBytes;
 	};
 	const final = () => send();
-	return createWritableStream(write, final, streamOptions);
+	return awsUnsentOnDestroy(
+		createWritableStream(write, final, streamOptions),
+		() => batch,
+		destroyMessage,
+	);
 };

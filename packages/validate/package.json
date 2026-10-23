@@ -3,6 +3,7 @@
 	"version": "0.8.0",
 	"description": "JSON Schema validation transform streams using Ajv",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},

@@ -12,6 +12,11 @@ import { concatBytes, createTransformStream } from "@datastream/core";
 // a length-prefix transform). Each chunk is decoded and emitted immediately,
 // so a live consumer's latest message is never held back waiting for the next.
 //
+// A chunk may also be a message envelope carrying the frame in `value`, e.g.
+// kafkaConsumeStream's { topic, partition, offset, key, value, ... }. Its other
+// fields are copied onto the emitted envelope, so kafkaCommitStream can still
+// commit the message after it has been unframed and decoded.
+//
 // Unframe streams emit { schemaId | schemaVersionId, payload } envelopes
 // downstream so downstream decoders (e.g. protobufDecodeStream) can pick the
 // right schema per chunk without sharing mutable state via `.result()`. The
@@ -34,6 +39,12 @@ const DEFAULT_MAX_OUTPUT_SIZE = 268_435_456; // 256MiB
 // uncalled anonymous functions that inflate function-coverage miss counts.
 const noop = () => {};
 
+// A chunk with a `value` field is a message envelope (see the top of this
+// file). Bytes, ArrayBuffers and strings have no `value`, so they stay frames.
+// A null value (a Kafka tombstone) still counts, and asBytes rejects it. A
+// stream chunk is never null/undefined, so no optional chaining.
+const asEnvelope = (chunk) => (chunk.value === undefined ? undefined : chunk);
+
 const asBytes = (chunk) => {
 	if (typeof chunk === "string") return new TextEncoder().encode(chunk);
 	// ArrayBuffer.isView covers typed arrays / DataView with possible byteOffset
@@ -50,8 +61,9 @@ const asBytes = (chunk) => {
 	);
 };
 
-// `outputLimit` is maxOutputSize with null already mapped to Infinity.
-const collectStream = async (readable, maxOutputSize, outputLimit) => {
+// `outputLimit` is the byte cap with null already mapped to Infinity;
+// `message` is the RangeError message for exceeding it.
+const collectStream = async (readable, outputLimit, message) => {
 	const reader = readable.getReader();
 	const chunks = [];
 	let total = 0;
@@ -61,9 +73,7 @@ const collectStream = async (readable, maxOutputSize, outputLimit) => {
 		total += value.byteLength;
 		if (total > outputLimit) {
 			await reader.cancel();
-			throw new RangeError(
-				`schema-registry: maxOutputSize exceeded (${maxOutputSize})`,
-			);
+			throw new RangeError(message);
 		}
 		chunks.push(value);
 	}
@@ -71,28 +81,35 @@ const collectStream = async (readable, maxOutputSize, outputLimit) => {
 };
 
 // Pipe bytes through a (De)CompressionStream and collect the output, bounded
-// by maxOutputSize. inflate and deflate differ only in the stream, so they
-// share this helper.
+// by maxOutputSize. Input is written in small slices, each write awaiting the
+// previous one: a browser DecompressionStream inflates a whole written chunk
+// synchronously, so writing the frame in one go would let a ~1MB zlib bomb
+// allocate ~1GB before collectStream could check the limit. Once collectStream
+// cancels the readable, the next write rejects and the loop stops.
+const WRITE_SLICE_SIZE = 16_384;
+const writeSlices = async (writer, bytes) => {
+	for (let offset = 0; offset < bytes.byteLength; offset += WRITE_SLICE_SIZE) {
+		await writer.write(bytes.subarray(offset, offset + WRITE_SLICE_SIZE));
+	}
+	await writer.close();
+};
 const transcode = async (transform, bytes, maxOutputSize, outputLimit) => {
 	const writer = transform.writable.getWriter();
 	// Errors on the write side surface via the read side; we await both so
 	// failures (e.g. malformed zlib, backpressure aborts) propagate cleanly.
-	const writeP = writer.write(bytes);
-	const closeP = writer.close();
+	const writeP = writeSlices(writer, bytes);
 	try {
 		const result = await collectStream(
 			transform.readable,
-			maxOutputSize,
 			outputLimit,
+			`schema-registry: maxOutputSize exceeded (${maxOutputSize})`,
 		);
 		await writeP;
-		await closeP;
 		return result;
 	} catch (err) {
-		// Swallow writeP/closeP rejections after collect throws — read-side error
+		// Swallow the writeP rejection after collect throws — read-side error
 		// is the underlying cause.
 		writeP.catch(noop);
-		closeP.catch(noop);
 		throw err;
 	}
 };
@@ -142,17 +159,17 @@ export const confluentUnframeStream = (
 	const seenIds = new Set();
 	const idLimit = maxSchemaIds ?? Number.POSITIVE_INFINITY;
 	const transform = (chunk, enqueue) => {
-		const bytes = asBytes(chunk);
+		const envelope = asEnvelope(chunk);
+		const bytes = asBytes(envelope ? envelope.value : chunk);
 		if (bytes.byteLength < 5 || bytes[0] !== 0x00) {
 			throw new Error(
 				"confluentUnframeStream: missing 0x00 magic byte / frame is too short (each chunk must be one whole frame)",
 			);
 		}
-		const schemaId = new DataView(
-			bytes.buffer,
-			bytes.byteOffset,
-			bytes.byteLength,
-		).getUint32(1, false);
+		// uint32 BE by hand: no DataView per frame. The top byte is scaled
+		// arithmetically (not shifted) so ids >= 2^31 stay positive.
+		const schemaId =
+			bytes[1] * 0x1000000 + ((bytes[2] << 16) | (bytes[3] << 8) | bytes[4]);
 		if (!seenIds.has(schemaId)) {
 			if (seenIds.size < idLimit) {
 				seenIds.add(schemaId);
@@ -163,7 +180,8 @@ export const confluentUnframeStream = (
 		}
 		value.schemaId = schemaId;
 		// subarray (zero-copy) — the source bytes outlive the chunk.
-		enqueue({ schemaId, payload: bytes.subarray(5) });
+		// Spreading undefined adds nothing, so a bare frame emits only these keys.
+		enqueue({ ...envelope, schemaId, payload: bytes.subarray(5) });
 	};
 	const stream = createTransformStream(transform, streamOptions);
 	// `.result()` reports every distinct id seen rather than throwing on mixed
@@ -172,6 +190,126 @@ export const confluentUnframeStream = (
 	// selection still belongs on the envelope { schemaId, payload }.
 	stream.result = () => ({ key: resultKey ?? "confluentSchemaId", value });
 	return stream;
+};
+
+// Looks schema ids up in a Confluent Schema Registry (GET /schemas/ids/{id}).
+// Same cache/eviction/dedup semantics as @datastream/aws
+// awsGlueSchemaRegistryResolver, and both results carry schemaDefinition and
+// dataFormat, but this one is keyed by schemaId (Glue: schemaVersionId) and
+// adds the registry's references.
+export const confluentSchemaRegistryResolver = ({
+	url,
+	headers,
+	cacheExpiry = -1,
+	maxCacheSize = 1000,
+	timeout = 30_000,
+	signal,
+	maxBodySize = 1_048_576, // 1MiB
+	fetch = globalThis.fetch,
+} = {}) => {
+	if (typeof url !== "string" || !URL.canParse(url)) {
+		throw new TypeError(
+			"confluentSchemaRegistryResolver: url must be an absolute URL",
+		);
+	}
+	// Append to the path, not the string: a base with a query string
+	// (?tenant=a) must keep it after /schemas/ids/{id}.
+	const baseUrl = new URL(url);
+	const basePath = baseUrl.pathname.replace(/\/$/, "");
+	// null = no body cap
+	const bodyLimit = maxBodySize ?? Number.POSITIVE_INFINITY;
+	// null = unbounded cache
+	const cacheCap = maxCacheSize ?? Number.POSITIVE_INFINITY;
+	// Map preserves insertion order, so we get O(1) FIFO eviction by deleting
+	// the oldest key when we hit the cap.
+	const cache = new Map(); // schemaId -> { value, expires }
+	// Dedup in-flight lookups so parallel resolves for the same id don't fan
+	// out to N registry calls.
+	const inflight = new Map(); // schemaId -> Promise<value>
+
+	const lookup = async (schemaId) => {
+		const requestUrl = new URL(baseUrl);
+		requestUrl.pathname = `${basePath}/schemas/ids/${schemaId}`;
+		// The signal also aborts reading the body, so a registry that stalls
+		// mid-response is bounded by the same timeout.
+		const timeoutSignal = AbortSignal.timeout(timeout);
+		const response = await fetch(requestUrl.href, {
+			headers,
+			signal: signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal,
+		});
+		if (!response.ok) {
+			// Release the connection; the error body is not needed.
+			await response.body?.cancel();
+			throw new Error(
+				`confluentSchemaRegistryResolver: schema ${schemaId} lookup failed (HTTP ${response.status})`,
+				{ cause: { status: response.status } },
+			);
+		}
+		if (!response.body) {
+			throw new Error(
+				`confluentSchemaRegistryResolver: schema ${schemaId} lookup returned no body`,
+			);
+		}
+		// response.json() would buffer a body of any size; the registry is a
+		// trust boundary, so cap it.
+		const bytes = await collectStream(
+			response.body,
+			bodyLimit,
+			`confluentSchemaRegistryResolver: schema ${schemaId} response exceeds maxBodySize (${maxBodySize} bytes)`,
+		);
+		const body = JSON.parse(new TextDecoder().decode(bytes));
+		// The registry omits schemaType for Avro, its original (default) format,
+		// and references when the schema has none.
+		return {
+			schemaId,
+			schemaDefinition: body.schema,
+			dataFormat: body.schemaType ?? "AVRO",
+			references: body.references ?? [],
+		};
+	};
+
+	return async (schemaId) => {
+		// The id goes into the request path, so it must be the same unsigned
+		// 32-bit integer the wire format carries (confluentFrameStream's check).
+		if (!Number.isInteger(schemaId) || schemaId < 0 || schemaId > 0xffffffff) {
+			throw new TypeError(
+				"confluentSchemaRegistryResolver: schemaId must be an unsigned 32-bit integer",
+			);
+		}
+		const hit = cache.get(schemaId);
+		// expires === -1 is the never-expires sentinel; otherwise it is an absolute
+		// timestamp and the entry is fresh while it is still in the future.
+		if (hit && (hit.expires === -1 || hit.expires > Date.now())) {
+			return hit.value;
+		}
+		// Drop the stale entry so the refreshed one is set() at the Map's tail,
+		// keeping eviction true-FIFO.
+		cache.delete(schemaId);
+		const pending = inflight.get(schemaId);
+		if (pending) return pending;
+
+		const promise = (async () => {
+			try {
+				const value = await lookup(schemaId);
+				// maxCacheSize <= 0 disables caching; evicting down to a non-positive
+				// cap would otherwise spin forever on an empty Map.
+				if (cacheCap > 0) {
+					while (cache.size >= cacheCap) {
+						cache.delete(cache.keys().next().value);
+					}
+					cache.set(schemaId, {
+						value,
+						expires: cacheExpiry < 0 ? -1 : Date.now() + cacheExpiry,
+					});
+				}
+				return value;
+			} finally {
+				inflight.delete(schemaId);
+			}
+		})();
+		inflight.set(schemaId, promise);
+		return promise;
+	};
 };
 
 // *** Glue (18-byte: 0x03 magic + 1 byte compression + 16 bytes UUID) *** //
@@ -285,8 +423,13 @@ export const glueUnframeStream = (
 	const seenIds = new Set();
 	const idLimit = maxSchemaIds ?? Number.POSITIVE_INFINITY;
 	const outputLimit = maxOutputSize ?? Number.POSITIVE_INFINITY;
-	const transform = async (chunk, enqueue) => {
-		const bytes = asBytes(chunk);
+	const emit = (envelope, schemaVersionId, kind, payload, enqueue) => {
+		value.compression = kind;
+		enqueue({ ...envelope, schemaVersionId, compression: kind, payload });
+	};
+	const transform = (chunk, enqueue) => {
+		const envelope = asEnvelope(chunk);
+		const bytes = asBytes(envelope ? envelope.value : chunk);
 		if (bytes.byteLength < 18 || bytes[0] !== 0x03) {
 			throw new Error(
 				"glueUnframeStream: missing 0x03 magic byte / frame is too short (each chunk must be one whole frame)",
@@ -304,26 +447,23 @@ export const glueUnframeStream = (
 		}
 		value.schemaVersionId = schemaVersionId;
 		const framedPayload = bytes.subarray(18);
-		let payload;
-		let kind;
 		if (compressionByte === GLUE_COMPRESSION_NONE) {
-			kind = "none";
-			payload = framedPayload;
-		} else if (compressionByte === GLUE_COMPRESSION_ZLIB) {
-			kind = "zlib";
-			payload = await transcode(
+			emit(envelope, schemaVersionId, "none", framedPayload, enqueue);
+			return;
+		}
+		if (compressionByte === GLUE_COMPRESSION_ZLIB) {
+			return transcode(
 				new DecompressionStream("deflate"),
 				framedPayload,
 				maxOutputSize,
 				outputLimit,
-			);
-		} else {
-			throw new Error(
-				`glueUnframeStream: unsupported compression byte 0x${compressionByte.toString(16).padStart(2, "0")}`,
+			).then((payload) =>
+				emit(envelope, schemaVersionId, "zlib", payload, enqueue),
 			);
 		}
-		value.compression = kind;
-		enqueue({ schemaVersionId, compression: kind, payload });
+		throw new Error(
+			`glueUnframeStream: unsupported compression byte 0x${compressionByte.toString(16).padStart(2, "0")}`,
+		);
 	};
 	const stream = createTransformStream(transform, streamOptions);
 	// See confluentUnframeStream: report every distinct id rather than throw.

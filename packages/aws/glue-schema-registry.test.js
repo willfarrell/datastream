@@ -400,6 +400,38 @@ describe(`@datastream/aws/glue-schema-registry (${variant})`, () => {
 		}
 	});
 
+	// *** a refreshed stale key moves to the FIFO tail *** //
+	// Without dropping the stale entry first, set() updates it in place at the
+	// head, so the next eviction removes the just-refreshed key instead of v2.
+	test(`awsGlueSchemaRegistryResolver re-queues a refreshed key at the FIFO tail`, async (t) => {
+		t.mock.timers.enable({ apis: ["Date"], now: 1_000 });
+		const fetched = [];
+		const client = {
+			send: async (command) => {
+				fetched.push(command.input.SchemaVersionId);
+				return {
+					SchemaVersionId: command.input.SchemaVersionId,
+					SchemaDefinition: "x",
+					DataFormat: "AVRO",
+				};
+			},
+		};
+		const resolve = awsGlueSchemaRegistryResolver({
+			client,
+			cacheExpiry: 10,
+			maxCacheSize: 3,
+		});
+		await resolve("v1"); // expires 1010
+		t.mock.timers.tick(5);
+		await resolve("v2"); // expires 1015
+		t.mock.timers.tick(7);
+		await resolve("v1"); // stale -> refreshed, now newest (expires 1022)
+		await resolve("v3");
+		await resolve("v4"); // evicts the oldest: v2
+		await resolve("v1"); // still cached
+		deepStrictEqual(fetched, ["v1", "v2", "v1", "v3", "v4"]);
+	});
+
 	// *** default export shape *** //
 	// Named exports are canonical; a default export must not come back.
 	test(`glue-schema-registry has no default export`, (_t) => {

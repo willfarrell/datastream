@@ -1,4 +1,4 @@
-import { deepStrictEqual, rejects } from "node:assert";
+import { deepStrictEqual, rejects, strictEqual } from "node:assert";
 import test, { describe } from "node:test";
 import { PublishBatchCommand, SNSClient } from "@aws-sdk/client-sns";
 import * as awsModule from "@datastream/aws/sns";
@@ -120,20 +120,90 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		});
 	});
 
-	// SenderFault: true marks a permanent (caller-side) failure; retrying it
-	// only burns ~30s of backoff. Any sender-fault entry fails the batch at once.
-	// retryMaxCount 1 makes the retry path cheap, so a mutant that ignores
-	// SenderFault is killed by `calls === 2`, not by a timeout.
-	test(`awsSNSPublishMessageStream throws without retrying when a failed entry has SenderFault`, async (_t) => {
-		const failed = [
-			{ Id: "0", Code: "Throttling", SenderFault: false },
-			{ Id: "1", Code: "InvalidParameter", SenderFault: true },
-		];
+	// SenderFault: true marks a permanent (caller-side) failure: it is set aside
+	// (never retried) while retryable failures in the same batch keep backing
+	// off, then the stream throws with every entry that did not get through.
+	test(`awsSNSPublishMessageStream retries retryable failures alongside a SenderFault entry, then throws`, async (_t) => {
+		const permanent = { Id: "1", Code: "InvalidParameter", SenderFault: true };
+		const sent = [];
+		awsSNSSetClient({
+			send: async (command) => {
+				sent.push(command.input.PublishBatchRequestEntries);
+				return sent.length === 1
+					? {
+							Successful: [],
+							Failed: [
+								{ Id: "0", Code: "Throttling", SenderFault: false },
+								permanent,
+							],
+						}
+					: { Successful: [{ Id: "0" }], Failed: [] };
+			},
+		});
+
+		await rejects(
+			() =>
+				pipeline([
+					createReadableStream([
+						{ Id: "0", Message: "a" },
+						{ Id: "1", Message: "b" },
+					]),
+					awsSNSPublishMessageStream({ TopicArn: "t", retryMaxCount: 1 }),
+				]),
+			(error) => {
+				deepStrictEqual(error.message, "awsSNSPublishBatch has failed entries");
+				deepStrictEqual(error.cause, [permanent]);
+				return true;
+			},
+		);
+		// Only the retryable entry is re-sent; the SenderFault entry is not.
+		deepStrictEqual(sent, [
+			[
+				{ Id: "0", Message: "a" },
+				{ Id: "1", Message: "b" },
+			],
+			[{ Id: "0", Message: "a" }],
+		]);
+	});
+
+	test(`awsSNSPublishMessageStream error cause holds SenderFault and still-failing entries once retries run out`, async (_t) => {
+		const permanent = { Id: "1", Code: "InvalidParameter", SenderFault: true };
+		const stillFailing = { Id: "0", Code: "Throttling", SenderFault: false };
 		let calls = 0;
 		awsSNSSetClient({
 			send: async () => {
 				calls++;
-				return { Successful: [], Failed: failed };
+				return calls === 1
+					? { Successful: [], Failed: [{ ...stillFailing }, permanent] }
+					: { Successful: [], Failed: [stillFailing] };
+			},
+		});
+
+		await rejects(
+			() =>
+				pipeline([
+					createReadableStream([
+						{ Id: "0", Message: "a" },
+						{ Id: "1", Message: "b" },
+					]),
+					awsSNSPublishMessageStream({ TopicArn: "t", retryMaxCount: 1 }),
+				]),
+			(error) => {
+				deepStrictEqual(error.message, "awsSNSPublishBatch has failed entries");
+				deepStrictEqual(error.cause, [permanent, stillFailing]);
+				return true;
+			},
+		);
+		deepStrictEqual(calls, 2);
+	});
+
+	test(`awsSNSPublishMessageStream throws without retrying when every failed entry has SenderFault`, async (_t) => {
+		const failed = [{ Id: "1", Code: "InvalidParameter", SenderFault: true }];
+		let calls = 0;
+		awsSNSSetClient({
+			send: async () => {
+				calls++;
+				return { Successful: [{ Id: "0" }], Failed: failed };
 			},
 		});
 
@@ -303,9 +373,7 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 
 		const tooBig = "x".repeat(256 * 1024 + 1);
 		const chunk = { Id: "the-id", Message: tooBig };
-		const expectedBytes = new TextEncoder().encode(
-			JSON.stringify(chunk),
-		).byteLength;
+		const expectedBytes = 256 * 1024 + 1;
 
 		await rejects(
 			() =>
@@ -329,18 +397,12 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 	});
 
 	// *** Per-entry boundary: exactly 256KiB is allowed (strict `>`) *** //
-	test(`awsSNSPublishMessageStream allows an entry whose serialized size is exactly 256KiB`, async (_t) => {
+	test(`awsSNSPublishMessageStream allows an entry whose message size is exactly 256KiB`, async (_t) => {
 		const client = mockClient(SNSClient);
 		awsSNSSetClient(client);
 		client.on(PublishBatchCommand).resolves({ Successful: [], Failed: [] });
 
-		// Build a chunk whose JSON.stringify byteLength is exactly 256*1024.
-		const limit = 256 * 1024;
-		const envelope = JSON.stringify({ Id: "0", Message: "" }).length;
-		const body = "x".repeat(limit - envelope);
-		const chunk = { Id: "0", Message: body };
-		const bytes = new TextEncoder().encode(JSON.stringify(chunk)).byteLength;
-		deepStrictEqual(bytes, limit); // sanity: exactly at the limit
+		const chunk = { Id: "0", Message: "x".repeat(256 * 1024) };
 
 		await pipeline([
 			createReadableStream([chunk]),
@@ -427,15 +489,8 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 		client.on(PublishBatchCommand).resolves({ Successful: [], Failed: [] });
 
 		const limit = 256 * 1024;
-		const enc = (c) => new TextEncoder().encode(JSON.stringify(c)).byteLength;
 		const first = { Id: "0", Message: "x".repeat(100 * 1024) };
-		const firstBytes = enc(first);
-		const envelope = enc({ Id: "1", Message: "" });
-		const second = {
-			Id: "1",
-			Message: "y".repeat(limit - firstBytes - envelope),
-		};
-		deepStrictEqual(firstBytes + enc(second), limit); // sanity: exactly the cap
+		const second = { Id: "1", Message: "y".repeat(limit - 100 * 1024) };
 
 		await pipeline([
 			createReadableStream([first, second]),
@@ -588,5 +643,283 @@ describe(`@datastream/aws/sns (${variant})`, () => {
 	// Named exports are canonical; a default export must not come back.
 	test(`sns has no default export`, (_t) => {
 		deepStrictEqual(Object.hasOwn(awsModule, "default"), false);
+	});
+
+	// --- buffered entries on destroy / abort ---
+	// final() never runs on destroy() or an abort, so entries still buffered
+	// below the batch limit are handed to the teardown error as failedMessages
+	// (the kafkaProduceStream contract) and nothing is sent.
+	const writeEach = async (stream, chunks) => {
+		for (const chunk of chunks) {
+			await new Promise((resolve, reject) =>
+				stream.write(chunk, (error) => (error ? reject(error) : resolve())),
+			);
+		}
+	};
+	// Resolves stream.errored once closed (null when no error was raised).
+	const destroyedWith = async (stream, error) => {
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.once("error", () => {});
+		stream.destroy(error);
+		await closed;
+		return stream.errored;
+	};
+
+	test(`awsSNSPublishMessageStream destroy(error) attaches the buffered entries`, async (_t) => {
+		const client = mockClient(SNSClient);
+		awsSNSSetClient(client);
+		client.on(PublishBatchCommand).resolves({});
+		const stream = awsSNSPublishMessageStream({ TopicArn: "t" });
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			Id: `${i}`,
+			Message: "m",
+		}));
+		await writeEach(stream, chunks);
+		const error = new Error("boom");
+		strictEqual(await destroyedWith(stream, error), error);
+		deepStrictEqual(error.message, "boom");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 0);
+	});
+
+	test(`awsSNSPublishMessageStream destroy() raises an error carrying the buffered entries`, async (_t) => {
+		const client = mockClient(SNSClient);
+		awsSNSSetClient(client);
+		client.on(PublishBatchCommand).resolves({});
+		const stream = awsSNSPublishMessageStream({ TopicArn: "t" });
+		const chunks = Array.from({ length: 1 }, (_v, i) => ({
+			Id: `${i}`,
+			Message: "m",
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(
+			error.message,
+			"awsSNSPublishBatch destroyed with buffered entries",
+		);
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 0);
+	});
+
+	test(`awsSNSPublishMessageStream destroy() with nothing buffered raises no error`, async (_t) => {
+		const client = mockClient(SNSClient);
+		awsSNSSetClient(client);
+		client.on(PublishBatchCommand).resolves({});
+		const stream = awsSNSPublishMessageStream({ TopicArn: "t" });
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.destroy();
+		await closed;
+		strictEqual(stream.errored, null);
+		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 0);
+	});
+
+	test(`awsSNSPublishMessageStream attaches only the entries buffered after the last flush`, async (_t) => {
+		const client = mockClient(SNSClient);
+		awsSNSSetClient(client);
+		client.on(PublishBatchCommand).resolves({});
+		const stream = awsSNSPublishMessageStream({ TopicArn: "t" });
+		const chunks = Array.from({ length: 11 }, (_v, i) => ({
+			Id: `${i}`,
+			Message: "m",
+		}));
+		await writeEach(stream, chunks);
+		const error = await destroyedWith(stream);
+		deepStrictEqual(error.failedMessages, chunks.slice(10));
+		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 1);
+	});
+
+	test(`awsSNSPublishMessageStream abort attaches the buffered entries without sending`, async (_t) => {
+		const client = mockClient(SNSClient);
+		awsSNSSetClient(client);
+		client.on(PublishBatchCommand).resolves({});
+		const controller = new AbortController();
+		const stream = awsSNSPublishMessageStream(
+			{ TopicArn: "t" },
+			{
+				signal: controller.signal,
+			},
+		);
+		const chunks = Array.from({ length: 2 }, (_v, i) => ({
+			Id: `${i}`,
+			Message: "m",
+		}));
+		await writeEach(stream, chunks);
+		const closed = new Promise((resolve) => stream.once("close", resolve));
+		stream.once("error", () => {});
+		controller.abort();
+		await closed;
+		const error = stream.errored;
+		deepStrictEqual(error.name, "AbortError");
+		deepStrictEqual(error.failedMessages, chunks);
+		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 0);
+	});
+
+	// An oversize entry fails the write; the entries buffered before it were
+	// never sent, so they ride on that error.
+	test(`awsSNSPublishMessageStream attaches buffered entries to an oversize error`, async (_t) => {
+		const client = mockClient(SNSClient);
+		awsSNSSetClient(client);
+		client.on(PublishBatchCommand).resolves({});
+		const buffered = [{ Id: "0", Message: "a" }];
+		await rejects(
+			() =>
+				pipeline([
+					createReadableStream([
+						...buffered,
+						{ Id: "1", Message: "x".repeat(256 * 1024 + 1) },
+					]),
+					awsSNSPublishMessageStream({ TopicArn: "t" }),
+				]),
+			(error) => {
+				strictEqual(error.name, "RangeError");
+				deepStrictEqual(error.failedMessages, buffered);
+				return true;
+			},
+		);
+		deepStrictEqual(client.commandCalls(PublishBatchCommand).length, 0);
+	});
+
+	// --- message size: what SNS counts ---
+	// SNS counts the UTF-8 bytes of the body plus each message attribute's
+	// name, data type and value; Id and JSON escaping do not count.
+	const sizeOf = async (chunks) => {
+		const client = mockClient(SNSClient);
+		awsSNSSetClient(client);
+		client.on(PublishBatchCommand).resolves({});
+		await pipeline([
+			createReadableStream(chunks),
+			awsSNSPublishMessageStream({ TopicArn: "t" }),
+		]);
+		return client
+			.commandCalls(PublishBatchCommand)
+			.map((call) =>
+				call.args[0].input.PublishBatchRequestEntries.map((entry) => entry.Id),
+			);
+	};
+
+	test(`awsSNSPublishMessageStream does not count JSON escaping toward the limit`, async (_t) => {
+		// 200KiB of quotes is 200KiB of UTF-8, though JSON.stringify doubles it.
+		deepStrictEqual(
+			await sizeOf([{ Id: "0", Message: '"'.repeat(200 * 1024) }]),
+			[["0"]],
+		);
+	});
+
+	test(`awsSNSPublishMessageStream counts multi-byte UTF-8 in the Message`, async (_t) => {
+		const chunk = { Id: "0", Message: "é".repeat(262_144 / 2 + 1) };
+		await rejects(
+			() =>
+				pipeline([
+					createReadableStream([chunk]),
+					awsSNSPublishMessageStream({ TopicArn: "t" }),
+				]),
+			(error) => {
+				deepStrictEqual(error.cause, {
+					Id: "0",
+					bytes: 262_144 + 2,
+					limit: 262_144,
+				});
+				return true;
+			},
+		);
+	});
+
+	test(`awsSNSPublishMessageStream allows a Message of exactly the limit whatever the Id`, async (_t) => {
+		const Id = "i".repeat(80);
+		deepStrictEqual(await sizeOf([{ Id, Message: "x".repeat(262_144) }]), [
+			[Id],
+		]);
+	});
+
+	test(`awsSNSPublishMessageStream counts attribute names, types and string values`, async (_t) => {
+		// "k" + "String" + "v" = 8 bytes.
+		const MessageAttributes = { k: { DataType: "String", StringValue: "v" } };
+		deepStrictEqual(
+			await sizeOf([
+				{ Id: "0", Message: "x".repeat(262_144 - 8), MessageAttributes },
+			]),
+			[["0"]],
+		);
+		await rejects(
+			() =>
+				pipeline([
+					createReadableStream([
+						{ Id: "1", Message: "x".repeat(262_144 - 7), MessageAttributes },
+					]),
+					awsSNSPublishMessageStream({ TopicArn: "t" }),
+				]),
+			(error) => {
+				deepStrictEqual(error.cause, {
+					Id: "1",
+					bytes: 262_144 + 1,
+					limit: 262_144,
+				});
+				return true;
+			},
+		);
+	});
+
+	test(`awsSNSPublishMessageStream counts binary attribute values`, async (_t) => {
+		// "k" + "Binary" + 3 bytes = 10 bytes.
+		const MessageAttributes = {
+			k: { DataType: "Binary", BinaryValue: new Uint8Array(3) },
+		};
+		await rejects(
+			() =>
+				pipeline([
+					createReadableStream([
+						{ Id: "0", Message: "x".repeat(262_144 - 9), MessageAttributes },
+					]),
+					awsSNSPublishMessageStream({ TopicArn: "t" }),
+				]),
+			(error) => {
+				deepStrictEqual(error.cause, {
+					Id: "0",
+					bytes: 262_144 + 1,
+					limit: 262_144,
+				});
+				return true;
+			},
+		);
+	});
+
+	test(`awsSNSPublishMessageStream counts an attribute without a value by name and type`, async (_t) => {
+		// "kk" + "Number" = 8 bytes; no StringValue / BinaryValue.
+		const MessageAttributes = { kk: { DataType: "Number" } };
+		await rejects(
+			() =>
+				pipeline([
+					createReadableStream([
+						{ Id: "0", Message: "x".repeat(262_144 - 7), MessageAttributes },
+					]),
+					awsSNSPublishMessageStream({ TopicArn: "t" }),
+				]),
+			(error) => {
+				deepStrictEqual(error.cause, {
+					Id: "0",
+					bytes: 262_144 + 1,
+					limit: 262_144,
+				});
+				return true;
+			},
+		);
+	});
+
+	test(`awsSNSPublishMessageStream splits the batch one byte past the limit`, async (_t) => {
+		const first = { Id: "0", Message: "x".repeat(100 * 1024) };
+		deepStrictEqual(
+			await sizeOf([
+				first,
+				{ Id: "1", Message: "y".repeat(262_144 - 100 * 1024) },
+			]),
+			[["0", "1"]],
+		);
+		deepStrictEqual(
+			await sizeOf([
+				first,
+				{ Id: "1", Message: "y".repeat(262_144 - 100 * 1024 + 1) },
+			]),
+			[["0"], ["1"]],
+		);
 	});
 });

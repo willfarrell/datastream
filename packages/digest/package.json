@@ -3,6 +3,7 @@
 	"version": "0.8.0",
 	"description": "Cryptographic hash digest pass-through streams",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},

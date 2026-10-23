@@ -35,6 +35,24 @@ describe("FetchOptions retry", () => {
 	});
 });
 
+describe("FetchOptions timeout", () => {
+	test("accepts a number or null", () => {
+		expect<FetchOptions["timeout"]>().type.toBe<number | null | undefined>();
+		expect(fetchRateLimit).type.toBeCallableWith({
+			url: "https://example.com",
+			timeout: 5000,
+		});
+		expect(fetchRateLimit).type.toBeCallableWith({
+			url: "https://example.com",
+			timeout: null,
+		});
+		expect(fetchRateLimit).type.not.toBeCallableWith({
+			url: "https://example.com",
+			timeout: "5s",
+		});
+	});
+});
+
 describe("FetchOptions limits", () => {
 	test("has retryAfterMax, maxPages and maxBodySize properties", () => {
 		expect<FetchOptions>().type.toBeAssignableTo<{

@@ -490,6 +490,34 @@ describe(`@datastream/compress (${variant})`, async () => {
 			);
 		});
 
+		// gzipCompressStream accepts `level` like deflate (level ?? quality); exact
+		// output vs gzipSync pins both the precedence and the routing to zlib.
+		test(`gzipCompressStream level overrides quality`, async (_t) => {
+			const output = await streamToBuffer(
+				pipejoin([
+					createReadableStream(compressibleBody),
+					gzipCompressStream({ level: 9, quality: 1 }),
+				]),
+			);
+			strictEqual(
+				output.toString("hex"),
+				gzipSync(compressibleBody, { level: 9 }).toString("hex"),
+			);
+		});
+
+		test(`gzipCompressStream level:1 output matches gzipSync level:1`, async (_t) => {
+			const output = await streamToBuffer(
+				pipejoin([
+					createReadableStream(compressibleBody),
+					gzipCompressStream({ level: 1 }),
+				]),
+			);
+			strictEqual(
+				output.toString("hex"),
+				gzipSync(compressibleBody, { level: 1 }).toString("hex"),
+			);
+		});
+
 		// deflateCompressStream: `level` takes precedence over `quality`
 		// (covers `level ?? quality` LogicalOperator survivor).
 		test(`deflateCompressStream level overrides quality`, async (_t) => {
@@ -1459,6 +1487,142 @@ describe(`@datastream/compress (${variant})`, async () => {
 			}
 		});
 
+		// A browser DecompressionStream inflates each written chunk synchronously,
+		// so native.browser.js must feed it in 16KiB slices and let maxOutputSize
+		// stop the pipe between slices. A fake DecompressionStream records every
+		// chunk it is handed and expands it by `ratio`.
+		const withFakeDecompressionStream = async (ratio, fn) => {
+			const original = globalThis.DecompressionStream;
+			const writes = [];
+			globalThis.DecompressionStream = class extends TransformStream {
+				constructor(_format) {
+					super({
+						transform(chunk, controller) {
+							writes.push(chunk.byteLength);
+							controller.enqueue(
+								ratio === 1
+									? chunk.slice()
+									: new Uint8Array(chunk.byteLength * ratio),
+							);
+						},
+					});
+				}
+			};
+			try {
+				await fn(writes);
+			} finally {
+				globalThis.DecompressionStream = original;
+			}
+		};
+		const sequence = (length) => new Uint8Array(length).map((_, i) => i % 251);
+
+		test("web-direct: deflateDecompressStream feeds the decompressor 16KiB slices", async (_t) => {
+			await withFakeDecompressionStream(1, async (writes) => {
+				const input = sequence(40_000);
+				const out = await webCore.streamToBuffer(
+					webCore.pipejoin([
+						webCore.createReadableStream([input]),
+						deflateWeb.deflateDecompressStream(),
+					]),
+				);
+				deepStrictEqual(writes, [16_384, 16_384, 7_232]);
+				deepStrictEqual(new Uint8Array(out), input);
+			});
+		});
+
+		test("web-direct: deflateDecompressStream feeds no empty slice for an exact multiple", async (_t) => {
+			await withFakeDecompressionStream(1, async (writes) => {
+				const input = sequence(32_768);
+				const out = await webCore.streamToBuffer(
+					webCore.pipejoin([
+						webCore.createReadableStream([input]),
+						deflateWeb.deflateDecompressStream(),
+					]),
+				);
+				deepStrictEqual(writes, [16_384, 16_384]);
+				deepStrictEqual(new Uint8Array(out), input);
+			});
+		});
+
+		// The output stage's abort normally reaches the input stage by cancelling
+		// back through the codec; a codec whose sides are unlinked (stuck mid-chunk)
+		// never passes it on, so the input stage must honour the signal itself.
+		test("web-direct: deflateDecompressStream input stage aborts without the codec", async (_t) => {
+			const original = globalThis.DecompressionStream;
+			globalThis.DecompressionStream = class {
+				constructor(_format) {
+					this.writable = new WritableStream({
+						write: () => new Promise(() => {}),
+					});
+					this.readable = new ReadableStream();
+				}
+			};
+			try {
+				const controller = new AbortController();
+				const reason = new Error("stop");
+				const { writable } = deflateWeb.deflateDecompressStream(
+					{},
+					{ signal: controller.signal },
+				);
+				const writer = writable.getWriter();
+				controller.abort(reason);
+				strictEqual(
+					await Promise.race([
+						writer.closed.catch((e) => e),
+						new Promise((resolve) => setTimeout(() => resolve("pending"), 10)),
+					]),
+					reason,
+				);
+			} finally {
+				globalThis.DecompressionStream = original;
+			}
+		});
+
+		test("web-direct: deflateDecompressStream slices ArrayBuffer and offset views", async (_t) => {
+			await withFakeDecompressionStream(1, async (writes) => {
+				const backing = sequence(20_000);
+				const out = await webCore.streamToBuffer(
+					webCore.pipejoin([
+						webCore.createReadableStream([
+							backing.buffer.slice(0, 3),
+							new DataView(backing.buffer, 3, 5),
+							new Uint16Array(backing.buffer, 8, 9_996),
+						]),
+						deflateWeb.deflateDecompressStream(),
+					]),
+				);
+				deepStrictEqual(writes, [3, 5, 16_384, 3_608]);
+				deepStrictEqual(new Uint8Array(out), backing);
+			});
+		});
+
+		test("web-direct: deflateDecompressStream rejects non-BufferSource chunks", async (_t) => {
+			await rejects(
+				webCore.pipeline([
+					webCore.createReadableStream([5]),
+					deflateWeb.deflateDecompressStream(),
+				]),
+				{
+					name: "TypeError",
+					message: "chunk must be a string or BufferSource",
+				},
+			);
+		});
+
+		test("web-direct: deflateDecompressStream stops feeding a bomb at maxOutputSize", async (_t) => {
+			await withFakeDecompressionStream(1000, async (writes) => {
+				// 1MiB of input = 64 slices; each slice inflates to ~16MB.
+				await rejects(
+					webCore.pipeline([
+						webCore.createReadableStream([new Uint8Array(1024 * 1024)]),
+						deflateWeb.deflateDecompressStream({ maxOutputSize: 1024 * 1024 }),
+					]),
+					(e) => e instanceof RangeError && e.message.includes("maxOutputSize"),
+				);
+				ok(writes.length <= 4, `wrote ${writes.length} slices`);
+			});
+		});
+
 		test("web-direct: deflateCompressStream should reject when signal aborts", async (_t) => {
 			const controller = new AbortController();
 			controller.abort();
@@ -1851,6 +2015,48 @@ describe(`@datastream/compress (${variant})`, async () => {
 			]);
 			queueMicrotask(() => controller.abort(reason));
 			await rejects(promise, (e) => e === reason);
+		});
+
+		// "resolved", the rejection reason, or "pending" a macrotask later.
+		const settled = (promise) =>
+			Promise.race([
+				promise.then(
+					() => "resolved",
+					(e) => e,
+				),
+				new Promise((resolve) => setTimeout(() => resolve("pending"), 10)),
+			]);
+
+		// No chunk is in flight, so no transform/flush can notice the abort: only
+		// the stages' abort listeners can end the stream.
+		test(`native streams reject with the signal reason when aborted while idle`, async () => {
+			const controller = new AbortController();
+			const reason = new Error("stop");
+			const promise = pipeline([
+				unended(Uint8Array.from(gzipSync(compressibleBody))),
+				gzipDecompressStream({}, { signal: controller.signal }),
+			]);
+			strictEqual(await settled(promise), "pending");
+			controller.abort(reason);
+			strictEqual(await settled(promise), reason);
+		});
+
+		// Once the input has ended (its listener detached) the output stage alone
+		// still errors its readable on abort.
+		test(`native output stage honours the signal after the input has ended`, async () => {
+			const controller = new AbortController();
+			const { signal } = controller;
+			const reason = new Error("stop");
+			const { readable, writable } = gzipCompressStream({}, { signal });
+			strictEqual(getEventListeners(signal, "abort").length, 2);
+			const writer = writable.getWriter();
+			await writer.write(compressibleBody);
+			await writer.close();
+			strictEqual(getEventListeners(signal, "abort").length, 1);
+			controller.abort(reason);
+			// let the abort error the stage before the read pulls a chunk through
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			strictEqual(await settled(readable.getReader().read()), reason);
 		});
 
 		// An explicit null opts out of the default 256MiB ceiling. Asserted on the

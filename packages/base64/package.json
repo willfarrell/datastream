@@ -3,6 +3,7 @@
 	"version": "0.8.0",
 	"description": "Base64 encoding and decoding transform streams",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},

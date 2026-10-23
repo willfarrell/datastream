@@ -15,6 +15,10 @@ const catchError = (input, e) => {
 		"duckdb: identifier must be a non-empty string",
 		// DuckDB type coercion failures (e.g. out-of-range float → INTEGER)
 		"Failed to cast value:",
+		// Same failures via the typed appends (appendVarchar/appendDouble into an
+		// INTEGER column), which the appender reports without that prefix
+		"Could not convert string",
+		"can't be cast because the value is out of range",
 		// Integer-valued float beyond int64 range (e.g. fc.float() ≥ 2^63)
 		"bigint out of int64 range",
 		// Cannot store objects/arrays/symbols/functions into typed columns

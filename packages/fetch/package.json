@@ -3,6 +3,7 @@
 	"version": "0.8.0",
 	"description": "HTTP fetch-based readable and writable streams with pagination and rate limiting",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},

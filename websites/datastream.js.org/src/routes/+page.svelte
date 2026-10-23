@@ -122,7 +122,11 @@ await pipeline(streams)`;
                 <H3>Dual platform</H3>
                 <P
                     >Works with both Web Streams API and Node.js Streams.
-                    Write once, run anywhere — server, browser, or edge.</P
+                    Most packages ship a Node.js and a browser build with the
+                    same API, so one pipeline runs on the server and in the
+                    browser. A few are platform-specific: aws, azure, gcp,
+                    kafka, sqlite, and avro are Node.js only, and indexeddb is browser
+                    only.</P
                 >
             </Li>
             <Li class="card feature">
@@ -149,10 +153,14 @@ await pipeline(streams)`;
                 >
             </Li>
             <Li class="card feature">
-                <H3>AWS integrations</H3>
+                <H3>Cloud, Kafka, and SQL integrations</H3>
                 <P
-                    >Stream data to and from DynamoDB, S3, SQS, SNS, and Lambda
-                    with purpose-built stream adapters.</P
+                    >Stream data to and from AWS (S3, DynamoDB, DynamoDB
+                    Streams, Kinesis, SQS, SNS, Lambda, CloudWatch Logs, and
+                    Glue Schema Registry), Azure (Blob, Cosmos DB, Event Hubs,
+                    Queue, and Service Bus), Google Cloud (Cloud Storage,
+                    Pub/Sub, and BigQuery), Kafka, SQLite, and DuckDB with
+                    purpose-built stream adapters.</P
                 >
             </Li>
             <Li class="card feature">
@@ -188,11 +196,15 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="aws">
                 <H3><A href="/docs/packages/aws">aws</A></H3>
-                <P>DynamoDB, S3, SQS, SNS, and Lambda streams (Node.js only).</P>
+                <P>CloudWatch Logs, DynamoDB, DynamoDB Streams, Kinesis, Lambda, S3, SNS, SQS, MSK IAM, and Glue Schema Registry streams (Node.js only).</P>
             </Card>
             <Card class="package" id="azure">
                 <H3><A href="/docs/packages/azure">azure</A></H3>
                 <P>Blob, Cosmos DB, Event Hubs, Queue, and Service Bus streams (Node.js only).</P>
+            </Card>
+            <Card class="package" id="gcp">
+                <H3><A href="/docs/packages/gcp">gcp</A></H3>
+                <P>Cloud Storage, Pub/Sub, and BigQuery streams. Bring your own SDK client (Node.js only).</P>
             </Card>
             <Card class="package" id="csv">
                 <H3><A href="/docs/packages/csv">csv</A></H3>
@@ -224,11 +236,19 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="duckdb">
                 <H3><A href="/docs/packages/duckdb">duckdb</A></H3>
-                <P>DuckDB writable streams for rows and Arrow batches.</P>
+                <P>DuckDB query, append, and Arrow insert streams. Each write runs in one transaction, so a failed pipeline commits nothing. Read and write Parquet and CSV through SQL.</P>
             </Card>
             <Card class="package" id="kafka">
                 <H3><A href="/docs/packages/kafka">kafka</A></H3>
-                <P>Kafka producer and consumer streams (Node.js only).</P>
+                <P>Kafka produce, consume, and commit streams (Node.js only).</P>
+            </Card>
+            <Card class="package" id="sqlite">
+                <H3><A href="/docs/packages/sqlite">sqlite</A></H3>
+                <P>SQLite query and insert streams via node:sqlite (Node.js only).</P>
+            </Card>
+            <Card class="package" id="avro">
+                <H3><A href="/docs/packages/avro">avro</A></H3>
+                <P>Apache Avro encode and decode (Node.js only).</P>
             </Card>
             <Card class="package" id="protobuf">
                 <H3><A href="/docs/packages/protobuf">protobuf</A></H3>
@@ -236,7 +256,39 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="schema-registry">
                 <H3><A href="/docs/packages/schema-registry">schema-registry</A></H3>
-                <P>Confluent and Glue Schema Registry framing.</P>
+                <P>Confluent and Glue Schema Registry framing, plus a Confluent schema resolver.</P>
+            </Card>
+            <Card class="package" id="base64">
+                <H3><A href="/docs/packages/base64">base64</A></H3>
+                <P>Base64 encoding and decoding transform streams.</P>
+            </Card>
+            <Card class="package" id="digest">
+                <H3><A href="/docs/packages/digest">digest</A></H3>
+                <P>Cryptographic hash digest pass-through streams.</P>
+            </Card>
+            <Card class="package" id="encrypt">
+                <H3><A href="/docs/packages/encrypt">encrypt</A></H3>
+                <P>Symmetric encryption and decryption streams.</P>
+            </Card>
+            <Card class="package" id="fetch">
+                <H3><A href="/docs/packages/fetch">fetch</A></H3>
+                <P>HTTP fetch readable and writable streams with pagination and rate limiting.</P>
+            </Card>
+            <Card class="package" id="file">
+                <H3><A href="/docs/packages/file">file</A></H3>
+                <P>File system readable and writable streams with extension type enforcement.</P>
+            </Card>
+            <Card class="package" id="indexeddb">
+                <H3><A href="/docs/packages/indexeddb">indexeddb</A></H3>
+                <P>IndexedDB readable and writable streams (browser only).</P>
+            </Card>
+            <Card class="package" id="ipfs">
+                <H3><A href="/docs/packages/ipfs">ipfs</A></H3>
+                <P>IPFS get and add streams.</P>
+            </Card>
+            <Card class="package" id="json">
+                <H3><A href="/docs/packages/json">json</A></H3>
+                <P>JSON and NDJSON (JSON Lines) parsing and formatting.</P>
             </Card>
         </Ul>
     </Section>

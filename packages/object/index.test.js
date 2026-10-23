@@ -307,6 +307,18 @@ describe(`@datastream/object (${variant})`, () => {
 		deepStrictEqual(output, [{ age: 30, fullName: "John Doe" }]);
 	});
 
+	test(`objectKeyJoinStream should default separator to ","`, async (_t) => {
+		const input = [{ firstName: "John", lastName: "Doe" }];
+		const streams = [
+			createReadableStream(input),
+			objectKeyJoinStream({ keys: { fullName: ["firstName", "lastName"] } }),
+		];
+
+		const output = await streamToArray(pipejoin(streams));
+
+		deepStrictEqual(output, [{ fullName: "John,Doe" }]);
+	});
+
 	// *** objectKeyMapStream *** //
 	test(`objectKeyMapStream should map keys to new names`, async (_t) => {
 		const input = [{ a: 1, b: 2, c: 3 }];
@@ -675,6 +687,61 @@ describe(`@datastream/object (${variant})`, () => {
 
 		// Original input[0][0] should be unchanged
 		deepStrictEqual(input[0][0], originalFirst);
+	});
+
+	test(`objectPivotLongToWideStream should keep a pivoted column named like a key or valueParam`, async (_t) => {
+		const input = [
+			[
+				{ id: 1, metric: "value", value: 5 },
+				{ id: 1, metric: "metric", value: 7 },
+				{ id: 1, metric: "cost", value: 9 },
+			],
+		];
+		const streams = [
+			createReadableStream(input),
+			objectPivotLongToWideStream({
+				keys: ["metric"],
+				valueParam: "value",
+			}),
+		];
+		const output = await streamToArray(pipejoin(streams));
+
+		deepStrictEqual(output, [{ id: 1, value: 5, metric: 7, cost: 9 }]);
+	});
+
+	// *** objectValueMapStream should not mutate input *** //
+	test(`objectValueMapStream should not mutate input chunks`, async (_t) => {
+		const input = [{ status: "active", id: 1 }, { status: "unknown" }];
+		const streams = [
+			createReadableStream(input),
+			objectValueMapStream({ key: "status", values: { active: 1 } }),
+		];
+		const output = await streamToArray(pipejoin(streams));
+
+		deepStrictEqual(output, [{ status: 1, id: 1 }, { status: "unknown" }]);
+		deepStrictEqual(input, [
+			{ status: "active", id: 1 },
+			{ status: "unknown" },
+		]);
+	});
+
+	test(`objectValueMapStream should keep "__proto__" keys as own properties`, async (_t) => {
+		const input = [JSON.parse('{"__proto__":"a","x":{"y":1}}')];
+		const streams = [
+			createReadableStream(input),
+			objectValueMapStream({
+				key: "__proto__",
+				values: { a: { polluted: true } },
+			}),
+		];
+		const output = await streamToArray(pipejoin(streams));
+
+		deepStrictEqual(output, [
+			JSON.parse('{"__proto__":{"polluted":true},"x":{"y":1}}'),
+		]);
+		strictEqual(Object.getPrototypeOf(output[0]), Object.prototype);
+		strictEqual(Object.hasOwn(input[0], "__proto__"), true);
+		deepStrictEqual(input[0], JSON.parse('{"__proto__":"a","x":{"y":1}}'));
 	});
 
 	// *** objectBatchStream should produce no output on empty input *** //

@@ -1,8 +1,9 @@
 {
 	"name": "@datastream/kafka",
 	"version": "0.8.0",
-	"description": "Kafka producer and consumer streams (Node, via kafkajs)",
+	"description": "Kafka producer, consumer, and offset-commit streams (Node, via kafkajs)",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},
@@ -13,8 +14,7 @@
 	"exports": {
 		".": {
 			"types": "./index.d.ts",
-			"node": "./index.node.mjs",
-			"default": "./index.node.mjs"
+			"node": "./index.node.mjs"
 		}
 	},
 	"types": "index.d.ts",

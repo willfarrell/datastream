@@ -59,7 +59,7 @@ describe(`@datastream/aws/msk-iam (${variant})`, () => {
 		}
 	});
 
-	// The `generateAuthToken({ region, awsDebugCreds, ttl })` argument object must
+	// The `generateAuthToken({ region, awsDebugCreds })` argument object must
 	// forward the resolver's region; a `{}` mutant drops region and the signer
 	// rejects with a region-required error. We assert the provider rejects when no
 	// region can be resolved from args or environment.

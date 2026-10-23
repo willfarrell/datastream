@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 export {
 	azureBlobDownloadStream,
+	azureBlobListStream,
 	azureBlobUploadStream,
 } from "@datastream/azure/blob";
 export {
@@ -20,7 +21,9 @@ export {
 	azureQueueSendMessageStream,
 } from "@datastream/azure/queue";
 export {
+	azureServiceBusAbandonMessageStream,
 	azureServiceBusCompleteMessageStream,
+	azureServiceBusDeadLetterMessageStream,
 	azureServiceBusReceiveMessagesStream,
 	azureServiceBusSendMessagesStream,
 } from "@datastream/azure/service-bus";

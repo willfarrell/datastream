@@ -60,6 +60,9 @@ jobs:
       #   release-assets.githubusercontent.com:443
       - name: Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # The action has no input for these flags; trivy reads TRIVY_<FLAG> env vars.
+          TRIVY_INCLUDE_DEV_DEPS: "true"
         with:
           # Scan the whole repo (matching the local `test:sast:trivy` script,
           # `trivy fs ... .`) instead of only package-lock.json, and do not
@@ -130,12 +133,18 @@ jobs:
       #   release-assets.githubusercontent.com:443
       - name: Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # Same semantics as the local `test:sast:trivy` script. The action has no
+          # input for these flags; trivy reads TRIVY_<FLAG> env vars.
+          # Keep TRIVY_IGNORED_LICENSES in sync with root package.json.
+          TRIVY_INCLUDE_DEV_DEPS: "true"
+          TRIVY_IGNORED_LICENSES: 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT,MPL-2.0,BlueOak-1.0.0,Unlicense,Python-2.0,LGPL-3.0-or-later
         with:
           scanners: license
           scan-type: fs
           scan-ref: .
           hide-progress: true
-          exit-code: 0
+          exit-code: 1
           format: table
 
   # https://github.com/oss-review-toolkit/ort-ci-github-action
@@ -312,15 +321,52 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
+  # The semgrep image lives in .github/docker/semgrep/Dockerfile so Dependabot
+  # (docker ecosystem) can bump it; `container:` images in workflows are invisible to it.
+  semgrep-image:
+    name: "semgrep: image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: (github.actor != 'dependabot[bot]')
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          disable-sudo: true
+          disable-telemetry: true
+          allowed-endpoints: >
+            github.com:443
+      # allowed-endpoints: >
+      #   github.com:443
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/docker/semgrep
+      - name: Read image
+        id: image
+        run: |
+          image=$(sed -n 's/^FROM //p' .github/docker/semgrep/Dockerfile)
+          # Digest-pinned or nothing.
+          if ! echo "$image" | grep -qE '^semgrep/semgrep:[^@ ]+@sha256:[0-9a-f]{64}$'; then
+            echo "::error::.github/docker/semgrep/Dockerfile must FROM a digest-pinned semgrep/semgrep image"
+            exit 1
+          fi
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+
   # https://semgrep.dev/docs/semgrep-ci/sample-ci-configs/#github-actions
   semgrep:
     name: "semgrep: SAST"
+    needs: semgrep-image
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     container:
       # https://hub.docker.com/r/semgrep/semgrep/tags
-      image: semgrep/semgrep@sha256:3e6e5065d9e68abffddffdb536a8db2d79a8fa92dc424daa48d3a4b7d9bc65d0 # v1.111.0
+      image: ${{ needs.semgrep-image.outputs.image }} # zizmor: ignore[unpinned-images] semgrep-image fails unless the image is digest-pinned
 
     if: (github.actor != 'dependabot[bot]')
     steps:

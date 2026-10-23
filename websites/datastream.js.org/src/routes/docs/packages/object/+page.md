@@ -168,7 +168,7 @@ Joins multiple keys into new combined keys.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `keys` | `object` | — | Map of `{ newKey: ['key1', 'key2'] }` |
-| `separator` | `string` | — | Separator for joined values |
+| `separator` | `string` | `","` | Separator for joined values |
 | `isNestedObject` | `boolean` | `false` | Use `structuredClone` instead of shallow spread for cloning |
 
 ### Example

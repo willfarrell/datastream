@@ -1,0 +1,62 @@
+{
+	"name": "@datastream/avro",
+	"version": "0.8.0",
+	"description": "Apache Avro encode/decode transform streams (Node, via avsc)",
+	"type": "module",
+	"sideEffects": false,
+	"engines": {
+		"node": ">=26"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.node.mjs",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"node": "./index.node.mjs"
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"*.node.mjs",
+		"*.node.mjs.map",
+		"*.d.ts"
+	],
+	"scripts": {
+		"test": "npm run test:unit",
+		"test:unit": "node --test",
+		"test:bench": "node --experimental-bench --bench 'index.bench.js'"
+	},
+	"license": "MIT",
+	"keywords": [
+		"avro",
+		"avsc",
+		"schema-registry",
+		"Node Stream API"
+	],
+	"author": {
+		"name": "datastream contributors",
+		"url": "https://github.com/willfarrell/datastream/graphs/contributors"
+	},
+	"repository": {
+		"type": "git",
+		"url": "github:willfarrell/datastream",
+		"directory": "packages/avro"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/datastream/issues"
+	},
+	"homepage": "https://datastream.js.org",
+	"dependencies": {
+		"@datastream/core": "0.8.0"
+	},
+	"peerDependencies": {
+		"avsc": "^5.7.9"
+	},
+	"devDependencies": {
+		"@datastream/kafka": "0.8.0",
+		"@datastream/schema-registry": "0.8.0",
+		"avsc": "^5.7.9"
+	}
+}

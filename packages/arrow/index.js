@@ -157,12 +157,67 @@ const toUtf8 = (v) =>
 			? JSON.stringify(v)
 			: v;
 const identity = (v) => v;
-// typeId check (not instanceof Utf8) so schemas built with another copy of
-// apache-arrow still match.
-const makeConverters = (schema) =>
-	schema.fields.map((field) =>
-		DataType.isUtf8(field.type) ? toUtf8 : identity,
-	);
+
+// Value checks for the column types arrowDetectSchemaStream seals (and their
+// kin from user/IPC schemas). The Arrow builders coerce silently: an Int32
+// builder wraps 3000000000 to -1294967296, truncates 2.7 to 2 and turns "oops"
+// into 0, so a schema inferred from the first sampleSize rows would corrupt any
+// later row that does not fit it. Each check returns the Error class to throw,
+// or undefined for a valid value. Other types (Utf8, Int64, ...) are unchecked.
+const pass = () => {};
+const intCheck = (type) => {
+	const max = 2 ** (type.isSigned ? type.bitWidth - 1 : type.bitWidth) - 1;
+	const min = type.isSigned ? -max - 1 : 0;
+	return (v) =>
+		!Number.isInteger(v) ? TypeError : v < min || v > max ? RangeError : pass();
+};
+const numberCheck = (v) => (typeof v === "number" ? pass() : TypeError);
+const booleanCheck = (v) => (typeof v === "boolean" ? pass() : TypeError);
+// Epoch milliseconds or a valid Date (an Invalid Date's time is NaN).
+const timestampCheck = (v) =>
+	Number.isInteger(v instanceof Date ? v.getTime() : v) ? pass() : TypeError;
+const valueCheck = (type) =>
+	DataType.isInt(type) && type.bitWidth < 64
+		? intCheck(type)
+		: DataType.isFloat(type)
+			? numberCheck
+			: DataType.isBool(type)
+				? booleanCheck
+				: DataType.isTimestamp(type)
+					? timestampCheck
+					: pass;
+
+const describeValue = (v) =>
+	typeof v === "string"
+		? JSON.stringify(v)
+		: typeof v === "object" && v !== null
+			? Object.prototype.toString.call(v)
+			: String(v);
+
+// Converts one cell for its builder, throwing a descriptive TypeError /
+// RangeError (stream name, zero-based row index, field) for a value the column
+// cannot hold, or a null in a non-nullable field. Nulls match makeBuilders: ""
+// is null except in Utf8.
+const makeConverter = (name, field) => {
+	const { type, nullable } = field;
+	// typeId check (not instanceof Utf8) so schemas built with another copy of
+	// apache-arrow still match.
+	const utf8 = DataType.isUtf8(type);
+	const convert = utf8 ? toUtf8 : identity;
+	const check = valueCheck(type);
+	return (v, row) => {
+		const isNull = v === null || v === undefined || (!utf8 && v === "");
+		const ErrorType = isNull ? (nullable ? pass() : TypeError) : check(v);
+		if (ErrorType) {
+			throw new ErrorType(
+				`${name}: row ${row}, field "${field.name}" expects ${nullable ? "" : "non-null "}${type}, got ${describeValue(v)}`,
+			);
+		}
+		return convert(v);
+	};
+};
+const makeConverters = (name, schema) =>
+	schema.fields.map((field) => makeConverter(name, field));
 
 // A zero-field schema cannot represent rows: apache-arrow derives a
 // RecordBatch's length from its child columns, so with no columns every batch
@@ -183,6 +238,8 @@ export const arrowBatchFromArrayStream = (
 	let builders;
 	let converters;
 	let rowCount = 0;
+	// Zero-based index of the row across the whole stream, for error messages.
+	let rowIndex = 0;
 
 	const init = () => {
 		if (builders) return;
@@ -191,7 +248,7 @@ export const arrowBatchFromArrayStream = (
 			resolveLazy(schema),
 		);
 		builders = makeBuilders(resolvedSchema);
-		converters = makeConverters(resolvedSchema);
+		converters = makeConverters("arrowBatchFromArrayStream", resolvedSchema);
 	};
 
 	// Eagerly validate a concrete schema at construction so a missing/misconfigured
@@ -202,8 +259,9 @@ export const arrowBatchFromArrayStream = (
 	const transform = (row, enqueue) => {
 		init();
 		for (let i = 0, l = builders.length; i < l; i++) {
-			builders[i].append(converters[i](row[i]));
+			builders[i].append(converters[i](row[i], rowIndex));
 		}
+		rowIndex++;
 		rowCount++;
 		if (rowCount >= batchSize) {
 			enqueue(buildRecordBatch(resolvedSchema, builders, rowCount));
@@ -231,6 +289,8 @@ export const arrowBatchFromObjectStream = (
 	let builders;
 	let converters;
 	let rowCount = 0;
+	// Zero-based index of the row across the whole stream, for error messages.
+	let rowIndex = 0;
 
 	const init = () => {
 		if (builders) return;
@@ -240,7 +300,7 @@ export const arrowBatchFromObjectStream = (
 		);
 		fieldNames = resolvedSchema.fields.map((f) => f.name);
 		builders = makeBuilders(resolvedSchema);
-		converters = makeConverters(resolvedSchema);
+		converters = makeConverters("arrowBatchFromObjectStream", resolvedSchema);
 	};
 
 	// Eagerly validate a concrete schema at construction so a missing/misconfigured
@@ -251,8 +311,9 @@ export const arrowBatchFromObjectStream = (
 	const transform = (row, enqueue) => {
 		init();
 		for (let i = 0, l = builders.length; i < l; i++) {
-			builders[i].append(converters[i](row[fieldNames[i]]));
+			builders[i].append(converters[i](row[fieldNames[i]], rowIndex));
 		}
+		rowIndex++;
 		rowCount++;
 		if (rowCount >= batchSize) {
 			enqueue(buildRecordBatch(resolvedSchema, builders, rowCount));
@@ -305,29 +366,24 @@ export const arrowToObjectStream = (_options = {}, streamOptions = {}) => {
 	const transform = (batch, enqueue) => {
 		const fields = batch.schema.fields;
 		const colCount = fields.length;
-		const names = [];
+		// One [name, value] pair per column, reused across rows: Object.fromEntries
+		// copies the values out, and makes a column named "__proto__" an own
+		// enumerable data property instead of replacing the row's prototype (which
+		// a plain `row[name] = ...` would do, silently dropping it).
+		const entries = [];
 		const cols = [];
 		const isTimestamp = [];
 		for (let i = 0; i < colCount; i++) {
-			names.push(fields[i].name);
+			entries.push([fields[i].name, undefined]);
 			cols.push(batch.getChildAt(i));
 			isTimestamp.push(isTimestampType(fields[i].type));
 		}
 		const rowCount = batch.numRows;
 		for (let r = 0; r < rowCount; r++) {
-			const row = {};
 			for (let i = 0; i < colCount; i++) {
-				// defineProperty so a column named "__proto__" becomes an own
-				// enumerable data property instead of replacing the row's prototype
-				// (which a plain `row[name] = ...` would do, silently dropping it).
-				Object.defineProperty(row, names[i], {
-					value: readCell(cols[i], isTimestamp[i], r),
-					writable: true,
-					enumerable: true,
-					configurable: true,
-				});
+				entries[i][1] = readCell(cols[i], isTimestamp[i], r);
 			}
-			enqueue(row);
+			enqueue(Object.fromEntries(entries));
 		}
 	};
 	return createTransformStream(transform, streamOptions);

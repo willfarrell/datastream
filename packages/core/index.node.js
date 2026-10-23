@@ -1,7 +1,7 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import { Readable, Transform, Writable } from "node:stream";
-import { pipeline as pipelinePromise } from "node:stream/promises";
+import { finished, pipeline as pipelinePromise } from "node:stream/promises";
 import { createChunkDecoder, runAbort, sanitizeObject } from "./helpers.js";
 
 // Node.js streams interpret push(null) as EOF.
@@ -27,6 +27,29 @@ export const pipeline = async (streams, streamOptions = {}) => {
 			objectMode: lastStream._readableState.objectMode,
 		};
 		streams.push(createWritableStream(() => {}, streamOptions));
+	}
+	// A stream built with an already-aborted signal is destroyed on creation.
+	// Node's pipeline() then throws ERR_STREAM_UNABLE_TO_PIPE before listening
+	// for 'error', so the stream's own AbortError went uncaught. Tear the node
+	// streams down (web streams have no destroy()) and wait for each to close,
+	// incl. async abort hooks, then reject with that error (browser parity).
+	// A stream destroyed WITHOUT an error after push(null) but before "end"
+	// (e.g. stop() then destroy() before flowing) is treated as finished by
+	// pipe, which then never ends the destination and the pipeline hangs, so
+	// reject it as a premature close like Node does for a destroyed source.
+	const dead = streams.find((stream) => stream.destroyed);
+	if (dead) {
+		const error =
+			dead.errored ??
+			Object.assign(new Error("Premature close"), {
+				code: "ERR_STREAM_PREMATURE_CLOSE",
+			});
+		await Promise.allSettled(
+			streams
+				.filter((stream) => stream.destroy)
+				.map((stream) => finished(stream.destroy(error))),
+		);
+		throw error;
 	}
 	await pipelinePromise(streams, streamOptions);
 	return result(streams);
@@ -108,6 +131,14 @@ export const backpressureGauge = (streams) => {
 	return metrics;
 };
 
+// A destroy() without an error emits 'close' but never 'end'/'error', so the
+// .on("data") collectors would hang; reject like for-await / finished() do.
+// 'close' after 'end' (or 'error') is a no-op: the promise already settled.
+const prematureClose = () =>
+	Object.assign(new Error("Premature close"), {
+		code: "ERR_STREAM_PREMATURE_CLOSE",
+	});
+
 // The .on("data") branches look redundant (Node Readables are async-iterable)
 // but are kept on purpose: benchmarked on Node 26, collecting via for-await is
 // 2-3x slower for object streams (e.g. 10k objects: ~1.3k -> ~0.45k ops/s).
@@ -135,6 +166,7 @@ export const streamToArray = (stream, { maxBufferSize } = {}) => {
 				resolve(value);
 			});
 			stream.on("error", reject);
+			stream.on("close", () => reject(prematureClose()));
 		});
 	}
 	return (async () => {
@@ -179,6 +211,7 @@ export const streamToObject = (stream, { maxBufferSize } = {}) => {
 				resolve(sanitizeObject(value));
 			});
 			stream.on("error", reject);
+			stream.on("close", () => reject(prematureClose()));
 		});
 	}
 	return (async () => {
@@ -231,6 +264,7 @@ export const streamToString = (stream, { maxBufferSize } = {}) => {
 				resolve(chunks.join("") + decoder.flush());
 			});
 			stream.on("error", reject);
+			stream.on("close", () => reject(prematureClose()));
 		});
 	}
 	return (async () => {
@@ -292,6 +326,7 @@ export const streamToBuffer = (stream, { maxBufferSize } = {}) => {
 				resolve(Buffer.concat(value));
 			});
 			stream.on("error", reject);
+			stream.on("close", () => reject(prematureClose()));
 		});
 	}
 	return (async () => {
@@ -372,10 +407,79 @@ export const createReadableStream = (input, streamOptions = {}) => {
 	if (typeof input.byteLength === "number") {
 		return Readable.from(chunkBytes(input, streamOptions), streamOptions);
 	}
-	if (Array.isArray(input)) {
-		return Readable.from(input.map(toSafe), streamOptions);
+	// Iterables (arrays included) are pulled lazily so a yielded null flows
+	// through as the sentinel instead of erroring ERR_STREAM_NULL_VALUES (browser
+	// parity). Non-iterables fall through so Readable.from still throws
+	// synchronously.
+	if (typeof input[Symbol.asyncIterator] === "function") {
+		return fromIterator(input[Symbol.asyncIterator](), streamOptions);
+	}
+	if (typeof input[Symbol.iterator] === "function") {
+		return fromIterator(input[Symbol.iterator](), streamOptions);
 	}
 	return Readable.from(input, streamOptions);
+};
+
+// Pulls the iterator from read() directly instead of Readable.from(): its
+// per-value try/catch, thenable probe and null check plus the null-safe
+// generator wrapper cost ~40% on 10k-object arrays. Same contract as
+// Readable.from: one next() in flight at a time, a promise value is awaited,
+// a throwing/rejecting next() errors the stream, and destroy() runs the
+// iterator's return() (generator finally blocks) before 'close'.
+const fromIterator = (iterator, streamOptions) => {
+	let reading = false;
+	const stream = new Readable({
+		objectMode: true,
+		highWaterMark: 1,
+		...streamOptions,
+		read() {
+			if (reading) return;
+			reading = true;
+			pull();
+		},
+		destroy(error, callback) {
+			Promise.resolve()
+				.then(() => iterator.return?.())
+				.then(
+					() => callback(error),
+					(e) => callback(error ?? e),
+				);
+		},
+	});
+	const fail = (e) => stream.destroy(e);
+	// Returns true while the queue still has room, so the sync loop continues.
+	const push = (value) => {
+		if (stream.push(toSafe(value))) return true;
+		reading = false;
+		return false;
+	};
+	const settle = ({ value, done }) => {
+		if (done) {
+			stream.push(null);
+			return false;
+		}
+		if (typeof value?.then === "function") {
+			value.then((v) => push(v) && pull(), fail);
+			return false;
+		}
+		return push(value);
+	};
+	const pull = () => {
+		for (;;) {
+			let next;
+			try {
+				next = iterator.next();
+			} catch (e) {
+				return fail(e);
+			}
+			// An async iterator: one await per value, then back into the loop.
+			if (typeof next.then === "function") {
+				return next.then((n) => settle(n) && pull(), fail);
+			}
+			if (!settle(next)) return;
+		}
+	};
+	return stream;
 };
 
 // `?.`: createReadableStream(input, null) skips the `= {}` default.

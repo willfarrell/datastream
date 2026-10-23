@@ -41,9 +41,21 @@ npm install @datastream/aws @aws-sdk/client-s3 @aws-sdk/lib-storage
 import { awsS3GetObjectStream } from '@datastream/aws/s3'
 ```
 
-Avoid importing from the package root (`@datastream/aws`). The root statically imports the first eight subpaths above, so it fails to load unless all of their SDK clients are installed, and it creates a default client for every service. `msk-iam` and `glue-schema-registry` are only available from their subpaths.
+Avoid importing from the package root (`@datastream/aws`). The root statically imports the first eight subpaths above, so it fails to load unless all of their SDK clients are installed. `msk-iam` and `glue-schema-registry` are only available from their subpaths.
 
-Each service creates a default client on import. On US and Canada regions (read from `AWS_REGION` when the client is created) FIPS endpoints are enabled. Use the `*SetClient` function, or the per-call `client` option, to supply your own.
+Each service creates its default client lazily, on first use, not on import. On US and Canada regions (read from `AWS_REGION` when the client is created) FIPS endpoints are enabled. Use the `*SetClient` function, or the per-call `client` option, to supply your own.
+
+### Batching writers on destroy or abort
+
+The batching writers (`awsCloudWatchLogsPutLogEventsStream`, `awsDynamoDBPutItemStream`, `awsDynamoDBDeleteItemStream`, `awsKinesisPutRecordsStream`, `awsSNSPublishMessageStream`, `awsSQSSendMessageStream`, `awsSQSDeleteMessageStream`) hold up to one batch in memory. A batch is sent when it is full and when the stream ends. If the stream is destroyed or aborted (`streamOptions.signal`) first, the buffered entries are not sent. They are attached to the error as `err.failedMessages`, in write order, so you can retry them. This matches `kafkaProduceStream`. A plain `destroy()` with entries buffered raises an error, for example `awsSQSSendMessageBatch destroyed with buffered entries`. The same happens when a write fails validation (`RangeError` or `TypeError`): the entries buffered before it are on that error. A batch already sent is not included.
+
+```javascript
+try {
+  await pipeline([createReadableStream(messages), awsSQSSendMessageStream({ QueueUrl })], { signal })
+} catch (err) {
+  requeue(err.failedMessages ?? [])
+}
+```
 
 ## CloudWatch Logs
 
@@ -76,14 +88,14 @@ Accepts `GetLogEventsCommand` parameters plus:
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import { awsCloudWatchLogsGetLogEventsStream } from '@datastream/aws/cloudwatch-logs'
 
 await pipeline([
-  createReadableStream(await awsCloudWatchLogsGetLogEventsStream({
+  await awsCloudWatchLogsGetLogEventsStream({
     logGroupName: '/aws/lambda/my-function',
     logStreamName: 'stream-id',
-  })),
+  }),
 ])
 ```
 
@@ -105,12 +117,51 @@ Accepts `FilterLogEventsCommand` parameters:
 #### Example
 
 ```javascript
+import { streamToArray } from '@datastream/core'
 import { awsCloudWatchLogsFilterLogEventsStream } from '@datastream/aws/cloudwatch-logs'
 
-const events = await awsCloudWatchLogsFilterLogEventsStream({
-  logGroupName: '/aws/lambda/my-function',
-  filterPattern: 'ERROR',
-})
+const events = await streamToArray(
+  await awsCloudWatchLogsFilterLogEventsStream({
+    logGroupName: '/aws/lambda/my-function',
+    filterPattern: 'ERROR',
+  }),
+)
+```
+
+### `awsCloudWatchLogsPutLogEventsStream` <span class="badge">Writable</span>
+
+Writes log events to a CloudWatch Logs log stream. Each chunk is an event: `{ timestamp, message }`, with `timestamp` in epoch ms. Events are batched into `PutLogEventsCommand` requests within the service limits: at most 10,000 events, at most 1,048,576 bytes (each event counts its UTF-8 `message` bytes plus 26), and a time span of at most 24 hours. A batch is sent when the next event would break a limit, and at the end of the stream. Events in each batch are sorted by `timestamp` before sending.
+
+Each event needs a finite number `timestamp` and a string `message`; anything else throws a `TypeError`. An event that counts as more than 1,048,576 bytes on its own throws a `RangeError`. No `sequenceToken` is sent; CloudWatch Logs ignores it.
+
+CloudWatch Logs can reject events that are too new, too old, or past the log group's retention, and accept the rest of the batch. The stream then throws `awsCloudWatchLogsPutLogEvents has rejected events`. **The rest of that batch was accepted**, so re-sending the whole batch would duplicate it. The error's `cause` is `{ rejectedLogEventsInfo, rejected: { tooNew, tooOld, expired } }`. `rejectedLogEventsInfo` is the raw response. Its indexes point into the sorted batch that was sent, which you never see. `rejected` holds the events themselves: `tooNew` from `tooNewLogEventStartIndex` (inclusive) to the end, and `tooOld` and `expired` from the start up to `tooOldLogEventEndIndex` and `expiredLogEventEndIndex` (exclusive). An event can be in both `tooOld` and `expired`. The type is exported as `AwsCloudWatchLogsRejectedEvents`.
+
+#### Options
+
+Accepts `PutLogEventsCommand` parameters plus:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `client` | `CloudWatchLogsClient` | default client | Custom CloudWatch Logs client for this call |
+| `logGroupName` | `string` | — | Log group name |
+| `logStreamName` | `string` | — | Log stream name |
+
+#### Example
+
+```javascript
+import { createReadableStream, pipeline } from '@datastream/core'
+import { awsCloudWatchLogsPutLogEventsStream } from '@datastream/aws/cloudwatch-logs'
+
+await pipeline([
+  createReadableStream([
+    { timestamp: Date.now(), message: 'job started' },
+    { timestamp: Date.now(), message: 'job finished' },
+  ]),
+  awsCloudWatchLogsPutLogEventsStream({
+    logGroupName: '/my-app/jobs',
+    logStreamName: 'nightly',
+  }),
+])
 ```
 
 ## S3
@@ -153,6 +204,31 @@ await pipeline([
 ])
 ```
 
+### `awsS3ListObjectsStream` <span class="badge">Readable</span> <span class="badge">async</span>
+
+Lists the objects in a bucket. Each chunk is one `ListObjectsV2` `Contents` entry (`{ Key, Size, LastModified, ETag, ... }`). Follows `NextContinuationToken` until the listing is complete. Destroying the stream aborts the in-flight request.
+
+#### Options
+
+Accepts all `ListObjectsV2Command` parameters plus:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `client` | `S3Client` | default client | Custom S3 client for this call |
+| `Bucket` | `string` | — | S3 bucket name |
+| `Prefix` | `string` | — | Only list keys that start with this prefix |
+
+#### Example
+
+```javascript
+import { streamToArray } from '@datastream/core'
+import { awsS3ListObjectsStream } from '@datastream/aws/s3'
+
+const objects = await streamToArray(
+  await awsS3ListObjectsStream({ Bucket: 'my-bucket', Prefix: 'exports/' }),
+)
+```
+
 ### `awsS3PutObjectStream` <span class="badge">PassThrough</span>
 
 Uploads data to S3 using `Upload` from `@aws-sdk/lib-storage`: a single `PutObject` for small bodies, a multipart upload otherwise. `pipeline()` waits for the upload to finish (it awaits the stream's `.result()`), and upload errors reject the pipeline.
@@ -168,7 +244,7 @@ Accepts all S3 PutObject parameters plus:
 | `Key` | `string` | — | S3 object key |
 | `onProgress` | `(progress) => void` | — | Called with lib-storage's `httpUploadProgress` events: `{ loaded, total, part, Key, Bucket }` |
 | `tags` | `{ Key: string, Value: string }[]` | — | S3 object tags |
-| `partSize` | `number` | `5242880` (5 MiB) | Multipart part size in bytes (minimum 5 MiB). An upload can have at most 10,000 parts, so the default caps an object at about 50 GiB; raise it for larger objects |
+| `partSize` | `number` | `17179870` | Multipart part size in bytes (minimum 5 MiB). Shared with `awsS3ChecksumStream` so default checksums match. An upload can have at most 10,000 parts, so the default caps an object at about 160 GiB; raise it for larger objects. Up to `partSize × queueSize` bytes are buffered in memory (about 66 MB by default) |
 | `queueSize` | `number` | `4` | Number of parts uploaded concurrently |
 
 #### Example
@@ -200,7 +276,7 @@ Computes a multi-part S3 checksum while data passes through, for example to send
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `ChecksumAlgorithm` | `string` | `"SHA256"` | `"SHA1"` or `"SHA256"` |
-| `partSize` | `number` | `17179870` | Part size in bytes |
+| `partSize` | `number` | `17179870` | Part size in bytes. The default matches `awsS3PutObjectStream`'s default part size |
 | `resultKey` | `string` | `"s3"` | Key in pipeline result |
 
 #### Result
@@ -239,15 +315,15 @@ Accepts all `QueryCommand` parameters:
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import { awsDynamoDBQueryStream } from '@datastream/aws/dynamodb'
 
 await pipeline([
-  createReadableStream(await awsDynamoDBQueryStream({
+  await awsDynamoDBQueryStream({
     TableName: 'Users',
     KeyConditionExpression: 'PK = :pk',
     ExpressionAttributeValues: { ':pk': { S: 'USER#123' } },
-  })),
+  }),
 ])
 ```
 
@@ -256,9 +332,12 @@ await pipeline([
 Scans an entire DynamoDB table with automatic pagination.
 
 ```javascript
+import { streamToArray } from '@datastream/core'
 import { awsDynamoDBScanStream } from '@datastream/aws/dynamodb'
 
-const items = await awsDynamoDBScanStream({ TableName: 'Users' })
+const items = await streamToArray(
+  await awsDynamoDBScanStream({ TableName: 'Users' }),
+)
 ```
 
 ### `awsDynamoDBExecuteStatementStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -277,14 +356,14 @@ Accepts `ExecuteStatementCommand` parameters:
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import { awsDynamoDBExecuteStatementStream } from '@datastream/aws/dynamodb'
 
 await pipeline([
-  createReadableStream(await awsDynamoDBExecuteStatementStream({
+  await awsDynamoDBExecuteStatementStream({
     Statement: 'SELECT * FROM "Users" WHERE PK = ?',
     Parameters: [{ S: 'USER#123' }],
-  })),
+  }),
 ])
 ```
 
@@ -392,16 +471,16 @@ Accepts `GetRecordsCommand` parameters plus:
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import { awsDynamoDBStreamsGetRecordsStream } from '@datastream/aws/dynamodb-streams'
 import { objectCountStream } from '@datastream/object'
 
 const count = objectCountStream()
 
 const result = await pipeline([
-  createReadableStream(await awsDynamoDBStreamsGetRecordsStream({
+  await awsDynamoDBStreamsGetRecordsStream({
     ShardIterator: 'arn:aws:dynamodb:...',
-  })),
+  }),
   count,
 ])
 // each chunk is a stream record: { eventName: 'INSERT', dynamodb: { Keys, NewImage, ... }, ... }
@@ -441,13 +520,13 @@ Accepts `GetRecordsCommand` parameters plus:
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
+import { pipeline } from '@datastream/core'
 import { awsKinesisGetRecordsStream } from '@datastream/aws/kinesis'
 
 await pipeline([
-  createReadableStream(await awsKinesisGetRecordsStream({
+  await awsKinesisGetRecordsStream({
     ShardIterator: 'AAA...',
-  })),
+  }),
 ])
 ```
 
@@ -533,7 +612,7 @@ awsSNSSetClient(new SNSClient({ region: 'us-east-1' }))
 
 ### `awsSNSPublishMessageStream` <span class="badge">Writable</span>
 
-Publishes messages to an SNS topic. Batches 10 messages per `PublishBatchCommand`. A single entry over 256 KiB throws a `RangeError`.
+Publishes messages to an SNS topic. Batches up to 10 entries (and 256 KiB) per `PublishBatchCommand` and retries failed entries with exponential backoff. Entries with `SenderFault: true` are permanent failures and are not retried. When retrying stops, it throws if any entry still failed; `cause` holds those entries. Sizes are counted the way SNS counts them: the UTF-8 bytes of `Message` plus each message attribute's name, `DataType` and `StringValue` or `BinaryValue`. `Id` does not count. A single entry over 256 KiB throws a `RangeError`.
 
 #### Options
 
@@ -591,13 +670,13 @@ Accepts `ReceiveMessageCommand` parameters plus:
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream, createTransformStream } from '@datastream/core'
+import { pipeline, createTransformStream } from '@datastream/core'
 import { awsSQSReceiveMessageStream, awsSQSDeleteMessageStream } from '@datastream/aws/sqs'
 
 const QueueUrl = 'https://sqs.us-east-1.amazonaws.com/123/my-queue'
 
 await pipeline([
-  createReadableStream(await awsSQSReceiveMessageStream({ QueueUrl })),
+  await awsSQSReceiveMessageStream({ QueueUrl }),
   // process each message here, then map it to a delete batch entry
   createTransformStream((message, enqueue) => {
     enqueue({ Id: message.MessageId, ReceiptHandle: message.ReceiptHandle })
@@ -608,7 +687,7 @@ await pipeline([
 
 ### `awsSQSSendMessageStream` <span class="badge">Writable</span>
 
-Sends messages to an SQS queue. Batches up to 10 entries (and 256 KiB) per `SendMessageBatchCommand` and retries failed entries with exponential backoff. Each chunk is a batch entry: `{ Id, MessageBody, ... }`. A single entry over 256 KiB throws a `RangeError`.
+Sends messages to an SQS queue. Batches up to 10 entries (and 1 MiB) per `SendMessageBatchCommand` and retries failed entries with exponential backoff. Entries with `SenderFault: true` are permanent failures and are not retried. When retrying stops, it throws if any entry still failed; `cause` holds those entries. Each chunk is a batch entry: `{ Id, MessageBody, ... }`. Sizes are counted the way SQS counts them: the UTF-8 bytes of `MessageBody` plus each message attribute's name, `DataType` and `StringValue` or `BinaryValue`. `Id` and system attributes do not count. A single entry over 1 MiB throws a `RangeError`.
 
 #### Options
 
@@ -619,7 +698,7 @@ Sends messages to an SQS queue. Batches up to 10 entries (and 256 KiB) per `Send
 
 ### `awsSQSDeleteMessageStream` <span class="badge">Writable</span>
 
-Deletes messages from an SQS queue. Batches up to 10 entries per `DeleteMessageBatchCommand` and retries failed entries with exponential backoff. Each chunk is a batch entry: `{ Id, ReceiptHandle }` (see the receive example above). A single entry over 256 KiB throws a `RangeError`.
+Deletes messages from an SQS queue. Batches up to 10 entries per `DeleteMessageBatchCommand` and retries failed entries with exponential backoff. Entries with `SenderFault: true` are permanent failures and are not retried. When retrying stops, it throws if any entry still failed; `cause` holds those entries. Each chunk is a batch entry: `{ Id, ReceiptHandle }` (see the receive example above). A delete entry carries no message bytes, so batches are limited by count only.
 
 #### Options
 
@@ -641,7 +720,6 @@ npm install @datastream/aws aws-msk-iam-sasl-signer-js
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `region` | `string` | — | Required. AWS region of the MSK cluster; throws if missing |
-| `ttl` | `number` | signer default | Token lifetime in ms |
 | `awsDebugCreds` | `boolean` | `false` | Log credential details. Leaks credential material to your logs: local debugging only |
 
 ```javascript

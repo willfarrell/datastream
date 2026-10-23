@@ -32,7 +32,14 @@ websites/       # documentation website (datastream.js.org)
 bin/            # build scripts
 ```
 
-Each package in `packages/` has both a Node.js stream implementation (`index.node.js`) and a Web Streams API implementation (`index.browser.js`), selected via the `node` and `browser` export conditions. A feature a platform can't support has no export condition for it: `aws` and `kafka` are Node.js only, `indexeddb` is browser only, and `compress` zstd is Node.js only.
+Each package in `packages/` provides a Node.js stream implementation and a Web Streams API implementation, selected via the `node` and `browser` export conditions. A feature a platform can't support has no export condition for it: `avro`, `aws`, `azure`, `gcp`, `kafka`, and `sqlite` are Node.js only, `indexeddb` is browser only, and `compress` zstd is Node.js only.
+
+Source files map to export entries (`bin/esbuild` builds `<module>.js`, `<module>.node.js` and `<module>.browser.js` for each export the package has):
+
+- Platform-specific code lives in `index.node.js` and `index.browser.js` (e.g. `core`, `digest`, `file`).
+- Code shared by both platforms is a single `index.js`, built once per exported platform (e.g. `csv`, `json`, `fetch`). The Node.js-only `avro` and `sqlite` are a single `index.js` built for Node.js only.
+- `kafka` has only `index.node.js`, and `indexeddb` has only `index.browser.js`.
+- Subpath exports get their own source file named after the subpath: `aws/s3.js`, `azure/blob.js`, `charset/detect.js`, or a platform pair such as `compress/gzip.node.js` and `compress/gzip.browser.js`.
 
 
 ## Testing
@@ -57,7 +64,7 @@ node --test ./packages/core
 node --test --conditions=browser ./packages/core
 ```
 
-Unit tests use Node.js built-in `node:test`. The same test files run twice: once against the node build and once with `--conditions=browser`, which makes every `@datastream/*` import resolve to the browser build. Tests read that flag into `variant`; node-only cases use `nodeTest` (an alias for `test.skip` under the browser run) and browser-only cases sit in `if (variant === "browser")` blocks. `packages/aws` and `packages/kafka` are node-only (no browser build), so they are excluded from the browser run. `packages/indexeddb` is browser-only (no node export condition): its tests run in both passes, and the node pass imports the browser source directly and drives it with mocked IndexedDB objects. Mutation testing follows the same split: `MUTATE_VARIANT=browser` mutates `*.browser.mjs` and runs the suite with `--conditions=browser`; shared plain `.js` files (`helpers.js`, `shared.js`, `guard.node.js`) are mutated by the node run only (the browser-only `compress/native.browser.js` by the browser run), so keep platform-specific code in `index.node.js` / `index.browser.js`. A dependency contract the real module never exercises gets its own `*.test.js` that swaps the module with `module.register()` (loader hooks are per test file) — see `encrypt/libsodium.test.js` and `compress/brotli-partial.test.js`.
+Unit tests use Node.js built-in `node:test`. The same test files run twice: once against the node build and once with `--conditions=browser`, which makes every `@datastream/*` import resolve to the browser build. Tests read that flag into `variant`; node-only cases use `nodeTest` (an alias for `test.skip` under the browser run) and browser-only cases sit in `if (variant === "browser")` blocks. `packages/avro`, `packages/aws`, `packages/azure`, `packages/gcp`, `packages/kafka`, and `packages/sqlite` are node-only (no browser build), so they are excluded from the browser run. `packages/indexeddb` is browser-only (no node export condition): its tests run in both passes, and the node pass imports the browser source directly and drives it with [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB), an in-memory IndexedDB implementation. Mutation testing follows the same split: `MUTATE_VARIANT=browser` mutates `*.browser.mjs` and runs the suite with `--conditions=browser`; shared plain `.js` files (`helpers.js`, `shared.js`, `client.js`, `guard.node.js`) are mutated by the node run only (the browser-only `compress/native.browser.js` by the browser run), so keep platform-specific code in `index.node.js` / `index.browser.js`. A dependency contract the real module never exercises gets its own `*.test.js` that swaps the module with `module.register()` (loader hooks are per test file) — see `encrypt/libsodium.test.js` and `compress/brotli-partial.test.js`.
 
 
 ## Building
@@ -66,7 +73,7 @@ Unit tests use Node.js built-in `node:test`. The same test files run twice: once
 npm run build
 ```
 
-Produces dual ESM builds per package via esbuild: `*.node.mjs` (Node.js) and `*.browser.mjs` (Web Streams API), both with external source maps. Packages without a `browser` export condition (`aws`, `kafka`) get the node build only.
+Produces dual ESM builds per package via esbuild: `*.node.mjs` (Node.js) and `*.browser.mjs` (Web Streams API), both with external source maps. Packages without a `browser` export condition (`avro`, `aws`, `azure`, `gcp`, `kafka`, `sqlite`) get the node build only, and `indexeddb` (no `node` condition) gets the browser build only. Shared plain `.js` helpers (such as `helpers.js`, `shared.js`, `client.js`, `guard.node.js` and `compress/native.browser.js`) are not export entries: they are imported by relative path and shipped as-is (listed in the package's `files`).
 
 
 ## Code Style

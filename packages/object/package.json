@@ -3,6 +3,7 @@
 	"version": "0.8.0",
 	"description": "Object transform streams for picking, omitting, pivoting, batching, and key mapping",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
 		"node": ">=26"
 	},

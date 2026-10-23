@@ -135,7 +135,38 @@ describe(`@datastream/aws/lambda (${variant})`, async () => {
 			}
 
 			const calls = client.commandCalls(InvokeWithResponseStreamCommand);
-			deepStrictEqual(calls[0].args[1]?.abortSignal, controller.signal);
+			// Forwarded as a signal that follows streamOptions.signal (and also
+			// aborts when the stream is destroyed early).
+			const sent = calls[0].args[1]?.abortSignal;
+			deepStrictEqual(sent.aborted, false);
+			controller.abort();
+			deepStrictEqual(sent.aborted, true);
+		});
+
+		// Destroying the stream mid-request aborts the in-flight
+		// InvokeWithResponseStream: a generator's return() would otherwise wait for
+		// the response.
+		test(`awsLambdaReadableStream destroy aborts the in-flight request`, {
+			timeout: 1000,
+		}, async (_t) => {
+			let sent;
+			awsLambdaSetClient({
+				send: (_command, { abortSignal }) => {
+					sent = abortSignal;
+					return new Promise((_resolve, reject) => {
+						abortSignal?.addEventListener("abort", () =>
+							reject(abortSignal.reason),
+						);
+					});
+				},
+			});
+			const stream = awsLambdaReadableStream({ FunctionName: "f" });
+			stream.resume();
+			await new Promise((resolve) => setImmediate(resolve));
+			const closed = new Promise((resolve) => stream.once("close", resolve));
+			stream.destroy();
+			await closed;
+			strictEqual(sent?.aborted, true);
 		});
 
 		test(`awsLambdaReadableStream should use per-call client option`, async (_t) => {

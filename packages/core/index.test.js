@@ -1,6 +1,7 @@
 import { deepStrictEqual, ok, rejects, strictEqual, throws } from "node:assert";
 import { EventEmitter, getEventListeners } from "node:events";
 import { Readable } from "node:stream";
+import { finished } from "node:stream/promises";
 import test, { describe, mock } from "node:test";
 import {
 	concatBytes,
@@ -397,6 +398,91 @@ describe(`@datastream/core (${variant})`, async () => {
 		});
 		const output = await outputPromise;
 		deepStrictEqual(output, ["x"]);
+	});
+
+	// The .on("data") collectors only settled on 'end'/'error', so a
+	// destroy() without an error (which emits only 'close') hung forever.
+	for (const [name, collect] of Object.entries({
+		streamToArray,
+		streamToObject,
+		streamToString,
+		streamToBuffer,
+	})) {
+		nodeTest(
+			`${name} rejects with ERR_STREAM_PREMATURE_CLOSE on destroy() without error`,
+			async (_t) => {
+				const source = new Readable({ objectMode: true, read() {} });
+				source.push("a");
+				const outputPromise = collect(source);
+				setImmediate(() => source.destroy());
+				await rejects(outputPromise, {
+					message: "Premature close",
+					code: "ERR_STREAM_PREMATURE_CLOSE",
+				});
+			},
+		);
+	}
+
+	// Node used to error ERR_STREAM_NULL_VALUES for non-array iterables
+	// yielding null, while the browser build passed null through.
+	test(`createReadableStream passes null through from a sync iterable`, async (_t) => {
+		const input = function* () {
+			yield 1;
+			yield null;
+			yield 2;
+		};
+		const output = await streamToArray(createReadableStream(input()));
+		deepStrictEqual(output, [1, null, 2]);
+	});
+
+	test(`createReadableStream passes null through from an async iterable`, async (_t) => {
+		const input = async function* () {
+			yield 1;
+			yield null;
+			yield 2;
+		};
+		const output = await streamToArray(createReadableStream(input()));
+		deepStrictEqual(output, [1, null, 2]);
+	});
+
+	// The null-safe iterable wrappers must not defer Readable.from's
+	// synchronous rejection of a non-iterable input.
+	nodeTest(
+		`createReadableStream throws synchronously for a non-iterable`,
+		async (_t) => {
+			throws(() => createReadableStream(42), { code: "ERR_INVALID_ARG_TYPE" });
+		},
+	);
+
+	// The browser build threw "Controller is already closed" here; node ignores.
+	test(`createReadableStream push is a no-op after push(null)`, async (_t) => {
+		const source = createReadableStream();
+		source.push("a");
+		source.push(null);
+		source.push(null);
+		const output = await streamToArray(source);
+		source.push("b");
+		deepStrictEqual(output, ["a"]);
+	});
+
+	test(`createReadableStream push is a no-op after abort`, async (_t) => {
+		const controller = new AbortController();
+		const source = createReadableStream(undefined, {
+			signal: controller.signal,
+		});
+		const outputPromise = streamToArray(source);
+		controller.abort(new Error("stop"));
+		source.push("a");
+		source.push(null);
+		await rejects(outputPromise);
+	});
+
+	test(`createReadableStream push is a no-op after cancel`, async (_t) => {
+		const source = createReadableStream();
+		if (variant === "node") source.destroy();
+		else await source.cancel();
+		source.push("a");
+		source.push(null);
 	});
 
 	if (variant === "node") {
@@ -883,8 +969,12 @@ describe(`@datastream/core (${variant})`, async () => {
 
 	// *** timeout abort cleanup regression *** //
 	test(`timeout should clear timer when aborted`, async (_t) => {
+		const timers = () =>
+			process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
+		const before = timers();
 		const controller = new AbortController();
 		const promise = timeout(60_000, { signal: controller.signal });
+		strictEqual(timers(), before + 1);
 		controller.abort();
 		try {
 			await promise;
@@ -893,6 +983,8 @@ describe(`@datastream/core (${variant})`, async () => {
 			strictEqual(e.message, "Aborted");
 			deepStrictEqual(e.cause, { code: "AbortError" });
 		}
+		// A leaked 60s timer would keep the process alive after the abort.
+		strictEqual(timers(), before);
 	});
 
 	test(`timeout should reject immediately if signal already aborted`, async (_t) => {
@@ -2837,6 +2929,167 @@ describe(`@datastream/core (${variant})`, async () => {
 		strictEqual(abort.mock.calls[0].arguments[0].name, "AbortError");
 	});
 
+	// Node's pipeline() throws ERR_STREAM_UNABLE_TO_PIPE, before it listens for
+	// 'error', when a later stream is already destroyed by an aborted signal, so
+	// the real AbortError was emitted with no listener (uncaught exception).
+	const withoutUncaught = async (fn) => {
+		const caught = spy();
+		const events = ["uncaughtException", "unhandledRejection"];
+		const prior = events.map((event) => process.listeners(event));
+		events.forEach((event, i) => {
+			for (const l of prior[i]) process.removeListener(event, l);
+			process.on(event, caught);
+		});
+		try {
+			await fn();
+			// Outlast the async abort hooks below so a late 'error' would land.
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			strictEqual(caught.callCount, 0);
+		} finally {
+			events.forEach((event, i) => {
+				process.removeListener(event, caught);
+				for (const l of prior[i]) process.on(event, l);
+			});
+		}
+	};
+	const abortedBy = (reason) => (e) => {
+		if (variant === "node") {
+			strictEqual(e.name, "AbortError");
+			strictEqual(e.cause, reason);
+		} else {
+			strictEqual(e, reason);
+		}
+		return true;
+	};
+
+	// A stream destroyed without an error after push(null) but before "end" (e.g.
+	// a source stopped then destroyed before flowing) is seen as finished by pipe, which then never ends the
+	// destination: the pipeline hung. It must reject and tear the rest down.
+	nodeTest(
+		`pipeline rejects promptly when a stream was already destroyed without an error`,
+		async () => {
+			// push(null) then destroy() before anything reads: ended, never emitted "end".
+			const source = createReadableStream();
+			source.push(null);
+			source.destroy();
+			let wrote = false;
+			const sink = createWritableStream(() => {
+				wrote = true;
+			});
+			const settled = await Promise.race([
+				pipeline([source, sink]).then(
+					() => "resolved",
+					(error) => `${error.code}: ${error.message}`,
+				),
+				new Promise((resolve) => setTimeout(resolve, 1000, "hung")),
+			]);
+			strictEqual(settled, "ERR_STREAM_PREMATURE_CLOSE: Premature close");
+			strictEqual(sink.destroyed, true);
+			strictEqual(wrote, false);
+		},
+	);
+
+	test(`pipeline rejects with the abort for streams built with an already-aborted signal`, async () => {
+		const hooks = [
+			undefined,
+			() => {},
+			async () => {
+				await new Promise((resolve) => setTimeout(resolve, 5));
+			},
+		];
+		for (const hook of hooks) {
+			await withoutUncaught(async () => {
+				const reason = new Error("stop");
+				const controller = new AbortController();
+				controller.abort(reason);
+				const { signal } = controller;
+				const order = [];
+				const abort =
+					hook &&
+					spy(async () => {
+						await hook();
+						order.push("abort-done");
+					});
+				await rejects(
+					pipeline([
+						createReadableStream(["a"]),
+						createWritableStream(() => {}, { signal, abort }),
+					]),
+					abortedBy(reason),
+				);
+				order.push("pipeline-settled");
+				if (abort) {
+					strictEqual(abort.callCount, 1);
+					// node waits for the hook before settling (as on any abort).
+					if (variant === "node") {
+						deepStrictEqual(order, ["abort-done", "pipeline-settled"]);
+					}
+				}
+			});
+		}
+	});
+
+	test(`pipeline rejects with the abort for an already-aborted transform or streamOptions.signal`, async () => {
+		await withoutUncaught(async () => {
+			const reason = new Error("stop");
+			const controller = new AbortController();
+			controller.abort(reason);
+			const { signal } = controller;
+			const write = spy();
+			const source = createReadableStream(["a"]);
+			// Several destroyed streams in one chain: every one is listened to.
+			await rejects(
+				pipeline([
+					source,
+					createTransformStream(undefined, { signal }),
+					createPassThroughStream(() => {}, { signal }),
+					createWritableStream(write, { signal }),
+				]),
+				abortedBy(reason),
+			);
+			strictEqual(write.callCount, 0);
+			// The healthy source is torn down too, not left open.
+			if (variant === "node") strictEqual(source.destroyed, true);
+			// A web stream in a node pipeline (no destroy()) doesn't break teardown.
+			await rejects(
+				pipeline([
+					new ReadableStream({
+						pull(c) {
+							c.enqueue("a");
+						},
+					}),
+					createWritableStream(write, { signal }),
+				]),
+				abortedBy(reason),
+			);
+			strictEqual(write.callCount, 0);
+			// Readable-last: the appended sink is built with the aborted signal.
+			await rejects(
+				pipeline([createReadableStream(["a"])], { signal }),
+				abortedBy(reason),
+			);
+		});
+	});
+
+	test(`pipeline rejects with the abort when the signal fires mid-stream with an async hook`, async () => {
+		await withoutUncaught(async () => {
+			const reason = new Error("stop");
+			const controller = new AbortController();
+			const abort = spy(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 5));
+			});
+			const run = pipeline([
+				createReadableStream(["a"]),
+				createWritableStream(() => controller.abort(reason), {
+					signal: controller.signal,
+					abort,
+				}),
+			]);
+			await rejects(run, abortedBy(reason));
+			strictEqual(abort.callCount, 1);
+		});
+	});
+
 	test(`createWritableStream ignores a throwing or rejecting abort callback`, async () => {
 		for (const abort of [
 			() => {
@@ -3061,6 +3314,37 @@ describe(`@datastream/core (${variant})`, async () => {
 			}
 		});
 
+		// No chunk is in flight when the signal fires, so only the start()
+		// abort listener can error the stream (transform()/write() never run
+		// throwIfAborted). Waiting a macrotask first also proves a live signal
+		// doesn't error the stream on its own.
+		const abortable = {
+			createPassThroughStream: (signal) =>
+				createPassThroughStream(undefined, { signal }),
+			createTransformStream: (signal) =>
+				createTransformStream(undefined, { signal }),
+			createWritableStream: (signal) =>
+				createWritableStream(() => {}, { signal }),
+		};
+		for (const [name, make] of Object.entries(abortable)) {
+			test(`${name} errors when its signal aborts while idle`, async () => {
+				const controller = new AbortController();
+				const source = createReadableStream();
+				const run = pipeline([source, make(controller.signal)]);
+				source.push("a");
+				await timeout(10);
+				controller.abort();
+				await rejects(run, { name: "AbortError" });
+			});
+
+			test(`${name} errors on an already-aborted signal while idle`, async () => {
+				const signal = AbortSignal.abort();
+				await rejects(pipeline([createReadableStream(), make(signal)]), {
+					name: "AbortError",
+				});
+			});
+		}
+
 		test(`create*Stream propagate a throwing callback and drop the abort listener`, async () => {
 			const { signal } = new AbortController();
 			const boom = () => {
@@ -3133,5 +3417,271 @@ describe(`@datastream/core (${variant})`, async () => {
 		deepStrictEqual(await bytesOf(new DataView(backing, 1, 3)), [[1, 2, 3]]);
 		deepStrictEqual(await bytesOf(Buffer.alloc(0)), []);
 		deepStrictEqual(await bytesOf(new DataView(backing, 0, 0)), []);
+	});
+});
+
+describe(`@datastream/core createReadableStream pull loop (${variant})`, () => {
+	const nodeTest = variant === "node" ? test : test.skip;
+	const browserTest = variant === "browser" ? test : test.skip;
+
+	// --- An async iterator's next() must never be in flight twice (DB cursor /
+	// paginated fetch safety, Readable.from parity). Kills the `if (reading)`
+	// guard mutants: without it, Readable's maybeReadMore re-enters read()
+	// while a next() is still pending. ---
+	nodeTest(
+		`createReadableStream never calls an async iterator's next() concurrently`,
+		async (_t) => {
+			let pending = false;
+			let pulled = 0;
+			const source = {
+				[Symbol.asyncIterator]: () => ({
+					next: () => {
+						if (pending) throw new Error("concurrent next()");
+						pending = true;
+						return new Promise((resolve) =>
+							setImmediate(() => {
+								pending = false;
+								resolve(
+									pulled < 20
+										? { value: pulled++, done: false }
+										: { value: undefined, done: true },
+								);
+							}),
+						);
+					},
+				}),
+			};
+			const out = await streamToArray(
+				createReadableStream(source, { highWaterMark: 4 }),
+			);
+			deepStrictEqual(
+				out,
+				Array.from({ length: 20 }, (_, i) => i),
+			);
+		},
+	);
+
+	// --- Readable.from parity: a promise value in a sync iterable is awaited
+	// and its settled value flows, in order. Kills the thenable probe mutants
+	// (`typeof value?.then === "function"` -> false emits the promise itself;
+	// the `return false` -> `return true` after scheduling it would pull "b"
+	// ahead of "a"). The browser build enqueues values as-is, so node only. ---
+	nodeTest(
+		`createReadableStream awaits promise values from a sync iterable in order`,
+		async (_t) => {
+			const out = await streamToArray(
+				createReadableStream([Promise.resolve("a"), "b", Promise.resolve("c")]),
+			);
+			deepStrictEqual(out, ["a", "b", "c"]);
+		},
+	);
+
+	nodeTest(
+		`createReadableStream errors when a promise value from a sync iterable rejects`,
+		async (_t) => {
+			await rejects(
+				streamToArray(
+					createReadableStream(["a", Promise.reject(new Error("boom"))]),
+				),
+				{ message: "boom" },
+			);
+		},
+	);
+
+	// --- A sync iterable fills the queue up to highWaterMark within a single
+	// read(): next() #2..#4 run before the nextTick queued by #1. Kills the
+	// `push()` loop-exit mutants (one next() per read(), which would only
+	// resume from maybeReadMore's nextTick) and the eager-drain mutant
+	// (`if (true) return true`, which would pull all 8 before the first
+	// chunk is handed out). ---
+	nodeTest(
+		`createReadableStream pulls a sync iterable up to highWaterMark per read() and no further`,
+		async (_t) => {
+			let ticked = false;
+			const ticks = [];
+			let pulled = 0;
+			const source = {
+				[Symbol.iterator]: () => ({
+					next: () => {
+						ticks.push(ticked);
+						ticked = false;
+						process.nextTick(() => {
+							ticked = true;
+						});
+						return pulled < 8
+							? { value: pulled++, done: false }
+							: { value: undefined, done: true };
+					},
+				}),
+			};
+			const stream = createReadableStream(source, { highWaterMark: 4 });
+			strictEqual(stream.read(), 0);
+			// read() pulled exactly highWaterMark items, all synchronously.
+			strictEqual(pulled, 4);
+			deepStrictEqual(ticks, [false, false, false, false]);
+			stream.destroy();
+
+			// Readable.from parity: the default highWaterMark is 1, not objectMode's 16.
+			pulled = 0;
+			const lazy = createReadableStream(source);
+			strictEqual(lazy.read(), 0);
+			strictEqual(pulled, 1);
+			lazy.destroy();
+		},
+	);
+
+	// --- The browser pull() fills the queue up to highWaterMark in one call for
+	// sync iterators: next() #2 runs before the microtask queued by #1, and
+	// next() #3 (after one chunk is read) does not. Kills `desiredSize > 0`
+	// -> `false` / `<` (one next() per pull, a microtask apart) and `>=`
+	// (over-fills by one, so #3 would also run synchronously). ---
+	browserTest(
+		`createReadableStream pulls a sync iterable up to highWaterMark per pull()`,
+		async (_t) => {
+			let ticked = false;
+			const ticks = [];
+			let pulled = 0;
+			const source = {
+				[Symbol.iterator]: () => ({
+					next: () => {
+						ticks.push(ticked);
+						ticked = false;
+						queueMicrotask(() => {
+							ticked = true;
+						});
+						return pulled < 8
+							? { value: pulled++, done: false }
+							: { value: undefined, done: true };
+					},
+				}),
+			};
+			const stream = createReadableStream(source, { highWaterMark: 2 });
+			// The first pull() (after start) fills the queue: exactly 2, synchronously.
+			await new Promise((resolve) => setImmediate(resolve));
+			strictEqual(pulled, 2);
+			deepStrictEqual(ticks, [false, false]);
+			// Reading one frees a slot; the refill is a separate pull() (microtask later).
+			const reader = stream.getReader();
+			deepStrictEqual(await reader.read(), { value: 0, done: false });
+			await new Promise((resolve) => setImmediate(resolve));
+			strictEqual(pulled, 3);
+			deepStrictEqual(ticks, [false, false, true]);
+			await reader.cancel();
+		},
+	);
+
+	// --- A sync source ending while chunks are still queued: close() is only
+	// requested (desiredSize stays positive), so the loop must stop on done
+	// rather than keep pulling (a second close() throws "already closed"). ---
+	browserTest(
+		`createReadableStream ends a sync iterable cleanly with chunks still queued`,
+		async (_t) => {
+			deepStrictEqual(
+				await streamToArray(
+					createReadableStream(["a", "b", "c"], { highWaterMark: 2 }),
+				),
+				["a", "b", "c"],
+			);
+		},
+	);
+
+	// --- A sync source that throws mid-iteration errors the stream and drops
+	// the abort listener (the async case is covered by "removes its abort
+	// listener when the source throws"; the sync path now has its own catch). ---
+	test(`createReadableStream errors and removes its abort listener when a sync source throws`, async (_t) => {
+		const controller = new AbortController();
+		const source = (function* () {
+			yield 1;
+			throw new Error("boom");
+		})();
+		await rejects(
+			streamToArray(
+				createReadableStream(source, { signal: controller.signal }),
+			),
+			{ message: "boom" },
+		);
+		await new Promise((resolve) => setImmediate(resolve));
+		strictEqual(getEventListeners(controller.signal, "abort").length, 0);
+	});
+
+	// --- destroy() runs a sync generator's finally (iterator.return()) before
+	// 'close', and a bare iterator without return() still closes cleanly
+	// (kills the `iterator.return?.()` optional-chaining mutant). ---
+	nodeTest(
+		`createReadableStream destroy() runs a sync iterator's return() before close`,
+		async (_t) => {
+			let cleaned = false;
+			function* gen() {
+				try {
+					for (;;) yield "a";
+				} finally {
+					cleaned = true;
+				}
+			}
+			const stream = createReadableStream(gen());
+			strictEqual(stream.read(), "a");
+			stream.destroy();
+			await new Promise((resolve) => stream.on("close", resolve));
+			strictEqual(cleaned, true);
+
+			const bare = createReadableStream({
+				[Symbol.iterator]: () => ({
+					next: () => ({ value: "b", done: false }),
+				}),
+			});
+			strictEqual(bare.read(), "b");
+			bare.destroy();
+			await new Promise((resolve) => bare.on("close", resolve));
+			strictEqual(bare.errored, null);
+		},
+	);
+
+	// --- Readable.from parity for a failing return(): the destroy error wins
+	// when there is one (kills `error ?? e` -> `e`), and otherwise the
+	// return() failure surfaces as the stream error (kills -> `error`). ---
+	nodeTest(
+		`createReadableStream destroy() keeps its own error over a failing return()`,
+		async (_t) => {
+			function* gen() {
+				try {
+					for (;;) yield "a";
+				} finally {
+					// biome-ignore lint/correctness/noUnsafeFinally: deliberate
+					throw new Error("cleanup-failed");
+				}
+			}
+			const errored = createReadableStream(gen());
+			strictEqual(errored.read(), "a");
+			errored.destroy(new Error("destroy-error"));
+			await rejects(finished(errored), { message: "destroy-error" });
+
+			const clean = createReadableStream(gen());
+			strictEqual(clean.read(), "a");
+			clean.destroy();
+			await rejects(finished(clean), { message: "cleanup-failed" });
+		},
+	);
+
+	// --- Backpressure through a transform: the sync loop stops when push()
+	// returns false and resumes on the next read() (kills `reading = false`
+	// removal, which would stall after the first full queue). ---
+	test(`createReadableStream resumes a sync iterable after backpressure`, async (_t) => {
+		const input = Array.from({ length: 1000 }, (_, i) => i);
+		const seen = [];
+		await pipeline([
+			createReadableStream(input, { highWaterMark: 2 }),
+			createTransformStream(
+				async (chunk, enqueue) => {
+					await new Promise((resolve) => setImmediate(resolve));
+					enqueue(chunk);
+				},
+				{ highWaterMark: 1 },
+			),
+			createTransformStream((chunk, enqueue) => {
+				seen.push(chunk);
+				enqueue(chunk);
+			}),
+		]);
+		deepStrictEqual(seen, input);
 	});
 });

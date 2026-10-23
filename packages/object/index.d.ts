@@ -63,7 +63,8 @@ export function objectKeyValuesStream(
 export function objectKeyJoinStream(
 	options: {
 		keys: Record<string, string[]>;
-		separator: string;
+		/** Joins the old keys' values. Default `","` (Array.prototype.join). */
+		separator?: string;
 		isNestedObject?: boolean;
 	},
 	streamOptions?: StreamOptions,

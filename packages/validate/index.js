@@ -57,7 +57,7 @@ export const validateStream = (
 		// may then be coerced in place).
 		let validateTarget;
 		try {
-			validateTarget = structuredClone(chunk);
+			validateTarget = clone(chunk);
 		} catch {
 			validateTarget = chunk;
 		}
@@ -90,6 +90,38 @@ export const validateStream = (
 	const stream = createTransformStream(transform, streamOptions);
 	stream.result = () => ({ key: resultKey ?? "validate", value });
 	return stream;
+};
+
+// structuredClone runs every value through V8's serializer: ~1µs per small
+// row, over half of this stream's time. Rows are nearly always plain objects,
+// arrays and primitives, which a direct copy clones several times faster. Any
+// other object (Date, Map, typed array, class instance, ...) still goes through
+// structuredClone, so the same values are non-cloneable. A function or symbol
+// value is copied by reference, where structuredClone rejected the whole row.
+// Shared and cyclic references are preserved, as structuredClone does.
+const clone = (root) => {
+	const seen = new Map();
+	const copy = (value) => {
+		if (typeof value !== "object" || value === null) return value;
+		const isArray = Array.isArray(value);
+		if (!isArray) {
+			const proto = Object.getPrototypeOf(value);
+			if (proto !== Object.prototype && proto !== null) {
+				return structuredClone(value);
+			}
+		}
+		// Plain assignment of an own "__proto__" key would replace the prototype;
+		// structuredClone keeps it as a data property (and still rejects a function
+		// value inside, which is how a mutant forcing this path is observed).
+		if (Object.hasOwn(value, "__proto__")) return structuredClone(value);
+		const found = seen.get(value);
+		if (found) return found;
+		const out = isArray ? [] : {};
+		seen.set(value, out);
+		for (const key of Object.keys(value)) out[key] = copy(value[key]);
+		return out;
+	};
+	return copy(root);
 };
 
 const processError = (error) => {
