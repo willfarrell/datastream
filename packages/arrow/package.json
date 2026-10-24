@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/arrow",
-	"version": "0.9.1",
+	"version": "0.9.2",
 	"description": "Apache Arrow record batch transform streams",
 	"type": "module",
 	"sideEffects": false,
@@ -57,7 +57,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.9.1"
+		"@datastream/core": "0.9.2"
 	},
 	"peerDependencies": {
 		"apache-arrow": "^21.1.0"

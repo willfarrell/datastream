@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/avro",
-	"version": "0.9.1",
+	"version": "0.9.2",
 	"description": "Apache Avro encode/decode transform streams (Node, via avsc)",
 	"type": "module",
 	"sideEffects": false,
@@ -49,14 +49,14 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.9.1"
+		"@datastream/core": "0.9.2"
 	},
 	"peerDependencies": {
 		"avsc": "^5.7.9"
 	},
 	"devDependencies": {
-		"@datastream/kafka": "0.9.1",
-		"@datastream/schema-registry": "0.9.1",
+		"@datastream/kafka": "0.9.2",
+		"@datastream/schema-registry": "0.9.2",
 		"avsc": "^5.7.9"
 	}
 }
