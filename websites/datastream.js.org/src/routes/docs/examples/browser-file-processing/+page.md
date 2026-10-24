@@ -3,7 +3,7 @@ title: Browser file processing
 description: Process files in the browser using the File System Access API and datastream.
 ---
 
-Use the File System Access API to process files in the browser:
+Use the File System Access API to process files in the browser. `File.stream()` yields bytes, and the CSV detect streams decode UTF-8 bytes themselves, so no decode step is needed. For a file in another encoding, add `charsetDecodeStream({ charset })` from [`@datastream/charset`](/docs/packages/charset) before `detectDelimiters`.
 
 ```javascript
 import { pipeline } from '@datastream/core'
@@ -12,11 +12,14 @@ import {
   csvDetectDelimitersStream,
   csvDetectHeaderStream,
   csvParseStream,
+  csvObjectToArrayStream,
+  csvInjectHeaderStream,
   csvFormatStream,
 } from '@datastream/csv'
 import { objectFromEntriesStream, objectCountStream } from '@datastream/object'
 
 const types = [{ accept: { 'text/csv': ['.csv'] } }]
+const headers = ['name', 'city'] // columns to write, in order
 
 const detectDelimiters = csvDetectDelimitersStream()
 const detectHeader = csvDetectHeaderStream({
@@ -41,10 +44,12 @@ const result = await pipeline([
     keys: () => detectHeader.result().value.header,
   }),
   count,
-  csvFormatStream({ header: true }),
+  csvObjectToArrayStream({ headers }),
+  csvInjectHeaderStream({ header: headers }),
+  csvFormatStream(),
   await fileWriteStream({ path: 'output.csv', types }),
 ])
 
 console.log(result)
-// { count: 500 }
+// { csvDetectDelimiters: {...}, csvDetectHeader: {...}, csvErrors: {}, objectCount: 500 }
 ```

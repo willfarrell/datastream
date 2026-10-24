@@ -2,59 +2,63 @@
 // SPDX-License-Identifier: MIT
 import { createTransformStream } from "@datastream/core";
 
-// Resolve a ProtobufTypeInput once: a static Type is returned as-is (the hot
-// path skips recomputation), while a function is invoked per chunk and may
-// return either a Type or a Promise<Type>.
-const makeResolveType = (Type) => {
-	if (typeof Type === "function") {
-		return (chunk) => Type(chunk);
-	}
-	return () => Type;
-};
-
+const encode = (type, chunk, enqueue) =>
+	enqueue(type.encode(type.create(chunk)).finish());
 export const protobufEncodeStream = ({ Type } = {}, streamOptions = {}) => {
-	const resolveType = makeResolveType(Type);
-	const transform = async (chunk, enqueue) => {
-		const type = await resolveType(chunk);
-		enqueue(type.encode(type.create(chunk)).finish());
-	};
+	const transform =
+		typeof Type === "function"
+			? async (chunk, enqueue) => encode(await Type(chunk), chunk, enqueue)
+			: (chunk, enqueue) => encode(Type, chunk, enqueue);
 	return createTransformStream(transform, streamOptions);
 };
 
+const DEFAULT_MAX_MESSAGE_SIZE = 64 * 1024 * 1024;
+
 export const protobufDecodeStream = (
-	{ Type, payload, maxOutputSize = Number.POSITIVE_INFINITY } = {},
+	{ Type, payload, maxMessageSize = DEFAULT_MAX_MESSAGE_SIZE } = {},
 	streamOptions = {},
 ) => {
-	const resolveType = makeResolveType(Type);
 	const getPayload = payload ?? ((chunk) => chunk);
-	let inputSize = 0;
-	const transform = async (chunk, enqueue) => {
+	const messageLimit = maxMessageSize ?? Number.POSITIVE_INFINITY;
+	const checkedPayload = (chunk) => {
 		const bytes = getPayload(chunk);
-		// Default ceiling is Infinity, so the guard is the sole gate and the
-		// comparison stays load-bearing (no redundant null check to mutate away).
-		inputSize += bytes.length;
-		if (inputSize > maxOutputSize) {
-			throw new Error(
-				`Protobuf decode input exceeds maxOutputSize (${maxOutputSize} bytes)`,
+		if (bytes.length > messageLimit) {
+			throw new RangeError(
+				`Protobuf message exceeds maxMessageSize (${maxMessageSize} bytes)`,
 			);
 		}
-		const type = await resolveType(chunk);
-		enqueue(type.decode(bytes));
+		return bytes;
 	};
+	const transform =
+		typeof Type === "function"
+			? async (chunk, enqueue) => {
+					const bytes = checkedPayload(chunk);
+					enqueue((await Type(chunk)).decode(bytes));
+				}
+			: (chunk, enqueue) => enqueue(Type.decode(checkedPayload(chunk)));
 	return createTransformStream(transform, streamOptions);
 };
 
 // Base-128 varint, matching the protobuf length-delimited wire format. Uses
 // arithmetic (not bitwise) so lengths beyond 2^31 encode/decode correctly.
-const encodeVarint = (value) => {
-	const bytes = [];
+const varintLength = (value) => {
+	let n = 1;
 	let v = value;
 	while (v > 0x7f) {
-		bytes.push((v % 0x80) | 0x80);
 		v = Math.floor(v / 0x80);
+		n += 1;
 	}
-	bytes.push(v);
-	return Uint8Array.from(bytes);
+	return n;
+};
+const writeVarint = (out, value) => {
+	let i = 0;
+	let v = value;
+	while (v > 0x7f) {
+		out[i] = (v % 0x80) | 0x80;
+		v = Math.floor(v / 0x80);
+		i += 1;
+	}
+	out[i] = v;
 };
 
 export const protobufLengthPrefixFrameStream = (
@@ -62,19 +66,20 @@ export const protobufLengthPrefixFrameStream = (
 	streamOptions = {},
 ) => {
 	const transform = (chunk, enqueue) => {
-		const prefix = encodeVarint(chunk.length);
-		const framed = new Uint8Array(prefix.length + chunk.length);
-		framed.set(prefix, 0);
-		framed.set(chunk, prefix.length);
+		const prefixLength = varintLength(chunk.length);
+		const framed = new Uint8Array(prefixLength + chunk.length);
+		writeVarint(framed, chunk.length);
+		framed.set(chunk, prefixLength);
 		enqueue(framed);
 	};
 	return createTransformStream(transform, streamOptions);
 };
 
 export const protobufLengthPrefixUnframeStream = (
-	{ maxMessageSize = Number.POSITIVE_INFINITY } = {},
+	{ maxMessageSize = DEFAULT_MAX_MESSAGE_SIZE } = {},
 	streamOptions = {},
 ) => {
+	const messageLimit = maxMessageSize ?? Number.POSITIVE_INFINITY;
 	// Buffer incoming chunks as a list instead of one growable byte buffer: the
 	// varint length prefix is parsed across chunk boundaries and each message is
 	// copied out exactly once. This keeps the hot path free of per-chunk realloc
@@ -82,9 +87,11 @@ export const protobufLengthPrefixUnframeStream = (
 	// is speed (and which mutation testing cannot distinguish from the slow path).
 	const pending = [];
 	let pendingLen = 0;
+	let headOffset = 0;
 
 	// Byte at absolute position `pos` (0 <= pos < pendingLen) across the chunks.
 	const byteAt = (pos) => {
+		pos += headOffset;
 		let index = 0;
 		while (pos >= pending[index].byteLength) {
 			pos -= pending[index].byteLength;
@@ -93,19 +100,21 @@ export const protobufLengthPrefixUnframeStream = (
 		return pending[index][pos];
 	};
 
+	const consume = (n) => {
+		headOffset += n;
+		pendingLen -= n;
+		if (headOffset === pending[0].byteLength) {
+			pending.shift();
+			headOffset = 0;
+		}
+	};
+
 	// Drop the first `count` bytes off the front of the buffered chunks.
 	const skip = (count) => {
 		while (count > 0) {
-			const head = pending[0];
-			const n = Math.min(head.byteLength, count);
+			const n = Math.min(pending[0].byteLength - headOffset, count);
 			count -= n;
-			pendingLen -= n;
-			const rest = head.subarray(n);
-			if (rest.byteLength === 0) {
-				pending.shift();
-			} else {
-				pending[0] = rest;
-			}
+			consume(n);
 		}
 	};
 
@@ -116,17 +125,11 @@ export const protobufLengthPrefixUnframeStream = (
 		let filled = 0;
 		while (filled < count) {
 			const head = pending[0];
-			const n = Math.min(head.byteLength, count - filled);
-			out.set(head.subarray(0, n), filled);
+			const n = Math.min(head.byteLength - headOffset, count - filled);
+			out.set(head.subarray(headOffset, headOffset + n), filled);
 			filled += n;
-			const rest = head.subarray(n);
-			if (rest.byteLength === 0) {
-				pending.shift();
-			} else {
-				pending[0] = rest;
-			}
+			consume(n);
 		}
-		pendingLen -= count;
 		return out;
 	};
 
@@ -145,13 +148,16 @@ export const protobufLengthPrefixUnframeStream = (
 				complete = true;
 				break;
 			}
+			if (prefixBytes === 10) {
+				throw new Error("Protobuf length prefix exceeds 10 bytes");
+			}
 			scale *= 0x80;
 		}
 		if (!complete) {
 			return null;
 		}
-		if (length > maxMessageSize) {
-			throw new Error(
+		if (length > messageLimit) {
+			throw new RangeError(
 				`Protobuf message exceeds maxMessageSize (${maxMessageSize} bytes)`,
 			);
 		}

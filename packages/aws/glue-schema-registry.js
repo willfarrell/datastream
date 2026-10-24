@@ -15,6 +15,7 @@ export const awsGlueSchemaRegistryResolver = ({
 	cacheExpiry = -1,
 	maxCacheSize = 1000,
 } = {}) => {
+	const cacheCap = maxCacheSize ?? Number.POSITIVE_INFINITY;
 	// Cache the lazily-created client per resolver invocation (closure-local) so
 	// each resolver honors its own clientOptions. The module-level defaultClient
 	// is reserved strictly for the explicit setClient() path.
@@ -37,7 +38,7 @@ export const awsGlueSchemaRegistryResolver = ({
 	const inflight = new Map(); // schemaVersionId -> Promise<value>
 
 	const evictIfNeeded = () => {
-		while (cache.size >= maxCacheSize) {
+		while (cache.size >= cacheCap) {
 			const oldest = cache.keys().next().value;
 			cache.delete(oldest);
 		}
@@ -55,9 +56,6 @@ export const awsGlueSchemaRegistryResolver = ({
 		if (hit && (hit.expires === -1 || hit.expires > Date.now())) {
 			return hit.value;
 		}
-		// Drop the stale entry so it doesn't sit ahead of fresh keys in the
-		// Map's FIFO order and get re-inserted at the tail below. delete() is a
-		// no-op when the key is absent, so the (stale-only) hit is implied.
 		cache.delete(schemaVersionId);
 		const pending = inflight.get(schemaVersionId);
 		if (pending) return pending;
@@ -72,14 +70,13 @@ export const awsGlueSchemaRegistryResolver = ({
 					schemaDefinition: resp.SchemaDefinition,
 					dataFormat: resp.DataFormat,
 				};
-				// delete-then-set so a refreshed key lands at the tail of the
-				// Map's insertion order, keeping eviction true-FIFO.
-				cache.delete(schemaVersionId);
-				evictIfNeeded();
-				cache.set(schemaVersionId, {
-					value,
-					expires: cacheExpiry < 0 ? -1 : Date.now() + cacheExpiry,
-				});
+				if (cacheCap > 0) {
+					evictIfNeeded();
+					cache.set(schemaVersionId, {
+						value,
+						expires: cacheExpiry < 0 ? -1 : Date.now() + cacheExpiry,
+					});
+				}
 				return value;
 			} finally {
 				inflight.delete(schemaVersionId);
@@ -88,9 +85,4 @@ export const awsGlueSchemaRegistryResolver = ({
 		inflight.set(schemaVersionId, promise);
 		return promise;
 	};
-};
-
-export default {
-	setClient: awsGlueSchemaRegistrySetClient,
-	resolver: awsGlueSchemaRegistryResolver,
 };

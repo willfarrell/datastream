@@ -9,34 +9,45 @@ import type {
 export interface JsonError {
 	id: string;
 	message: string;
+	/** Row indexes, at most `maxErrorRows` of them. */
 	idx: number[];
+	/** True number of occurrences (may exceed `idx.length`). */
+	count: number;
 }
 
 export function ndjsonParseStream(
 	options?: {
-		maxBufferSize?: number;
+		/** Default 16MB; null = unlimited. */
+		maxBufferSize?: number | null;
+		/** idx entries kept per error id. Default 1000; null = unlimited. */
+		maxErrorRows?: number | null;
+		/** Default "ndjsonErrors". */
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamTransform<string, Record<string, unknown>> & {
+): DatastreamTransform<string | Uint8Array, Record<string, unknown>> & {
 	result: () => StreamResult<Record<string, JsonError>>;
 };
 
+/** One record per line; there is no `space` option (it would split records). */
 export function ndjsonFormatStream(
-	options?: {
-		space?: number | string;
-	},
+	options?: Record<string, never>,
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<Record<string, unknown>, string>;
 
 export function jsonParseStream(
 	options?: {
-		maxBufferSize?: number;
-		maxValueSize?: number;
+		/** Default 16MB; null = unlimited. */
+		maxBufferSize?: number | null;
+		/** Default 16MB; null = unlimited. */
+		maxValueSize?: number | null;
+		/** idx entries kept per error id. Default 1000; null = unlimited. */
+		maxErrorRows?: number | null;
+		/** Default "jsonErrors". */
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamTransform<string, Record<string, unknown>> & {
+): DatastreamTransform<string | Uint8Array, Record<string, unknown>> & {
 	result: () => StreamResult<Record<string, JsonError>>;
 };
 

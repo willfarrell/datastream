@@ -1,14 +1,14 @@
 <script>
-import BodyHeader from "@design-system/components/BodyHeader.svelte";
-import Icon from "@design-system/components/Icon.svelte";
-import Image from "@design-system/components/Image.svelte";
-import InputSearch from "@design-system/components/InputSearch.svelte";
-import A from "@design-system/elements/a.svelte";
-import Button from "@design-system/elements/button.svelte";
-import Div from "@design-system/elements/div.svelte";
-import Form from "@design-system/elements/form.svelte";
-import Search from "@design-system/elements/search.svelte";
-import Span from "@design-system/elements/span.svelte";
+import BodyHeader from "@willfarrell-ds/svelte/components/BodyHeader.svelte";
+import Icon from "@willfarrell-ds/svelte/components/Icon.svelte";
+import Image from "@willfarrell-ds/svelte/components/Image.svelte";
+import InputSearch from "@willfarrell-ds/svelte/components/InputSearch.svelte";
+import A from "@willfarrell-ds/svelte/elements/a.svelte";
+import Button from "@willfarrell-ds/svelte/elements/button.svelte";
+import Div from "@willfarrell-ds/svelte/elements/div.svelte";
+import Form from "@willfarrell-ds/svelte/elements/form.svelte";
+import Search from "@willfarrell-ds/svelte/elements/search.svelte";
+import Span from "@willfarrell-ds/svelte/elements/span.svelte";
 import webComponentUrl from "@willfarrell-ds/vanilla/components/ds-input-focus.js?worker&url";
 import { page } from "$app/state";
 
@@ -48,9 +48,9 @@ const navPrimary = null;
     {#snippet end()}
         <Search>
         <Form method="GET" action="/search">
-           	<Div role="group">
-				<InputSearch id="q" placeholder="Search ⌘+K" size="18" is="ds-input-focus" data-keys="$mod+K" value={form?.q} />
-				<Button><Icon src="/img/icons.svg#search" /><Span class="visually-hidden">Search</Span></Button>
+           	<Div class="group">
+				<InputSearch id="q" placeholder="Search ⌘+K" size="18" is="ds-input-focus" data-keys="$mod+K" value={form?.q ?? ""} />
+				<Button type="submit"><Icon src="/img/icons.svg#search" /><Span class="visually-hidden">Search</Span></Button>
 			</Div>
         </Form></Search>
     {/snippet}

@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import { createPassThroughStream } from "@datastream/core";
+import { concatBytes, createPassThroughStream } from "@datastream/core";
 import { analyse } from "chardet";
 
 const charsetKeys = [
@@ -42,19 +42,6 @@ const MAX_DETECTION_SAMPLE = 64 * 1024;
 // spurious ISO-8859-1 winner.
 const normaliseMatchName = (name) => (name === "ASCII" ? "UTF-8" : name);
 
-// Concatenate the sampled Uint8Array chunks without relying on the node-only
-// Buffer global, so the shared detect source runs in the browser too. String
-// chunks are encoded as UTF-8 bytes via TextEncoder for the same reason.
-const concatBytes = (chunks, totalLength) => {
-	const out = new Uint8Array(totalLength);
-	let offset = 0;
-	for (const chunk of chunks) {
-		out.set(chunk, offset);
-		offset += chunk.length;
-	}
-	return out;
-};
-
 export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 	// Accumulate a bounded byte sample and run chardet once on the whole sample
 	// in result(). Running analyse() per-chunk and averaging corrupts results at
@@ -63,15 +50,12 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 	let sampleLength = 0;
 	const encoder = new TextEncoder();
 	const passThrough = (chunk) => {
-		const bytes = typeof chunk === "string" ? encoder.encode(chunk) : chunk;
-		// Keep only the bytes that still fit under the cap. subarray clamps the
-		// end index to the array length, so this both passes short chunks through
-		// whole and truncates the one chunk that crosses MAX_DETECTION_SAMPLE;
-		// once the cap is reached remaining is 0 and the slice is empty, so no
-		// further bytes are ever sampled. This single bound makes the cap the
-		// sole gate (no redundant length guard that a slice would mask).
 		const remaining = MAX_DETECTION_SAMPLE - sampleLength;
-		const slice = bytes.subarray(0, remaining);
+		if (remaining <= 0) return;
+		const bytes = typeof chunk === "string" ? encoder.encode(chunk) : chunk;
+		// Uint8Array's slice: Buffer#slice is a view, so the sample would change
+		// when a later stage reuses the chunk.
+		const slice = Uint8Array.prototype.slice.call(bytes, 0, remaining);
 		sample.push(slice);
 		sampleLength += slice.length;
 	};
@@ -86,7 +70,7 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 			};
 		}
 		const charsets = Object.fromEntries(charsetKeys.map((k) => [k, undefined]));
-		const matches = analyse(concatBytes(sample, sampleLength));
+		const matches = analyse(concatBytes(sample));
 		for (const match of matches) {
 			const name = normaliseMatchName(match.name);
 			if (name in charsets) {
@@ -103,10 +87,3 @@ export const charsetDetectStream = ({ resultKey } = {}, streamOptions = {}) => {
 	};
 	return stream;
 };
-
-export const getSupportedEncoding = (charset) => {
-	if (charset === "ISO-8859-8-I") charset = "ISO-8859-8";
-	return charset;
-};
-
-export default charsetDetectStream;

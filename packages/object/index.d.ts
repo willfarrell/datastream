@@ -2,16 +2,10 @@
 // SPDX-License-Identifier: MIT
 import type {
 	DatastreamPassThrough,
-	DatastreamReadable,
 	DatastreamTransform,
 	StreamOptions,
 	StreamResult,
 } from "@datastream/core";
-
-export function objectReadableStream<T = Record<string, unknown>>(
-	input?: T[],
-	streamOptions?: StreamOptions,
-): DatastreamReadable<T>;
 
 export function objectCountStream(
 	options?: {
@@ -25,7 +19,8 @@ export function objectCountStream(
 export function objectBatchStream<_T = Record<string, unknown>>(
 	options: {
 		keys: string[];
-		maxBatchSize?: number;
+		/** Unlimited when undefined or null (a finite cap would split key groups). */
+		maxBatchSize?: number | null;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform;
@@ -68,7 +63,8 @@ export function objectKeyValuesStream(
 export function objectKeyJoinStream(
 	options: {
 		keys: Record<string, string[]>;
-		separator: string;
+		/** Joins the old keys' values. Default `","` (Array.prototype.join). */
+		separator?: string;
 		isNestedObject?: boolean;
 	},
 	streamOptions?: StreamOptions,
@@ -118,25 +114,9 @@ export function objectToEntriesStream(
 ): DatastreamTransform;
 
 export function objectSkipConsecutiveDuplicatesStream(
-	options?: Record<string, never>,
+	options?: {
+		/** Compare nested values deeply instead of by shallow key equality. */
+		isNestedObject?: boolean;
+	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform;
-
-declare const _default: {
-	readableStream: typeof objectReadableStream;
-	countStream: typeof objectCountStream;
-	pickStream: typeof objectPickStream;
-	omitStream: typeof objectOmitStream;
-	batchStream: typeof objectBatchStream;
-	pivotLongToWideStream: typeof objectPivotLongToWideStream;
-	pivotWideToLongStream: typeof objectPivotWideToLongStream;
-	keyValueStream: typeof objectKeyValueStream;
-	keyValuesStream: typeof objectKeyValuesStream;
-	keyJoinStream: typeof objectKeyJoinStream;
-	keyMapStream: typeof objectKeyMapStream;
-	valueMapStream: typeof objectValueMapStream;
-	fromEntriesStream: typeof objectFromEntriesStream;
-	toEntriesStream: typeof objectToEntriesStream;
-	skipConsecutiveDuplicatesStream: typeof objectSkipConsecutiveDuplicatesStream;
-};
-export default _default;

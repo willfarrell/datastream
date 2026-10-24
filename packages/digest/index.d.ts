@@ -28,6 +28,4 @@ export function digestStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DigestStreamResult | Promise<DigestStreamResult>;
-
-export default digestStream;
+): DigestStreamResult;

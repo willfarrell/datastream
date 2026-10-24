@@ -1,5 +1,5 @@
 <script>
-import LayoutAsideNav from "@design-system/components/LayoutAsideNav.svelte";
+import LayoutAsideNav from "@willfarrell-ds/svelte/components/LayoutAsideNav.svelte";
 
 const nav = {
 	"Getting Started": {
@@ -12,10 +12,13 @@ const nav = {
 		file: "/docs/packages/file",
 		fetch: "/docs/packages/fetch",
 		aws: "/docs/packages/aws",
+		azure: "/docs/packages/azure",
+		gcp: "/docs/packages/gcp",
 		indexeddb: "/docs/packages/indexeddb",
 		ipfs: "/docs/packages/ipfs",
 		kafka: "/docs/packages/kafka",
 		duckdb: "/docs/packages/duckdb",
+		sqlite: "/docs/packages/sqlite",
 	},
 	"Data Formats": {
 		csv: "/docs/packages/csv",
@@ -25,6 +28,7 @@ const nav = {
 		base64: "/docs/packages/base64",
 		charset: "/docs/packages/charset",
 		arrow: "/docs/packages/arrow",
+		avro: "/docs/packages/avro",
 		protobuf: "/docs/packages/protobuf",
 		"schema-registry": "/docs/packages/schema-registry",
 	},

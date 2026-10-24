@@ -1,15 +1,15 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import type { DatastreamTransform, StreamOptions } from "@datastream/core";
+import type {
+	BrotliCompressOptions,
+	BrotliDecompressOptions,
+} from "./brotli.browser.js";
 
-export interface BrotliCompressOptions {
-	quality?: number;
-	maxOutputSize?: number;
-}
-
-export interface BrotliDecompressOptions {
-	maxOutputSize?: number;
-}
+export type {
+	BrotliCompressOptions,
+	BrotliDecompressOptions,
+} from "./brotli.browser.js";
 
 export function brotliCompressStream(
 	options?: BrotliCompressOptions,

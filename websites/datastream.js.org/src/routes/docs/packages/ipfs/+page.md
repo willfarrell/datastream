@@ -19,8 +19,10 @@ Retrieves content from IPFS by CID.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `node` | `IPFS` | — | IPFS node instance |
+| `node` | `IPFS` | — | IPFS node instance (js-ipfs, kubo-rpc-client, or any client with `get(cid, { signal })` / `add(source, { signal })`) |
 | `cid` | `string` | — | Content identifier |
+
+`streamOptions.signal` is passed to the client as `node.get(cid, { signal })`, so aborting the pipeline also cancels the request.
 
 ### Example
 
@@ -41,8 +43,10 @@ Adds content to IPFS and returns the CID in `.result()`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `node` | `IPFS` | — | IPFS node instance |
+| `node` | `IPFS` | — | IPFS node instance (js-ipfs, kubo-rpc-client, or any client with `get(cid, { signal })` / `add(source, { signal })`) |
 | `resultKey` | `string` | `"cid"` | Key in pipeline result |
+
+`node.add` receives the incoming chunks as an async iterable, read one chunk at a time, plus `{ signal }` from `streamOptions.signal`, so aborting the pipeline also cancels the upload. In the browser, the stream listens for that signal's `abort` once and removes the listener when `node.add` settles, so one long-lived signal can be reused across many runs.
 
 ### Result
 

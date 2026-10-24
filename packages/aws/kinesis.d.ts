@@ -19,11 +19,15 @@ export function awsKinesisGetRecordsStream(
 	streamOptions?: StreamOptions,
 ): Promise<DatastreamReadable>;
 
+// On destroy/abort, entries still buffered are attached to the error as
+// `failedMessages` (not sent).
 export function awsKinesisPutRecordsStream(
 	options: {
 		client?: unknown;
 		StreamName?: string;
 		StreamARN?: string;
+		// Max retries of failed entries (default 10); null = unlimited.
+		retryMaxCount?: number | null;
 		[key: string]: unknown;
 	},
 	streamOptions?: StreamOptions,

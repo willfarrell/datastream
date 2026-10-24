@@ -17,7 +17,7 @@ const guardOutput = (stream, maxOutputSize, label) => {
 			if (outputSize > maxOutputSize) {
 				stream.push = originalPush;
 				stream.destroy(
-					new Error(
+					new RangeError(
 						`${label} output exceeds maxOutputSize (${maxOutputSize} bytes)`,
 					),
 				);

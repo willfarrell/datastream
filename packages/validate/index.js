@@ -1,7 +1,8 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import { createTransformStream } from "@datastream/core";
-import { compile } from "ajv-cmd";
+// Subpath: the ajv-cmd root also loads its CLI (esbuild, node:path), breaking browser bundles
+import { compile } from "ajv-cmd/compile";
 
 const ajvDefaults = {
 	strict: true,
@@ -25,8 +26,8 @@ export const validateStream = (
 		onErrorEnqueue,
 		allowCoerceTypes,
 		resultKey,
-		maxErrorRows = Infinity,
-		maxErrorKeys = 1000,
+		maxErrorRows = 1_000,
+		maxErrorKeys = 1_000,
 	} = {},
 	streamOptions = {},
 ) => {
@@ -37,6 +38,8 @@ export const validateStream = (
 	}
 
 	idxStart ??= 0;
+	const rowLimit = maxErrorRows ?? Number.POSITIVE_INFINITY;
+	const keyLimit = maxErrorKeys ?? Number.POSITIVE_INFINITY;
 
 	if (typeof schema !== "function") {
 		schema = transpileSchema(schema);
@@ -48,30 +51,14 @@ export const validateStream = (
 	const transform = (chunk, enqueue) => {
 		idx += 1;
 
-		let emitChunk;
+		// Validate a clone so AJV coercion does not mutate the caller's object.
 		let validateTarget;
-
-		if (allowCoerceTypes === false) {
-			// Validate on a clone so AJV coercion does not mutate the original.
-			// Emit the original (uncoerced) chunk.
-			try {
-				validateTarget = structuredClone(chunk);
-			} catch {
-				// Non-cloneable: fall back to validating the original (best-effort)
-				validateTarget = chunk;
-			}
-			emitChunk = chunk;
-		} else {
-			// Clone before validation so AJV coercion does not mutate caller's object.
-			// Emit the coerced clone.
-			try {
-				validateTarget = structuredClone(chunk);
-			} catch {
-				// Non-cloneable: validate the original (caller's object may be mutated)
-				validateTarget = chunk;
-			}
-			emitChunk = validateTarget;
+		try {
+			validateTarget = clone(chunk);
+		} catch {
+			validateTarget = chunk;
 		}
+		const emitChunk = allowCoerceTypes === false ? chunk : validateTarget;
 
 		const chunkValid = schema(validateTarget);
 		if (!chunkValid) {
@@ -80,13 +67,13 @@ export const validateStream = (
 
 				if (!value[id]) {
 					// Stop creating new entries once maxErrorKeys cap is reached
-					if (valueCount >= maxErrorKeys) {
+					if (valueCount >= keyLimit) {
 						continue;
 					}
 					value[id] = { id, keys, message, idx: [] };
 					valueCount += 1;
 				}
-				if (value[id].idx.length < maxErrorRows) {
+				if (value[id].idx.length < rowLimit) {
 					value[id].idx.push(idx);
 				}
 			}
@@ -98,6 +85,37 @@ export const validateStream = (
 	const stream = createTransformStream(transform, streamOptions);
 	stream.result = () => ({ key: resultKey ?? "validate", value });
 	return stream;
+};
+
+// structuredClone runs every value through V8's serializer: ~1µs per small
+// row, over half of this stream's time. Rows are nearly always plain objects,
+// arrays and primitives, which a direct copy clones several times faster. Any
+// other object (Date, Map, typed array, class instance, ...) still goes through
+// structuredClone, so the same values are non-cloneable. A function or symbol
+// value is copied by reference, where structuredClone rejected the whole row.
+// Shared and cyclic references are preserved, as structuredClone does.
+const clone = (root) => {
+	const seen = new Map();
+	const copy = (value) => {
+		if (typeof value !== "object" || value === null) return value;
+		const isArray = Array.isArray(value);
+		if (!isArray) {
+			const proto = Object.getPrototypeOf(value);
+			if (proto !== Object.prototype && proto !== null) {
+				return structuredClone(value);
+			}
+		}
+		// Plain assignment of an own "__proto__" key would replace the prototype;
+		// structuredClone keeps it as a data property.
+		if (Object.hasOwn(value, "__proto__")) return structuredClone(value);
+		const found = seen.get(value);
+		if (found) return found;
+		const out = isArray ? [] : {};
+		seen.set(value, out);
+		for (const key of Object.keys(value)) out[key] = copy(value[key]);
+		return out;
+	};
+	return copy(root);
 };
 
 const processError = (error) => {
@@ -131,5 +149,3 @@ const makeKeys = (error) => {
 		error.instancePath.replace("/", "")
 	);
 };
-
-export default validateStream;

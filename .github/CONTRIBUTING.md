@@ -9,7 +9,7 @@ Before contributing to the project, make sure to have a look at our [Code of Con
 
 ### Prerequisites
 
-- Node.js >= 24
+- Node.js >= 26
 - npm (comes with Node.js)
 
 ### Getting Started
@@ -30,32 +30,41 @@ packages/       # npm packages (core, csv, compress, encrypt, etc.)
 websites/       # documentation website (datastream.js.org)
 .github/        # CI workflows, workflow-specific dependencies
 bin/            # build scripts
-docs/           # additional documentation
 ```
 
-Each package in `packages/` has both a Node.js stream implementation (`index.node.js`) and a Web Streams API implementation (`index.web.js`), selected via conditional exports.
+Each package in `packages/` provides a Node.js stream implementation and a Web Streams API implementation, selected via the `node` and `browser` export conditions. A feature a platform can't support has no export condition for it: `avro`, `aws`, `azure`, `gcp`, `kafka`, and `sqlite` are Node.js only, `indexeddb` is browser only, and `compress` zstd is Node.js only.
+
+Source files map to export entries (`bin/esbuild` builds `<module>.js`, `<module>.node.js` and `<module>.browser.js` for each export the package has):
+
+- Platform-specific code lives in `index.node.js` and `index.browser.js` (e.g. `core`, `digest`, `file`).
+- Code shared by both platforms is a single `index.js`, built once per exported platform (e.g. `csv`, `json`, `fetch`). The Node.js-only `avro` and `sqlite` are a single `index.js` built for Node.js only.
+- `kafka` has only `index.node.js`, and `indexeddb` has only `index.browser.js`.
+- Subpath exports get their own source file named after the subpath: `aws/s3.js`, `azure/blob.js`, `charset/detect.js`, or a platform pair such as `compress/gzip.node.js` and `compress/gzip.browser.js`.
 
 
 ## Testing
 
 ```bash
-# Run all checks (lint, unit, types, sast, perf, dast)
+# Run all checks (lint, types, unit, dast, sast, bench, mutation)
 npm test
 
-# Run specific test suites
+# Run specific test suites (build first: test suites run against the built *.mjs)
+npm run build
 npm run test:lint          # Biome linting
-npm run test:unit          # Unit tests (both Node.js and Web stream variants)
-npm run test:unit:node     # Unit tests (Node.js streams only)
-npm run test:unit:web      # Unit tests (Web Streams API only)
+npm run test:unit          # Unit tests, node build (100% coverage gate on *.node.mjs + shared .js)
+npm run test:unit:browser  # Unit tests, browser build (100% coverage gate on *.browser.mjs)
 npm run test:types         # TypeScript type checking (tstyche)
-npm run test:perf          # Performance benchmarks (tinybench)
+npm run test:bench         # Performance benchmarks (node:bench, packages/**/*.bench.js)
 npm run test:dast          # Fuzz tests (fast-check)
+npm run test:mutation      # Mutation tests (Stryker) for every package, one at a time
+sh bin/stryker <package>   # Mutation tests for one package (each exported platform)
 
-# Run tests for a single package
+# Run tests for a single package, against either build
 node --test ./packages/core
+node --test --conditions=browser ./packages/core
 ```
 
-Unit tests use Node.js built-in `node:test`. Both `--conditions=node` and `--conditions=webstream` are tested to cover both stream implementations.
+Unit tests use Node.js built-in `node:test`. The same test files run twice: once against the node build and once with `--conditions=browser`, which makes every `@datastream/*` import resolve to the browser build. Tests read that flag into `variant`; node-only cases use `nodeTest` (an alias for `test.skip` under the browser run) and browser-only cases sit in `if (variant === "browser")` blocks. `packages/avro`, `packages/aws`, `packages/azure`, `packages/gcp`, `packages/kafka`, and `packages/sqlite` are node-only (no browser build), so they are excluded from the browser run. `packages/indexeddb` is browser-only (no node export condition): its tests run in both passes, and the node pass imports the browser source directly and drives it with [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB), an in-memory IndexedDB implementation. Mutation testing follows the same split: `MUTATE_VARIANT=browser` mutates `*.browser.mjs` and runs the suite with `--conditions=browser`; shared plain `.js` files (`helpers.js`, `shared.js`, `client.js`, `guard.node.js`) are mutated by the node run only (the browser-only `compress/native.browser.js` by the browser run), so keep platform-specific code in `index.node.js` / `index.browser.js`. A dependency contract the real module never exercises gets its own `*.test.js` that swaps the module with `module.register()` (loader hooks are per test file) — see `encrypt/libsodium.test.js` and `compress/brotli-partial.test.js`.
 
 
 ## Building
@@ -64,16 +73,16 @@ Unit tests use Node.js built-in `node:test`. Both `--conditions=node` and `--con
 npm run build
 ```
 
-Produces dual ESM builds per package via esbuild: `*.node.mjs` (Node.js) and `*.web.mjs` (Web Streams API), both with external source maps.
+Produces dual ESM builds per package via esbuild: `*.node.mjs` (Node.js) and `*.browser.mjs` (Web Streams API), both with external source maps. Packages without a `browser` export condition (`avro`, `aws`, `azure`, `gcp`, `kafka`, `sqlite`) get the node build only, and `indexeddb` (no `node` condition) gets the browser build only. Shared plain `.js` helpers (such as `helpers.js`, `shared.js`, `client.js`, `guard.node.js` and `compress/native.browser.js`) are not export entries: they are imported by relative path and shipped as-is (listed in the package's `files`).
 
 
 ## Code Style
 
 - Formatting and linting are handled by [Biome](https://biomejs.dev/) (`biome.json`)
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) enforced by commitlint
-- Husky pre-commit hooks run linting and tests automatically
+- Husky hooks run linting (pre-commit) and tests (pre-push). Install scripts are disabled (`ignore-scripts=true`), so `prepare` never installs them: run `npx husky` once after cloning
 
 
 ## Licence
 
-Licensed under [MIT Licence](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell), and the [datastream team](https://github.com/willfarrell/datastream/graphs/contributors).
+Licensed under [MIT Licence](../LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell), and the [datastream team](https://github.com/willfarrell/datastream/graphs/contributors).

@@ -1,9 +1,9 @@
 ---
 title: kafka
-description: Kafka producer and consumer streams built on kafkajs.
+description: Kafka producer, consumer, and offset-commit streams built on kafkajs.
 ---
 
-Kafka producer and consumer streams built on [kafkajs](https://kafka.js.org). Produce messages from a writable stream and consume them from a readable stream with end-to-end backpressure.
+Kafka producer, consumer, and offset-commit streams built on [kafkajs](https://kafka.js.org). Produce messages from a writable stream, consume them from a readable stream with end-to-end backpressure, and commit offsets once your pipeline has processed them.
 
 ## Install
 
@@ -94,9 +94,15 @@ Subscribes to one or more topics and emits each message as a chunk. Returns a Pr
 | `consumer` | `Consumer` | — | Consumer from `kafkaConnect` (required) |
 | `topics` | `string \| string[]` | — | Topic(s) to subscribe to (required) |
 | `fromBeginning` | `boolean` | `false` | Start from the earliest offset |
-| `autoCommit` | `boolean` | `true` | Auto-commit offsets |
+| `autoCommit` | `boolean` | `false` | Let kafkajs auto-commit offsets. See [Committing offsets](#committing-offsets) |
 | `partitionsConsumedConcurrently` | `number` | `1` | Concurrent partition processing |
-| `signal` | `AbortSignal` | — | Aborting stops the consumer |
+
+### Stream options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `signal` | `AbortSignal` | — | Aborting stops the consumer, then ends the stream. Pending offsets are not committed. See [Shutdown](#shutdown). Passed in the second argument, like every datastream factory |
+| `highWaterMark` | `number` | `100` | Messages buffered before backpressure pauses kafkajs |
 
 ### Emitted chunk
 
@@ -104,25 +110,83 @@ Subscribes to one or more topics and emits each message as a chunk. Returns a Pr
 { topic, partition, offset, key, value, headers, timestamp }
 ```
 
-### Example
+### Committing offsets
+
+**Breaking change:** `autoCommit` now defaults to `false` (it used to be `true`).
+
+kafkajs auto-commits a message's offset as soon as its `eachMessage` handler returns. Here the handler returns once the message is buffered in the readable stream (up to `highWaterMark` messages), not once your pipeline has processed it. With `autoCommit: true`, a crash or `destroy()` loses every message that was committed but still sitting in the buffer.
+
+With the default `autoCommit: false`, commit after processing by ending the pipeline with [`kafkaCommitStream`](#kafkacommitstream):
 
 ```javascript
-import { kafkaConnect, kafkaConsumeStream } from '@datastream/kafka'
+import { pipeline, createTransformStream } from '@datastream/core'
+import {
+  kafkaCommitStream,
+  kafkaConnect,
+  kafkaConsumeStream,
+} from '@datastream/kafka'
 
-const { consumer } = await kafkaConnect({
+const { consumer, disconnect } = await kafkaConnect({
   brokers: ['localhost:9092'],
   groupId: 'my-group',
 })
 
-const stream = await kafkaConsumeStream({ consumer, topics: 'events' })
+const source = await kafkaConsumeStream({ consumer, topics: 'events' })
+// stop() drains the pipeline and commits the tail before leaving the group
+process.once('SIGTERM', () => source.stop())
 
-for await (const message of stream) {
-  console.log(message.value)
-}
+await pipeline([
+  source,
+  createTransformStream(async (message, enqueue) => {
+    console.log(message.value)
+    // Pass the message on: kafkaCommitStream needs its topic, partition and offset
+    enqueue(message)
+  }),
+  await kafkaCommitStream({ consumer, batchSize: 10 }),
+])
 
-await stream.stop()
+await disconnect()
 ```
+
+To get the old behaviour back (at-most-once delivery: buffered messages can be lost on a crash), pass `autoCommit: true`:
+
+```javascript
+const stream = await kafkaConsumeStream({ consumer, topics: 'events', autoCommit: true })
+```
+
+### Shutdown
+
+**Breaking change:** `stop()` now drains before it stops the consumer. It used to call `consumer.stop()` first, which left the group before `kafkaCommitStream` could commit the tail.
+
+- `stop()` (graceful): ends the readable, waits until every open `kafkaCommitStream` on the same consumer has closed, then calls `consumer.stop()`. The pipeline finishes its in-flight messages and the final commit runs while the group is still joined. If a `kafkaCommitStream` for this consumer is never ended or destroyed, `stop()` waits for it.
+- Aborting the `signal`: calls `consumer.stop()` first, then ends the readable. kafkajs refuses the final commit, so nothing pending is committed and those messages are redelivered (at-least-once).
+- `destroy()`: stops the consumer immediately without waiting for commit streams.
+
+A message that kafkajs delivers after `stop()`, `destroy()`, or an abort is not pushed. Its handler waits until `consumer.stop()` is called, then throws, so kafkajs neither commits it nor crashes and restarts the consumer while the pipeline drains. It is redelivered on the next run.
+
+## `kafkaCommitStream` <span class="badge">Writable</span>
+
+Commits the offsets of processed messages. Place it at the end of a pipeline that starts with `kafkaConsumeStream`. It takes the emitted chunks (it only reads `topic`, `partition` and `offset`) and calls `consumer.commitOffsets` with `offset + 1`, the offset of the next message Kafka should deliver, for each topic-partition. Returns a Promise resolving to the writable stream.
+
+- Each commit sends the highest offset seen per topic-partition since the last commit.
+- A commit never moves an offset backwards: redelivered or out-of-order messages with a lower or equal offset are skipped.
+- Offsets are computed with `BigInt`, so int64 offsets past `Number.MAX_SAFE_INTEGER` stay exact.
+- It commits every `batchSize` messages and once more when the stream ends.
+- It does not commit on `destroy()` or abort. Those messages may not have been processed, so they are left uncommitted and redelivered.
+- While kafkajs has no consumer group (after `consumer.stop()`, or between a crash and kafkajs restarting the consumer), `commitOffsets` throws `KafkaJSNonRetriableError: Consumer group was not initialized`. That error is ignored and the offsets stay pending for the next commit. Any other `commitOffsets` error errors the stream.
+- When the consumer (re)joins the group (the kafkajs `GROUP_JOIN` event, after a rebalance or a crash-restart), the per-partition high-water marks and pending offsets are reset. kafkajs redelivers from the committed offsets, which may have been reset backwards, and a partition may now belong to another member. The dropped messages are redelivered (at-least-once).
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `consumer` | `Consumer` | — | The same consumer passed to `kafkaConsumeStream` (required) |
+| `batchSize` | `number` | `100` | Messages between commits |
+
+### Example
+
+See [Committing offsets](#committing-offsets).
 
 ## Platform support
 
-Available on Node.js (via `kafkajs`). Not available in the browser.
+Node.js only (via `kafkajs`, which needs raw TCP sockets). Like `@datastream/aws`, the package has no `browser` export condition.

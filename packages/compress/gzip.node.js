@@ -5,17 +5,12 @@ import { guardCompress, guardDecompress } from "./guard.node.js";
 
 // quality -1 - 9
 export const gzipCompressStream = (options = {}, streamOptions = {}) => {
-	const { quality, maxOutputSize } = options;
+	const { quality, maxOutputSize, level } = options;
 	return guardCompress(
-		createGzip({ ...streamOptions, level: quality }),
+		createGzip({ ...streamOptions, level: level ?? quality }),
 		maxOutputSize,
 	);
 };
 export const gzipDecompressStream = (options = {}, streamOptions = {}) => {
 	return guardDecompress(createGunzip(streamOptions), options.maxOutputSize);
-};
-
-export default {
-	compressStream: gzipCompressStream,
-	decompressStream: gzipDecompressStream,
 };

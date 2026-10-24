@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
+import { Readable, type Writable } from "node:stream";
 import type {
 	DatastreamReadable,
 	DatastreamTransform,
@@ -7,13 +8,17 @@ import type {
 	StreamOptions,
 	StreamResult,
 } from "@datastream/core";
+import * as coreNode from "@datastream/core";
 import {
+	concatBytes,
+	createChunkDecoder,
 	createReadableStream,
 	createTransformStream,
 	createWritableStream,
 	isReadable,
 	isWritable,
 	makeOptions,
+	pipejoin,
 	pipeline,
 	result,
 	streamToArray,
@@ -22,6 +27,7 @@ import {
 	streamToString,
 	timeout,
 } from "@datastream/core";
+import * as coreBrowser from "@datastream/core/browser";
 import { describe, expect, test } from "tstyche";
 
 describe("StreamOptions", () => {
@@ -89,6 +95,13 @@ describe("streamToString", () => {
 		const stream = createReadableStream();
 		expect(streamToString(stream)).type.toBeAssignableTo<Promise<string>>();
 	});
+
+	test("accepts a typed readable", () => {
+		expect(streamToString).type.toBeCallableWith(createReadableStream("a"));
+		expect(coreBrowser.streamToString).type.toBeCallableWith(
+			coreBrowser.createReadableStream("a"),
+		);
+	});
 });
 
 describe("streamToBuffer", () => {
@@ -99,17 +112,31 @@ describe("streamToBuffer", () => {
 });
 
 describe("type guards", () => {
-	test("isReadable narrows to ReadableStream", () => {
+	test("isReadable narrows to a node Readable", () => {
 		const stream: unknown = {};
 		if (isReadable(stream)) {
-			expect(stream).type.toBe<ReadableStream>();
+			expect(stream).type.toBe<Readable>();
 		}
 	});
 
-	test("isWritable narrows to WritableStream", () => {
+	test("isWritable narrows to a node Writable", () => {
 		const stream: unknown = {};
 		if (isWritable(stream)) {
-			expect(stream).type.toBe<WritableStream>();
+			expect(stream).type.toBe<Writable>();
+		}
+	});
+
+	test("browser isReadable narrows to ReadableStream or a readable pair", () => {
+		const stream: unknown = {};
+		if (coreBrowser.isReadable(stream)) {
+			expect(stream).type.toBe<ReadableStream | { readable: unknown }>();
+		}
+	});
+
+	test("browser isWritable narrows to WritableStream or a writable pair", () => {
+		const stream: unknown = {};
+		if (coreBrowser.isWritable(stream)) {
+			expect(stream).type.toBe<WritableStream | { writable: unknown }>();
 		}
 	});
 });
@@ -168,6 +195,50 @@ describe("createWritableStream", () => {
 			DatastreamWritable<unknown>
 		>();
 	});
+
+	test("accepts an abort hook with or without a close callback", () => {
+		const abort = (_reason: unknown) => {};
+		expect(createWritableStream(() => {}, { abort })).type.toBeAssignableTo<
+			DatastreamWritable<unknown>
+		>();
+		expect(
+			createWritableStream(
+				() => {},
+				() => {},
+				{ abort: async (_reason: unknown) => {} },
+			),
+		).type.toBeAssignableTo<DatastreamWritable<unknown>>();
+	});
+});
+
+describe("pipejoin", () => {
+	test("takes only the streams (no onError callback)", () => {
+		expect(pipejoin).type.not.toBeCallableWith([], () => {});
+		expect(pipejoin([])).type.not.toBeAssignableTo<never>();
+	});
+});
+
+describe("collector limits", () => {
+	test("maxBufferSize accepts a number or null", () => {
+		const stream = createReadableStream();
+		expect(streamToArray(stream, { maxBufferSize: 1 })).type.toBe<
+			Promise<unknown[]>
+		>();
+		expect(streamToString(stream, { maxBufferSize: null })).type.toBe<
+			Promise<string>
+		>();
+	});
+});
+
+describe("createReadableStream bytes", () => {
+	test("accepts ArrayBuffer and views", () => {
+		expect(
+			createReadableStream(new ArrayBuffer(1)),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			createReadableStream(new DataView(new ArrayBuffer(1))),
+		).type.not.toBeAssignableTo<never>();
+	});
 });
 
 describe("timeout", () => {
@@ -179,5 +250,77 @@ describe("timeout", () => {
 		expect(timeout(100, { signal: new AbortController().signal })).type.toBe<
 			Promise<void>
 		>();
+	});
+});
+
+describe("createChunkDecoder", () => {
+	test("decodes bytes or strings to string", () => {
+		const decoder = createChunkDecoder();
+		expect(decoder.decode(new Uint8Array(1))).type.toBe<string>();
+		expect(decoder.decode("a")).type.toBe<string>();
+		expect(decoder.flush()).type.toBe<string>();
+	});
+
+	test("accepts TextDecoder options", () => {
+		expect(createChunkDecoder({ ignoreBOM: true })).type.toBe<{
+			decode: (chunk: string | AllowSharedBufferSource) => string;
+			flush: () => string;
+		}>();
+	});
+
+	test("rejects non-chunk input", () => {
+		expect(createChunkDecoder().decode).type.not.toBeCallableWith(1);
+	});
+});
+
+describe("concatBytes", () => {
+	test("returns Uint8Array", () => {
+		expect(
+			concatBytes([new Uint8Array(1), new Uint8Array(2)]),
+		).type.toBe<Uint8Array>();
+	});
+
+	test("rejects non-array input", () => {
+		expect(concatBytes).type.not.toBeCallableWith(new Uint8Array(1));
+	});
+});
+
+describe("browser build", () => {
+	test("does not export backpressureGauge (Node.js only)", () => {
+		expect<typeof coreBrowser>().type.not.toHaveProperty("backpressureGauge");
+		expect<typeof coreNode>().type.toHaveProperty("backpressureGauge");
+	});
+
+	test("streamToBuffer resolves a Uint8Array, not a Buffer", () => {
+		const stream = coreBrowser.createReadableStream();
+		expect(coreBrowser.streamToBuffer(stream)).type.toBe<Promise<Uint8Array>>();
+	});
+
+	test("stream types are web streams only", () => {
+		expect<coreBrowser.DatastreamReadable<string>>().type.toBeAssignableTo<
+			ReadableStream<string>
+		>();
+		expect<coreBrowser.DatastreamTransform<string, number>>().type.toBe<
+			TransformStream<string, number>
+		>();
+		expect<coreBrowser.DatastreamWritable<string>>().type.toBeAssignableTo<
+			WritableStream<string>
+		>();
+		expect<coreBrowser.DatastreamPassThrough<string>>().type.toBeAssignableTo<
+			TransformStream<string, string>
+		>();
+		expect(coreBrowser.pipeline).type.not.toBeCallableWith([new Readable()]);
+		expect(coreNode.pipeline).type.toBeCallableWith([new Readable()]);
+	});
+
+	test("shares the platform-neutral API", () => {
+		expect(coreBrowser.makeOptions).type.toBe(coreNode.makeOptions);
+		expect(coreBrowser.timeout).type.toBe(coreNode.timeout);
+		expect(coreBrowser.resolveLazy).type.toBe(coreNode.resolveLazy);
+		expect(coreBrowser.concatBytes).type.toBe(coreNode.concatBytes);
+		expect(coreBrowser.createChunkDecoder).type.toBe(
+			coreNode.createChunkDecoder,
+		);
+		expect<coreBrowser.StreamOptions>().type.toBe<StreamOptions>();
 	});
 });

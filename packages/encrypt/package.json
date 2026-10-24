@@ -1,45 +1,40 @@
 {
 	"name": "@datastream/encrypt",
-	"version": "0.7.1",
+	"version": "0.9.0",
 	"description": "Symmetric encryption/decryption streams",
 	"type": "module",
+	"sideEffects": false,
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
 	"main": "./index.node.mjs",
-	"module": "./index.web.mjs",
+	"module": "./index.browser.mjs",
 	"exports": {
 		".": {
-			"node": {
-				"import": {
-					"types": "./index.d.ts",
-					"default": "./index.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./index.d.ts",
-				"default": "./index.web.mjs"
-			}
-		},
-		"./webstream": {
 			"types": "./index.d.ts",
-			"default": "./index.web.mjs"
+			"browser": "./index.browser.mjs",
+			"node": "./index.node.mjs",
+			"default": "./index.browser.mjs"
+		},
+		"./browser": {
+			"types": "./index.d.ts",
+			"default": "./index.browser.mjs"
 		}
 	},
 	"types": "index.d.ts",
 	"files": [
 		"*.mjs",
 		"*.map",
-		"*.d.ts"
+		"*.d.ts",
+		"shared.js"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:perf": "node --test index.perf.js"
+		"test:bench": "node --experimental-bench --bench 'index.bench.js'"
 	},
 	"license": "MIT",
 	"keywords": [
@@ -60,7 +55,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.7.1"
+		"@datastream/core": "0.9.0"
 	},
 	"devDependencies": {
 		"libsodium-wrappers": ">=0.8.4"

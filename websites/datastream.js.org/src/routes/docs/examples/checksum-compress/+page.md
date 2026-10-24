@@ -11,13 +11,13 @@ import { fileReadStream, fileWriteStream } from '@datastream/file'
 import { digestStream } from '@datastream/digest'
 import { gzipCompressStream } from '@datastream/compress'
 
-const digest = await digestStream({ algorithm: 'SHA2-256' })
+const digest = digestStream({ algorithm: 'SHA2-256' })
 
 const result = await pipeline([
-  fileReadStream({ path: './data.csv' }),
+  await fileReadStream({ path: './data.csv' }), // file streams are async: always await
   digest,
   gzipCompressStream(),
-  fileWriteStream({ path: './data.csv.gz' }),
+  await fileWriteStream({ path: './data.csv.gz' }),
 ])
 
 console.log(result)

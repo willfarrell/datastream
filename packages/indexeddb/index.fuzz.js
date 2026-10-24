@@ -1,16 +1,9 @@
 import test from "node:test";
-import {
-	indexedDBReadStream,
-	indexedDBWriteStream,
-} from "@datastream/indexeddb";
 import fc from "fast-check";
+import { indexedDBReadStream, indexedDBWriteStream } from "./index.browser.js";
 
 const catchError = (input, e) => {
-	const expectedErrors = [
-		"indexedDBReadStream: Not supported",
-		"indexedDBWriteStream: Not supported",
-	];
-	if (expectedErrors.includes(e.message)) {
+	if (e instanceof TypeError) {
 		return;
 	}
 	console.error(input, e);

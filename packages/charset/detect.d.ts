@@ -12,5 +12,9 @@ export function charsetDetectStream(
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamPassThrough & {
-	result: () => StreamResult<{ charset: string; confidence: number }>;
+	// charset is undefined when the stream saw no bytes.
+	result: () => StreamResult<{
+		charset: string | undefined;
+		confidence: number;
+	}>;
 };

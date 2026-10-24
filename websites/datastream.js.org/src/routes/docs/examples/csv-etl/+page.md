@@ -15,15 +15,18 @@ import {
   csvRemoveEmptyRowsStream,
   csvRemoveMalformedRowsStream,
   csvCoerceValuesStream,
+  csvObjectToArrayStream,
+  csvInjectHeaderStream,
   csvFormatStream,
 } from '@datastream/csv'
 import { objectFromEntriesStream } from '@datastream/object'
 import { validateStream } from '@datastream/validate'
 import { gzipCompressStream } from '@datastream/compress'
 
+const headers = ['id', 'name', 'email']
 const schema = {
   type: 'object',
-  required: ['id', 'name', 'email'],
+  required: headers,
   properties: {
     id: { type: 'number' },
     name: { type: 'string', minLength: 1 },
@@ -41,7 +44,7 @@ const detectHeader = csvDetectHeaderStream({
 })
 
 const result = await pipeline([
-  fileReadStream({ path: './input.csv' }),
+  await fileReadStream({ path: './input.csv' }), // file streams are async: always await
   detectDelimiters,
   detectHeader,
   csvParseStream({
@@ -59,11 +62,15 @@ const result = await pipeline([
   }),
   csvCoerceValuesStream(),
   validateStream({ schema }),
-  csvFormatStream({ header: true }),
+  // csvFormatStream formats array rows: convert objects back and re-add the header row
+  csvObjectToArrayStream({ headers }),
+  csvInjectHeaderStream({ header: headers }),
+  csvFormatStream(),
   gzipCompressStream(),
-  fileWriteStream({ path: './output.csv.gz' }),
+  await fileWriteStream({ path: './output.csv.gz' }),
 ])
 
 console.log(result)
 // { csvDetectDelimiters: {...}, csvDetectHeader: {...}, csvErrors: {}, csvRemoveEmptyRows: {...}, csvRemoveMalformedRows: {...}, validate: {} }
+// csvCoerceValuesStream adds no result entry
 ```

@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+set -e
+
+if [ -n "$1" ]; then set -- "packages/$1/"; else set -- packages/*/; fi
+
+for package in "$@"; do
+  name=$(basename "${package}")
+  if [ "$(jq '[.exports | .. | objects | has("node")] | any' "${package}package.json")" = "true" ]; then
+    MUTATE_PACKAGE="${name}" node_modules/.bin/stryker run
+  fi
+  if [ "$(jq '[.exports | .. | objects | has("browser")] | any' "${package}package.json")" = "true" ]; then
+    MUTATE_PACKAGE="${name}" MUTATE_VARIANT=browser node_modules/.bin/stryker run
+  fi
+done

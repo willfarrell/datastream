@@ -10,14 +10,22 @@ const toBuffer = (chunk) =>
 			? Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
 			: Buffer.from(chunk);
 
-// Valid base64 requires length to be a multiple of 4 and only valid alphabet
-// chars, with at most 2 trailing '=' padding characters.  This rejects short
-// fragments like "YQ=" (length 3) and standalone padding like "==" (length 2)
-// that Buffer.from leniently accepts but atob() in the Web build rejects.
-const VALID_BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+// Buffer.from leniently accepts short fragments like "YQ=" (length 3) and
+// standalone padding like "==" (length 2) that atob() in the Web build rejects.
+const INVALID_BASE64_CHAR_RE = /[^A-Za-z0-9+/=]/;
+const quote = (s) => JSON.stringify(s.length > 32 ? `${s.slice(0, 32)}…` : s);
 const assertValidBase64 = (s) => {
-	if (s.length % 4 !== 0 || !VALID_BASE64_RE.test(s)) {
-		throw new Error(`Invalid base64 string: ${JSON.stringify(s)}`);
+	if (s.length % 4 !== 0 || INVALID_BASE64_CHAR_RE.test(s)) {
+		throw new Error(`Invalid base64 string: ${quote(s)}`);
+	}
+	const pad = s.indexOf("=");
+	if (pad !== -1 && s.length - pad > 2) {
+		throw new Error(`Invalid base64 string: ${quote(s)}`);
+	}
+};
+const assertNotAfterPadding = (padded, s) => {
+	if (padded) {
+		throw new Error(`Invalid base64 string: ${quote(s)} follows "=" padding`);
 	}
 };
 
@@ -46,18 +54,20 @@ export const base64EncodeStream = (_options = {}, streamOptions = {}) => {
 
 export const base64DecodeStream = (_options = {}, streamOptions = {}) => {
 	let extra = "";
+	let padded = false;
 	const transform = (chunk, enqueue) => {
-		// Base64's alphabet is pure ASCII, so a string chunk and the ASCII byte
-		// view of a Buffer/Uint8Array chunk are interchangeable. Normalising every
-		// chunk through toBuffer().toString("ascii") keeps a single code path.
-		const str = toBuffer(chunk).toString("ascii");
+		// latin1, not "ascii": Node's "ascii" decoding strips the high bit
+		// (0xD9 -> "Y"), which would let non-ASCII bytes pass validation.
+		const str = toBuffer(chunk).toString("latin1");
 		const s0 = extra + str;
 		const remaining = s0.length % 4;
 		const whole = s0.length - remaining;
 		extra = s0.slice(whole);
 		const s = s0.slice(0, whole);
 		if (s.length > 0) {
+			assertNotAfterPadding(padded, s);
 			assertValidBase64(s);
+			padded = s.endsWith("=");
 			enqueue(Buffer.from(s, "base64"));
 		}
 	};
@@ -68,9 +78,4 @@ export const base64DecodeStream = (_options = {}, streamOptions = {}) => {
 		assertValidBase64(extra);
 	};
 	return createTransformStream(transform, flush, streamOptions);
-};
-
-export default {
-	encodeStream: base64EncodeStream,
-	decodeStream: base64DecodeStream,
 };

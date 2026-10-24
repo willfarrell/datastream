@@ -10,9 +10,3 @@ export function base64DecodeStream(
 	options?: {},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform;
-
-declare const _default: {
-	encodeStream: typeof base64EncodeStream;
-	decodeStream: typeof base64DecodeStream;
-};
-export default _default;

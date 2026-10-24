@@ -2,16 +2,29 @@
 // SPDX-License-Identifier: MIT
 import {
 	createPassThroughStream,
-	createReadableStream,
 	createTransformStream,
-	deepClone,
-	deepEqual,
-	shallowClone,
-	shallowEqual,
 } from "@datastream/core";
+import { deepEqual } from "#deepEqual";
+import { deepClone, shallowClone, shallowEqual } from "./helpers.js";
 
-export const objectReadableStream = (input = [], streamOptions = {}) => {
-	return createReadableStream(input, streamOptions);
+// defineProperty so reserved keys such as "__proto__" become own enumerable
+// data properties instead of mutating the object's prototype (which a plain
+// `object[key] = ...` would do, silently dropping the key).
+const defineValue = (object, key, value) => {
+	Object.defineProperty(object, key, {
+		value,
+		writable: true,
+		enumerable: true,
+		configurable: true,
+	});
+};
+
+const createTemplate = (keys) => {
+	const template = {};
+	for (const key of keys) {
+		defineValue(template, key, undefined);
+	}
+	return template;
 };
 
 export const objectCountStream = ({ resultKey } = {}, streamOptions = {}) => {
@@ -20,33 +33,34 @@ export const objectCountStream = ({ resultKey } = {}, streamOptions = {}) => {
 		value += 1;
 	};
 	const stream = createPassThroughStream(passThrough, streamOptions);
-	stream.result = () => ({ key: resultKey ?? "count", value });
+	stream.result = () => ({ key: resultKey ?? "objectCount", value });
 	return stream;
 };
 
 export const objectBatchStream = (
-	{ keys, maxBatchSize = Infinity },
+	{ keys, maxBatchSize },
 	streamOptions = {},
 ) => {
+	const limit = maxBatchSize ?? Number.POSITIVE_INFINITY;
 	let previousId;
-	let batch;
+	let batch = [];
 	const transform = (chunk, enqueue) => {
 		const id = JSON.stringify(keys.map((key) => chunk[key]));
 		if (previousId !== id) {
-			if (batch) {
+			if (batch.length) {
 				enqueue(batch);
 			}
 			previousId = id;
 			batch = [];
 		}
 		batch.push(chunk);
-		if (batch.length >= maxBatchSize) {
+		if (batch.length >= limit) {
 			enqueue(batch);
 			batch = [];
 		}
 	};
 	const flush = (enqueue) => {
-		if (batch) {
+		if (batch.length) {
 			enqueue(batch);
 		}
 	};
@@ -64,16 +78,15 @@ export const objectPivotLongToWideStream = (
 			throw new Error("Expected chunk to be array, use with objectBatchStream");
 		}
 		const row = { ...chunks[0] };
-
-		for (const chunk of chunks) {
-			const keyParam = keys.map((key) => chunk[key]).join(delimiter);
-			row[keyParam] = chunk[valueParam];
-		}
-
 		for (const key of keys) {
 			delete row[key];
 		}
 		delete row[valueParam];
+
+		for (const chunk of chunks) {
+			const keyParam = keys.map((key) => chunk[key]).join(delimiter);
+			defineValue(row, keyParam, chunk[valueParam]);
+		}
 
 		enqueue(row);
 	};
@@ -113,14 +126,15 @@ export const objectKeyValueStream = ({ key, value }, streamOptions = {}) => {
 };
 
 export const objectKeyValuesStream = ({ key, values }, streamOptions = {}) => {
+	const template = values && createTemplate(values);
 	const transform = (chunk, enqueue) => {
-		const value =
-			typeof values === "undefined"
-				? chunk
-				: values.reduce((value, key) => {
-						value[key] = chunk[key];
-						return value;
-					}, {});
+		let value = chunk;
+		if (typeof values !== "undefined") {
+			value = { ...template };
+			for (const name of values) {
+				value[name] = chunk[name];
+			}
+		}
 		chunk = {
 			[chunk[key]]: value,
 		};
@@ -137,12 +151,16 @@ export const objectKeyJoinStream = (
 	const transform = (chunk, enqueue) => {
 		const value = clone(chunk);
 		for (const newKey of Object.keys(keys)) {
-			value[newKey] = keys[newKey]
-				.map((oldKey) => {
-					delete value[oldKey];
-					return chunk[oldKey];
-				})
-				.join(separator);
+			defineValue(
+				value,
+				newKey,
+				keys[newKey]
+					.map((oldKey) => {
+						delete value[oldKey];
+						return chunk[oldKey];
+					})
+					.join(separator),
+			);
 		}
 		enqueue(value);
 	};
@@ -151,12 +169,12 @@ export const objectKeyJoinStream = (
 
 export const objectKeyMapStream = ({ keys }, streamOptions = {}) => {
 	const transform = (chunk, enqueue) => {
-		const value = {};
+		const entries = [];
 		for (const key of Object.keys(chunk)) {
-			const newKey = keys[key] ?? key;
-			value[newKey] = chunk[key];
+			const newKey = Object.hasOwn(keys, key) ? keys[key] : key;
+			entries.push([newKey, chunk[key]]);
 		}
-		enqueue(value);
+		enqueue(Object.fromEntries(entries));
 	};
 	return createTransformStream(transform, streamOptions);
 };
@@ -164,7 +182,7 @@ export const objectKeyMapStream = ({ keys }, streamOptions = {}) => {
 export const objectValueMapStream = ({ key, values }, streamOptions = {}) => {
 	const transform = (chunk, enqueue) => {
 		if (Object.hasOwn(values, chunk[key])) {
-			chunk[key] = values[chunk[key]];
+			chunk = { ...chunk, [key]: values[chunk[key]] };
 		}
 		enqueue(chunk);
 	};
@@ -172,29 +190,29 @@ export const objectValueMapStream = ({ key, values }, streamOptions = {}) => {
 };
 
 export const objectPickStream = ({ keys }, streamOptions = {}) => {
-	const keySet = Object.fromEntries(keys.map((k) => [k, true]));
+	const keySet = new Set(keys);
 	const transform = (chunk, enqueue) => {
-		const value = {};
+		const entries = [];
 		for (const key of Object.keys(chunk)) {
-			if (keySet[key]) {
-				value[key] = chunk[key];
+			if (keySet.has(key)) {
+				entries.push([key, chunk[key]]);
 			}
 		}
-		enqueue(value);
+		enqueue(Object.fromEntries(entries));
 	};
 	return createTransformStream(transform, streamOptions);
 };
 
 export const objectOmitStream = ({ keys }, streamOptions = {}) => {
-	const keySet = Object.fromEntries(keys.map((k) => [k, true]));
+	const keySet = new Set(keys);
 	const transform = (chunk, enqueue) => {
-		const value = {};
+		const entries = [];
 		for (const key of Object.keys(chunk)) {
-			if (!keySet[key]) {
-				value[key] = chunk[key];
+			if (!keySet.has(key)) {
+				entries.push([key, chunk[key]]);
 			}
 		}
-		enqueue(value);
+		enqueue(Object.fromEntries(entries));
 	};
 	return createTransformStream(transform, streamOptions);
 };
@@ -202,9 +220,11 @@ export const objectOmitStream = ({ keys }, streamOptions = {}) => {
 
 export const objectFromEntriesStream = ({ keys }, streamOptions = {}) => {
 	let resolvedKeys;
+	let template;
 	const transform = (chunk, enqueue) => {
 		resolvedKeys ??= typeof keys === "function" ? keys() : keys;
-		const value = {};
+		template ??= createTemplate(resolvedKeys);
+		const value = { ...template };
 		for (let i = 0; i < resolvedKeys.length; i++) {
 			value[resolvedKeys[i]] = chunk[i];
 		}
@@ -240,22 +260,4 @@ export const objectSkipConsecutiveDuplicatesStream = (
 		}
 	};
 	return createTransformStream(transform, streamOptions);
-};
-
-export default {
-	readableStream: objectReadableStream,
-	countStream: objectCountStream,
-	pickStream: objectPickStream,
-	omitStream: objectOmitStream,
-	batchStream: objectBatchStream,
-	pivotLongToWideStream: objectPivotLongToWideStream,
-	pivotWideToLongStream: objectPivotWideToLongStream,
-	keyValueStream: objectKeyValueStream,
-	keyValuesStream: objectKeyValuesStream,
-	keyJoinStream: objectKeyJoinStream,
-	keyMapStream: objectKeyMapStream,
-	valueMapStream: objectValueMapStream,
-	fromEntriesStream: objectFromEntriesStream,
-	toEntriesStream: objectToEntriesStream,
-	skipConsecutiveDuplicatesStream: objectSkipConsecutiveDuplicatesStream,
 };

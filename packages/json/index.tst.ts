@@ -9,12 +9,15 @@ import {
 } from "@datastream/json";
 import { describe, expect, test } from "tstyche";
 
+type Input<T> = T extends TransformStream<infer I, unknown> ? I : never;
+
 describe("JsonError", () => {
 	test("has required fields", () => {
 		expect<JsonError>().type.toBeAssignableTo<{
 			id: string;
 			message: string;
 			idx: number[];
+			count: number;
 		}>();
 	});
 });
@@ -25,9 +28,28 @@ describe("ndjsonParseStream", () => {
 		expect(stream.result).type.not.toBeAssignableTo<never>();
 	});
 
+	test("accepts string and byte chunks", () => {
+		expect<Input<ReturnType<typeof ndjsonParseStream>>>().type.toBe<
+			string | Uint8Array
+		>();
+	});
+
 	test("accepts maxBufferSize", () => {
 		expect(
 			ndjsonParseStream({ maxBufferSize: 1024 }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts null limits and maxErrorRows", () => {
+		expect(
+			ndjsonParseStream({ maxBufferSize: null, maxErrorRows: null }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			jsonParseStream({
+				maxBufferSize: null,
+				maxValueSize: null,
+				maxErrorRows: 10,
+			}),
 		).type.not.toBeAssignableTo<never>();
 	});
 
@@ -43,8 +65,8 @@ describe("ndjsonFormatStream", () => {
 		expect(ndjsonFormatStream()).type.not.toBeAssignableTo<never>();
 	});
 
-	test("accepts space option", () => {
-		expect(ndjsonFormatStream({ space: 2 })).type.not.toBeAssignableTo<never>();
+	test("rejects space option", () => {
+		expect(ndjsonFormatStream).type.not.toBeCallableWith({ space: 2 });
 	});
 });
 
@@ -52,6 +74,12 @@ describe("jsonParseStream", () => {
 	test("returns stream with result", () => {
 		const stream = jsonParseStream();
 		expect(stream.result).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts string and byte chunks", () => {
+		expect<Input<ReturnType<typeof jsonParseStream>>>().type.toBe<
+			string | Uint8Array
+		>();
 	});
 
 	test("accepts maxBufferSize and maxValueSize", () => {

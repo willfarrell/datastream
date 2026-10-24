@@ -1,7 +1,6 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import type {
-	DatastreamPassThrough,
 	DatastreamTransform,
 	StreamOptions,
 	StreamResult,
@@ -17,7 +16,7 @@ export interface CsvDelimiters {
 export interface CsvParserOptions extends CsvDelimiters {
 	numCols?: number;
 	idx?: number;
-	fieldMaxSize?: number;
+	maxFieldSize?: number | null;
 	delimiterCharCode?: number;
 	delimiterCharLength?: number;
 	delimiterCharSingle?: boolean;
@@ -41,22 +40,25 @@ export interface CsvParserResult {
 export interface CsvError {
 	id: string;
 	message: string;
+	/** Row indexes, capped at the stream's `maxErrorRows`. */
 	idx: number[];
+	/** True number of failing rows (stream results always include it). */
+	count?: number;
 }
 
 export function csvDetectDelimitersStream(
 	options?: {
-		chunkSize?: number;
+		maxBufferSize?: number | null;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamPassThrough & {
+): DatastreamTransform<string | Uint8Array, string> & {
 	result: () => StreamResult<CsvDelimiters>;
 };
 
 export function csvDetectHeaderStream(
 	options?: {
-		chunkSize?: number;
+		maxBufferSize?: number | null;
 		parser?: (
 			text: string,
 			options: CsvParserOptions,
@@ -69,7 +71,7 @@ export function csvDetectHeaderStream(
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamPassThrough & {
+): DatastreamTransform<string | Uint8Array, string> & {
 	result: () => StreamResult<{ header: string[] }>;
 };
 
@@ -86,8 +88,8 @@ export function csvUnquotedParser(
 
 export function csvParseStream(
 	options?: {
-		chunkSize?: number;
-		fieldMaxSize?: number;
+		maxFieldSize?: number | null;
+		maxErrorRows?: number | null;
 		resultKey?: string;
 		parser?: (
 			text: string,
@@ -108,6 +110,7 @@ export function csvRemoveMalformedRowsStream(
 	options?: {
 		headers?: string[] | (() => string[]);
 		onErrorEnqueue?: boolean;
+		maxErrorRows?: number | null;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
@@ -118,6 +121,7 @@ export function csvRemoveMalformedRowsStream(
 export function csvRemoveEmptyRowsStream(
 	options?: {
 		onErrorEnqueue?: boolean;
+		maxErrorRows?: number | null;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
@@ -130,12 +134,9 @@ export type CsvCoerceType = "number" | "boolean" | "null" | "date" | "json";
 export function csvCoerceValuesStream(
 	options?: {
 		columns?: Record<string, CsvCoerceType>;
-		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamTransform & {
-	result: () => StreamResult<Record<string, unknown>>;
-};
+): DatastreamTransform;
 
 export function csvInjectHeaderStream(
 	options: {
@@ -145,18 +146,20 @@ export function csvInjectHeaderStream(
 ): DatastreamTransform;
 
 export function csvFormatStream(
-	options?: CsvDelimiters,
+	options?: CsvDelimiters & {
+		escapeFormulae?: boolean;
+	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform;
 
-export function csvArrayToObject(
+export function csvArrayToObjectStream(
 	options: {
 		headers: string[] | (() => string[]);
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform;
 
-export function csvObjectToArray(
+export function csvObjectToArrayStream(
 	options: {
 		headers: string[] | (() => string[]);
 	},

@@ -28,13 +28,11 @@ export function protobufDecodeStream<C = Uint8Array>(
 		/** Extract the protobuf payload bytes from each chunk. Default: identity. */
 		payload?: (chunk: C) => Uint8Array;
 		/**
-		 * Caps the CUMULATIVE encoded INPUT bytes processed across the whole
-		 * stream. This is a coarse input-volume guard, NOT a bound on decoded
-		 * output memory: protobuf can expand a small encoded message into a much
-		 * larger in-memory object graph (packed/repeated/nested fields), so the
-		 * decoded objects may exceed this value.
+		 * Maximum encoded size of a single message in bytes (checked per message,
+		 * before decoding). Default 64MiB; null = unlimited. Decoded objects can
+		 * be larger than their encoded form.
 		 */
-		maxOutputSize?: number;
+		maxMessageSize?: number | null;
 	},
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<C>;
@@ -45,6 +43,6 @@ export function protobufLengthPrefixFrameStream(
 ): DatastreamTransform<Uint8Array, Uint8Array>;
 
 export function protobufLengthPrefixUnframeStream(
-	options?: { maxMessageSize?: number },
+	options?: { maxMessageSize?: number | null },
 	streamOptions?: StreamOptions,
 ): DatastreamTransform<Uint8Array, Uint8Array>;

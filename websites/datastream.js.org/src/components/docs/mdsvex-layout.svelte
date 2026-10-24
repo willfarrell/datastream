@@ -1,17 +1,19 @@
 <script>
-import H1 from "@design-system/components/Heading1.svelte";
-import LayoutAside from "@design-system/components/LayoutAside.svelte";
-import LayoutTableOfContents from "@design-system/components/LayoutTableOfContents.svelte";
-import NavScrollspy from "@design-system/components/NavScrollspy.svelte";
-import A from "@design-system/elements/a.svelte";
-import Hgroup from "@design-system/elements/hgroup.svelte";
-import Li from "@design-system/elements/li.svelte";
-import Ol from "@design-system/elements/ol.svelte";
+import H1 from "@willfarrell-ds/svelte/components/Heading1.svelte";
+import LayoutAside from "@willfarrell-ds/svelte/components/LayoutAside.svelte";
+import LayoutTableOfContents from "@willfarrell-ds/svelte/components/LayoutTableOfContents.svelte";
+import NavScrollspy from "@willfarrell-ds/svelte/components/NavScrollspy.svelte";
+import A from "@willfarrell-ds/svelte/elements/a.svelte";
+import Hgroup from "@willfarrell-ds/svelte/elements/hgroup.svelte";
+import Li from "@willfarrell-ds/svelte/elements/li.svelte";
+import Ol from "@willfarrell-ds/svelte/elements/ol.svelte";
+import copyPreUrl from "@willfarrell-ds/vanilla/components/ds-copy-pre.js?worker&url";
 import AsideNav from "./AsideNav.svelte";
 
 const { title = "Documentation", description = "", headings = [], children } = $props();
 </script>
 <svelte:head>
+	<link rel="modulepreload" href={copyPreUrl} />
 	<title>{title} | datastream</title>
 	{#if description}<meta name="description" content={description} />{/if}
 </svelte:head>

@@ -11,7 +11,7 @@ Apache Arrow record batch transform streams. Convert rows to and from Arrow `Rec
 npm install @datastream/arrow apache-arrow
 ```
 
-`apache-arrow` is a peer dependency.
+`apache-arrow` is a peer dependency: install it alongside the package. Sharing one copy with your own code (and with `@datastream/duckdb`) keeps `instanceof` checks on Arrow types and tables working across packages.
 
 ## `arrowDetectSchemaStream` <span class="badge">PassThrough</span>
 
@@ -41,6 +41,15 @@ Samples the first rows of the stream and infers an Arrow `Schema`. Rows pass thr
 | Anything else | `Utf8` |
 
 Integers outside the signed 32-bit range widen to `Float64` (exact up to 2^53) instead of silently wrapping inside an `Int32` builder.
+
+Values written to a `Utf8` column are stored as text: a `Date` as its ISO 8601 string, an object as JSON, and any other value with `String()`. `null` and `undefined` stay null.
+
+### Rows after the sample
+
+The schema is inferred from the first `sampleSize` rows only. Later rows are not used to change it:
+
+- A value that does not fit its column type makes `arrowBatchFromArrayStream` / `arrowBatchFromObjectStream` error instead of being silently coerced. For example, `3000000000` or `2.7` in an `Int32` column, or `"oops"` in a `Float64` column. See [Value checks](#value-checks).
+- A key that first appears after the sample has no column, so `arrowBatchFromObjectStream` drops it. Raise `sampleSize`, or pass your own schema, when rows vary.
 
 ### Example
 
@@ -82,6 +91,20 @@ Builds Arrow `RecordBatch` objects from incoming object rows, mapping each schem
 |--------|------|---------|-------------|
 | `schema` | `Schema \| () => Schema` | — | Arrow schema, or a lazy function returning one (required) |
 | `batchSize` | `number` | `10000` | Rows per emitted `RecordBatch` |
+
+### Value checks
+
+Both batch streams check each value against its field before it reaches the Arrow builder, which would otherwise coerce it silently:
+
+| Field type | Accepted values |
+|------------|-----------------|
+| `Int8` … `Int32`, `Uint8` … `Uint32` | Integer `number` within the type's range |
+| `Float16` / `Float32` / `Float64` | Any `number` |
+| `Bool` | `boolean` |
+| `Timestamp` | Valid `Date`, or integer epoch `number` |
+| Other types (`Utf8`, `Int64`, …) | Not checked |
+
+`null` and `undefined` are allowed only in nullable fields. `""` counts as null, except in `Utf8` fields. A value that fails the check errors the stream. An integer out of range throws a `RangeError`, and any other mismatch a `TypeError`. The message names the stream, the zero-based row index, and the field: `arrowBatchFromObjectStream: row 2, field "id" expects Int32, got 3000000000`.
 
 ### Example
 

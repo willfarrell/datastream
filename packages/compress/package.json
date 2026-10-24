@@ -1,97 +1,71 @@
 {
 	"name": "@datastream/compress",
-	"version": "0.7.1",
+	"version": "0.9.0",
 	"description": "Compression and decompression streams for gzip, deflate, brotli, and zstd",
 	"type": "module",
+	"sideEffects": [
+		"./brotli.browser.mjs"
+	],
 	"engines": {
-		"node": ">=24"
+		"node": ">=26"
 	},
-	"engineStrict": true,
 	"publishConfig": {
 		"access": "public"
 	},
 	"main": "./index.node.mjs",
-	"module": "./index.web.mjs",
+	"module": "./index.browser.mjs",
 	"exports": {
 		".": {
-			"node": {
-				"import": {
-					"types": "./index.d.ts",
-					"default": "./index.node.mjs"
-				}
+			"browser": {
+				"types": "./index.browser.d.ts",
+				"default": "./index.browser.mjs"
 			},
-			"import": {
+			"node": {
 				"types": "./index.d.ts",
-				"default": "./index.web.mjs"
+				"default": "./index.node.mjs"
+			},
+			"default": {
+				"types": "./index.browser.d.ts",
+				"default": "./index.browser.mjs"
 			}
 		},
-		"./webstream": {
-			"types": "./index.d.ts",
-			"default": "./index.web.mjs"
+		"./browser": {
+			"types": "./index.browser.d.ts",
+			"default": "./index.browser.mjs"
 		},
 		"./zstd": {
-			"node": {
-				"import": {
-					"types": "./zstd.d.ts",
-					"default": "./zstd.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./zstd.d.ts",
-				"default": "./zstd.web.mjs"
-			}
-		},
-		"./zstd/webstream": {
 			"types": "./zstd.d.ts",
-			"default": "./zstd.web.mjs"
+			"node": "./zstd.node.mjs"
 		},
 		"./brotli": {
-			"node": {
-				"import": {
-					"types": "./brotli.d.ts",
-					"default": "./brotli.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./brotli.d.ts",
-				"default": "./brotli.web.mjs"
-			}
-		},
-		"./brotli/webstream": {
 			"types": "./brotli.d.ts",
-			"default": "./brotli.web.mjs"
+			"browser": "./brotli.browser.mjs",
+			"node": "./brotli.node.mjs",
+			"default": "./brotli.browser.mjs"
+		},
+		"./brotli/browser": {
+			"types": "./brotli.browser.d.ts",
+			"default": "./brotli.browser.mjs"
 		},
 		"./gzip": {
-			"node": {
-				"import": {
-					"types": "./gzip.d.ts",
-					"default": "./gzip.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./gzip.d.ts",
-				"default": "./gzip.web.mjs"
-			}
-		},
-		"./gzip/webstream": {
 			"types": "./gzip.d.ts",
-			"default": "./gzip.web.mjs"
+			"browser": "./gzip.browser.mjs",
+			"node": "./gzip.node.mjs",
+			"default": "./gzip.browser.mjs"
+		},
+		"./gzip/browser": {
+			"types": "./gzip.browser.d.ts",
+			"default": "./gzip.browser.mjs"
 		},
 		"./deflate": {
-			"node": {
-				"import": {
-					"types": "./deflate.d.ts",
-					"default": "./deflate.node.mjs"
-				}
-			},
-			"import": {
-				"types": "./deflate.d.ts",
-				"default": "./deflate.web.mjs"
-			}
-		},
-		"./deflate/webstream": {
 			"types": "./deflate.d.ts",
-			"default": "./deflate.web.mjs"
+			"browser": "./deflate.browser.mjs",
+			"node": "./deflate.node.mjs",
+			"default": "./deflate.browser.mjs"
+		},
+		"./deflate/browser": {
+			"types": "./deflate.browser.d.ts",
+			"default": "./deflate.browser.mjs"
 		}
 	},
 	"types": "index.d.ts",
@@ -100,13 +74,12 @@
 		"*.map",
 		"*.d.ts",
 		"guard.node.js",
-		"native.web.js"
+		"native.browser.js"
 	],
 	"scripts": {
 		"test": "npm run test:unit",
 		"test:unit": "node --test",
-		"test:perf": "node --test index.perf.js",
-		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
+		"test:bench": "node --experimental-bench --bench 'index.bench.js'"
 	},
 	"license": "MIT",
 	"keywords": [
@@ -127,7 +100,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.7.1"
+		"@datastream/core": "0.9.0"
 	},
 	"devDependencies": {
 		"brotli-wasm": "^3.0.0"

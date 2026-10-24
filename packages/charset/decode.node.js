@@ -1,15 +1,16 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 
-import { getSupportedEncoding } from "@datastream/charset/detect";
 import { createTransformStream } from "@datastream/core";
 import iconv from "iconv-lite";
 
 export const charsetDecodeStream = ({ charset } = {}, streamOptions = {}) => {
-	charset = getSupportedEncoding(charset);
-	if (!iconv.encodingExists(charset)) charset = "UTF-8";
+	const encoding = charset ?? "UTF-8";
+	if (!iconv.encodingExists(encoding)) {
+		throw new Error(`charsetDecodeStream: Unsupported encoding "${charset}"`);
+	}
 
-	const conv = iconv.getDecoder(charset);
+	const conv = iconv.getDecoder(encoding);
 
 	const transform = (chunk, enqueue) => {
 		// conv.write() always returns a string (never nullish), so a plain
@@ -30,5 +31,3 @@ export const charsetDecodeStream = ({ charset } = {}, streamOptions = {}) => {
 	};
 	return createTransformStream(transform, flush, streamOptions);
 };
-
-export default charsetDecodeStream;

@@ -1,15 +1,23 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import type {
+	DatastreamPassThrough,
 	DatastreamReadable,
-	DatastreamWritable,
 	StreamOptions,
 	StreamResult,
 } from "@datastream/core";
 
+// streamOptions.signal is forwarded as AbortOptions (js-ipfs, kubo-rpc-client, helia).
+export interface IpfsAbortOptions {
+	signal?: AbortSignal;
+}
+
 export interface IpfsNode {
-	get(cid: string): unknown;
-	add(data: unknown[]): Promise<{ cid: string }>;
+	get(cid: string, options?: IpfsAbortOptions): unknown;
+	add(
+		data: AsyncIterable<unknown>,
+		options?: IpfsAbortOptions,
+	): Promise<{ cid: string }> | { cid: string };
 }
 
 export function ipfsGetStream(
@@ -21,25 +29,13 @@ export function ipfsGetStream(
 ): Promise<DatastreamReadable>;
 
 export function ipfsAddStream(
-	options?: {
-		node?: IpfsNode;
+	options: {
+		node: IpfsNode;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
 ): Promise<
-	DatastreamWritable & {
+	DatastreamPassThrough & {
 		result: () => StreamResult<string>;
-		/**
-		 * Diagnostic: the error (if any) that teardown injected into the source
-		 * when the stream was destroyed/aborted before completion. Stays
-		 * `undefined` after a clean completion.
-		 */
-		injectedError: () => Error | undefined;
 	}
 >;
-
-declare const _default: {
-	getStream: typeof ipfsGetStream;
-	addStream: typeof ipfsAddStream;
-};
-export default _default;

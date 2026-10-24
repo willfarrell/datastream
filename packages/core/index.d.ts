@@ -1,26 +1,33 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
 import type { Readable, Transform, Writable } from "node:stream";
+import type {
+	ReadableInput,
+	ResultStream,
+	StreamCollectorOptions,
+	StreamOptions,
+	WritableStreamOptions,
+} from "./types.js";
 
-// Core types used across all packages
-export interface StreamOptions {
-	highWaterMark?: number;
-	chunkSize?: number;
-	signal?: AbortSignal;
-	[key: string]: unknown;
-}
+export type {
+	ResultStream,
+	StreamCollectorOptions,
+	StreamOptions,
+	StreamResult,
+	WritableStreamOptions,
+} from "./types.js";
+export {
+	concatBytes,
+	createChunkDecoder,
+	makeOptions,
+	resolveLazy,
+	timeout,
+} from "./types.js";
 
-export interface StreamResult<T = unknown> {
-	key: string;
-	value: T;
-}
-
-export interface ResultStream<T = unknown> {
-	result: () => StreamResult<T> | Promise<StreamResult<T>>;
-}
-
+// Method syntax keeps push bivariant, so a DatastreamReadable<string> is still
+// assignable to DatastreamReadable<unknown>.
 export type DatastreamReadable<T = unknown> = (ReadableStream<T> | Readable) & {
-	push?: (chunk: T | null) => void;
+	push?(chunk: T | null): void;
 };
 export type DatastreamTransform<I = unknown, O = I> =
 	| TransformStream<I, O>
@@ -43,19 +50,13 @@ export function pipeline(
 	streams: DatastreamStream[],
 	streamOptions?: StreamOptions,
 ): Promise<Record<string, unknown>>;
-export function pipejoin(
-	streams: DatastreamStream[],
-	onError?: (error: Error) => void,
-): DatastreamStream;
+/** Errors tear the chain down and surface on the returned stream. */
+export function pipejoin(streams: DatastreamStream[]): DatastreamStream;
 export function result(
 	streams: DatastreamStream[],
 ): Promise<Record<string, unknown>>;
 
 // Stream converters
-export interface StreamCollectorOptions {
-	maxBufferSize?: number;
-}
-
 export function streamToArray<T = unknown>(
 	stream: DatastreamReadable<T>,
 	options?: StreamCollectorOptions,
@@ -73,32 +74,20 @@ export function streamToBuffer(
 	options?: StreamCollectorOptions,
 ): Promise<Buffer>;
 
-// Type guards
-export function isReadable(stream: unknown): stream is ReadableStream;
-export function isWritable(stream: unknown): stream is WritableStream;
-
-// Options helper
-export function makeOptions(options?: StreamOptions): Record<string, unknown>;
+export function isReadable(stream: unknown): stream is Readable;
+export function isWritable(stream: unknown): stream is Writable;
 
 // Stream creators
 export function createReadableStream<T = unknown>(
-	input?: string | T[] | Iterable<T> | AsyncIterable<T>,
+	input?: ReadableInput<T>,
 	streamOptions?: StreamOptions,
 ): DatastreamReadable<T>;
-export function createReadableStreamFromString(
-	input: string,
-	streamOptions?: StreamOptions,
-): DatastreamReadable<string>;
-export function createReadableStreamFromArrayBuffer(
-	input: ArrayBuffer | ArrayBufferLike,
-	streamOptions?: StreamOptions,
-): DatastreamReadable<Uint8Array>;
 
 export function createPassThroughStream<T = unknown>(
 	passThrough?: ((chunk: T) => void | Promise<void>) | null,
 	flush?: (() => void | Promise<void>) | StreamOptions,
 	streamOptions?: StreamOptions,
-): DatastreamPassThrough<T> & ResultStream;
+): DatastreamPassThrough<T>;
 
 export function createTransformStream<I = unknown, O = unknown>(
 	transform?:
@@ -115,11 +104,10 @@ export function createTransformStream<I = unknown, O = unknown>(
 
 export function createWritableStream<T = unknown>(
 	write?: ((chunk: T) => void | Promise<void>) | null,
-	close?: (() => void | Promise<void>) | StreamOptions,
-	streamOptions?: StreamOptions,
+	close?: (() => void | Promise<void>) | WritableStreamOptions,
+	streamOptions?: WritableStreamOptions,
 ): DatastreamWritable<T>;
 
-// Backpressure (Node.js only)
 export function backpressureGauge(streams: Record<string, unknown>): Record<
 	string,
 	{
@@ -127,16 +115,3 @@ export function backpressureGauge(streams: Record<string, unknown>): Record<
 		total: { timestamp?: number; duration?: number };
 	}
 >;
-
-// Timeout
-export function timeout(
-	ms: number,
-	options?: { signal?: AbortSignal },
-): Promise<void>;
-
-// Shared helpers
-export function resolveLazy<T>(value: T | (() => T)): T;
-export function shallowClone<T extends object>(obj: T): T;
-export function deepClone<T>(obj: T): T;
-export function shallowEqual(a: unknown, b: unknown): boolean;
-export function deepEqual(a: unknown, b: unknown): boolean;

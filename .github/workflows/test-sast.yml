@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: 24.x
+  NODE_VERSION: 26.x
 
 permissions:
   contents: read
@@ -27,14 +27,42 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            check.trivy.dev:443
+            get.trivy.dev:443
+            ghcr.io:443
+            github.com:443
+            mirror.gcr.io:443
+            objects.githubusercontent.com:443
+            pkg-containers.githubusercontent.com:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   check.trivy.dev:443
+      #   get.trivy.dev:443
+      #   ghcr.io:443
+      #   github.com:443
+      #   mirror.gcr.io:443
+      #   objects.githubusercontent.com:443
+      #   pkg-containers.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # The action has no input for these flags; trivy reads TRIVY_<FLAG> env vars.
+          TRIVY_INCLUDE_DEV_DEPS: "true"
         with:
           # Scan the whole repo (matching the local `test:sast:trivy` script,
           # `trivy fs ... .`) instead of only package-lock.json, and do not
@@ -55,28 +83,67 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            check.trivy.dev:443
+            get.trivy.dev:443
+            ghcr.io:443
+            github.com:443
+            mirror.gcr.io:443
+            nodejs.org:443
+            objects.githubusercontent.com:443
+            pkg-containers.githubusercontent.com:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   nodejs.org:443
+      #   objects.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   check.trivy.dev:443
+      #   get.trivy.dev:443
+      #   ghcr.io:443
+      #   github.com:443
+      #   mirror.gcr.io:443
+      #   objects.githubusercontent.com:443
+      #   pkg-containers.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # Same semantics as the local `test:sast:trivy` script. The action has no
+          # input for this flag; trivy reads TRIVY_<FLAG> env vars.
+          TRIVY_INCLUDE_DEV_DEPS: "true"
         with:
           scanners: license
           scan-type: fs
           scan-ref: .
+          trivy-config: .github/trivy.yml # license policy, shared with `npm run test:sast:trivy`
           hide-progress: true
-          exit-code: 0
+          exit-code: 1
           format: table
 
   # https://github.com/oss-review-toolkit/ort-ci-github-action
@@ -89,7 +156,7 @@ jobs:
   #     - name: Checkout repository
   #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
   #     - name: OSS Review Toolkit (ORT)
-  #       uses: oss-review-toolkit/ort-ci-github-action@1805edcf1f4f55f35ae6e4d2d9795ccfb29b6021 # 1.1.0
+  #       uses: oss-review-toolkit/ort-ci-github-action@1805edcf1f4f55f35ae6e4d2d9795ccfb29b6021 # v1.1.0
   #       with:
   #         allow-dynamic-versions: "true"
   #         ort-cli-args: "-P ort.analyzer.enabledPackageManagers=NPM"
@@ -104,21 +171,41 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            nodejs.org:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   nodejs.org:443
+      #   objects.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
           cache: npm
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: License check
         run: |
           npm run test:sast:license
@@ -133,20 +220,40 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            nodejs.org:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   nodejs.org:443
+      #   objects.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts --workspace .github
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: lockfile-lint
         run: |
           ./node_modules/.bin/lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https
@@ -171,36 +278,94 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+            uploads.github.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   github.com:443
+      #   objects.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Initialize CodeQL
         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
 
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Autobuild
         uses: github/codeql-action/autobuild@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
 
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   uploads.github.com:443
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           category: "/language:${{ matrix.language }}"
 
+  # The semgrep image lives in .github/docker/semgrep/Dockerfile so Dependabot
+  # (docker ecosystem) can bump it; `container:` images in workflows are invisible to it.
+  semgrep-image:
+    name: "semgrep: image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: (github.actor != 'dependabot[bot]')
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          disable-sudo: true
+          disable-telemetry: true
+          allowed-endpoints: >
+            github.com:443
+      # allowed-endpoints: >
+      #   github.com:443
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/docker/semgrep
+      - name: Read image
+        id: image
+        run: |
+          image=$(sed -n 's/^FROM //p' .github/docker/semgrep/Dockerfile)
+          # Digest-pinned or nothing.
+          if ! echo "$image" | grep -qE '^semgrep/semgrep:[^@ ]+@sha256:[0-9a-f]{64}$'; then
+            echo "::error::.github/docker/semgrep/Dockerfile must FROM a digest-pinned semgrep/semgrep image"
+            exit 1
+          fi
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+
   # https://semgrep.dev/docs/semgrep-ci/sample-ci-configs/#github-actions
   semgrep:
     name: "semgrep: SAST"
+    needs: semgrep-image
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     container:
       # https://hub.docker.com/r/semgrep/semgrep/tags
-      image: semgrep/semgrep@sha256:3e6e5065d9e68abffddffdb536a8db2d79a8fa92dc424daa48d3a4b7d9bc65d0 # v1.111.0
+      image: ${{ needs.semgrep-image.outputs.image }} # zizmor: ignore[unpinned-images] semgrep-image fails unless the image is digest-pinned
 
     if: (github.actor != 'dependabot[bot]')
     steps:
@@ -210,7 +375,7 @@ jobs:
         with:
           persist-credentials: false
       - name: semgrep
-        run: semgrep ci
+        run: semgrep scan --config auto --error
 
   # https://github.com/raven-actions/actionlint
   actionlint:
@@ -221,14 +386,33 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            release-assets.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   files.pythonhosted.org:443
+      #   github.com:443
+      #   objects.githubusercontent.com:443
+      #   pypi.org:443
+      #   release-assets.githubusercontent.com:443
       - name: actionlint
         uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          pyflakes: false # no python in workflows; avoids a PyPI download under blocked egress
 
   # https://github.com/zizmorcore/zizmor-action
   zizmor:
@@ -243,14 +427,60 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            ghcr.io:443
+            github.com:443
+            pkg-containers.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   ghcr.io:443
+      #   github.com:443
+      #   pkg-containers.githubusercontent.com:443
       - name: zizmor
         uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+
+  # https://github.com/actions/dependency-review-action
+  dependency-review:
+    name: "Dependency Review"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          disable-sudo: true
+          disable-telemetry: true
+          allowed-endpoints: >
+            api.deps.dev:443
+            api.github.com:443
+            api.securityscorecards.dev:443
+            github.com:443
+      # allowed-endpoints: >
+      #   github.com:443
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # allowed-endpoints: >
+      #   api.deps.dev:443
+      #   api.github.com:443
+      #   api.securityscorecards.dev:443
+      - name: Dependency review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
 
   # https://github.com/trufflesecurity/trufflehog
   trufflehog:
@@ -262,17 +492,31 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
+          # audit is deliberate: TruffleHog verifies candidate secrets against each
+          # issuing provider's real API, so egress is data-dependent; block mode
+          # would make verification fail and --only-verified silently drop findings
           egress-policy: audit
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            ghcr.io:443
+            github.com:443
+            pkg-containers.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
+      # allowed-endpoints: >
+      #   ghcr.io:443
+      #   github.com:443
+      #   pkg-containers.githubusercontent.com:443
       - name: TruffleHog
         uses: trufflesecurity/trufflehog@b2b0a92070f206ab7b5a1105d82a7f2f48d92341 # v3.99.0
         with:
-          extra_args: --only-verified --results=verified,unknown
+          extra_args: --results=verified,unknown
 
   # https://github.com/gitleaks/gitleaks-action
   gitleaks:
@@ -284,13 +528,26 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   github.com:443
+      #   objects.githubusercontent.com:443
+      #   release-assets.githubusercontent.com:443
       - name: gitleaks
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:

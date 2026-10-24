@@ -14,8 +14,3 @@ export const deflateCompressStream = (options = {}, streamOptions = {}) => {
 export const deflateDecompressStream = (options = {}, streamOptions = {}) => {
 	return guardDecompress(createInflate(streamOptions), options.maxOutputSize);
 };
-
-export default {
-	compressStream: deflateCompressStream,
-	decompressStream: deflateDecompressStream,
-};

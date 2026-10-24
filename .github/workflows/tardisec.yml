@@ -1,0 +1,67 @@
+name: tardisec
+on:
+  schedule:
+    - cron: "7 13 * * 5"
+  workflow_dispatch: {}
+
+env:
+  NODE_VERSION: 26.x
+
+permissions: {}
+concurrency:
+  group: tardisec-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync config
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write       # mint the OIDC token tardisec verifies
+      contents: write       # push the sync branch
+      pull-requests: write  # open the PR
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          disable-sudo: true
+          disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            api.tardisec.com:443
+            github.com:443
+            nodejs.org:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+          persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   nodejs.org:443
+      #   objects.githubusercontent.com:443
+      #   release-assets.githubusercontent.com:443
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
+      - run: npm ci --ignore-scripts # biome, from the integrity-checked lockfile
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   api.tardisec.com:443
+      #   github.com:443
+      - uses: tardisec/tardisec-integration-github-action@79a37c4a612483144768e0eb020b2b7236268862 # main
+        with:
+          base: develop
+          domain: datastream.js.org
+          path: /websites/datastream.js.org
+          files: |
+            .tardisec.json
+            .tardisec.sveltekit.json
+          format: npm run lint

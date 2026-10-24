@@ -12,22 +12,11 @@ import {
 	objectPickStream,
 	objectPivotLongToWideStream,
 	objectPivotWideToLongStream,
-	objectReadableStream,
 	objectSkipConsecutiveDuplicatesStream,
 	objectToEntriesStream,
 	objectValueMapStream,
 } from "@datastream/object";
 import { describe, expect, test } from "tstyche";
-
-describe("objectReadableStream", () => {
-	test("accepts array input", () => {
-		expect(objectReadableStream([{ a: 1 }])).type.not.toBeAssignableTo<never>();
-	});
-
-	test("accepts no input", () => {
-		expect(objectReadableStream()).type.not.toBeAssignableTo<never>();
-	});
-});
 
 describe("objectCountStream", () => {
 	test("returns stream with result", () => {
@@ -46,6 +35,15 @@ describe("objectBatchStream", () => {
 	test("requires keys", () => {
 		expect(
 			objectBatchStream({ keys: ["id"] }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts maxBatchSize number or null", () => {
+		expect(
+			objectBatchStream({ keys: ["id"], maxBatchSize: 10 }),
+		).type.not.toBeAssignableTo<never>();
+		expect(
+			objectBatchStream({ keys: ["id"], maxBatchSize: null }),
 		).type.not.toBeAssignableTo<never>();
 	});
 });
@@ -117,6 +115,19 @@ describe("objectKeyJoinStream", () => {
 			}),
 		).type.not.toBeAssignableTo<never>();
 	});
+
+	test("separator is optional (defaults to ',')", () => {
+		expect(objectKeyJoinStream).type.toBeCallableWith({
+			keys: { full: ["first", "last"] },
+		});
+	});
+
+	test("rejects non-string separator", () => {
+		expect(objectKeyJoinStream).type.not.toBeCallableWith({
+			keys: { full: ["first", "last"] },
+			separator: 1,
+		});
+	});
 });
 
 describe("objectKeyMapStream", () => {
@@ -181,5 +192,17 @@ describe("objectSkipConsecutiveDuplicatesStream", () => {
 		expect(
 			objectSkipConsecutiveDuplicatesStream(),
 		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts isNestedObject option", () => {
+		expect(
+			objectSkipConsecutiveDuplicatesStream({ isNestedObject: true }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("rejects unknown options", () => {
+		expect(objectSkipConsecutiveDuplicatesStream).type.not.toBeCallableWith({
+			unknown: true,
+		});
 	});
 });

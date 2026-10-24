@@ -1,7 +1,18 @@
 // Copyright 2026 will Farrell, and datastream contributors.
 // SPDX-License-Identifier: MIT
-import { createWritableStream, resolveLazy } from "@datastream/core";
-import { DuckDBInstance } from "@duckdb/node-api";
+import { createReadableStream, resolveLazy } from "@datastream/core";
+import {
+	DuckDBDateValue,
+	DuckDBInstance,
+	DuckDBTimestampValue,
+	DuckDBTypeId,
+} from "@duckdb/node-api";
+import {
+	ARROW_DATE,
+	ARROW_TIMESTAMP,
+	createTransactionStream,
+	ensureTableAndColumns,
+} from "./shared.js";
 
 export const duckdbConnect = async (path = ":memory:", options) => {
 	// An empty path is a caller mistake (node-api would silently open an in-memory
@@ -16,209 +27,134 @@ export const duckdbConnect = async (path = ":memory:", options) => {
 	return await instance.connect();
 };
 
-// DuckDB has no parameter binding for identifiers, so table/column names are
-// interpolated into SQL. Double the embedded quotes and require a non-empty
-// string so a crafted name can't break out of the quoted identifier.
-const quoteIdent = (name) => {
-	if (typeof name !== "string" || name.length === 0) {
-		throw new TypeError("duckdb: identifier must be a non-empty string");
-	}
-	return `"${name.replaceAll('"', '""')}"`;
+export const duckdbQueryStream = ({ db, sql, params }, streamOptions) => {
+	let busy = false;
+	const rows = async function* () {
+		busy = true;
+		try {
+			const result = await db.stream(sql, params);
+			for await (const chunk of result.yieldRowObjectJs()) {
+				busy = false;
+				yield* chunk;
+				busy = true;
+			}
+		} finally {
+			busy = false;
+		}
+	};
+	const stream = createReadableStream(rows(), streamOptions);
+	// node-api has no explicit result close (the native result is freed by its
+	// finalizer once unreferenced). Destroying the stream returns the generator,
+	// but that waits behind an in-flight stream()/fetchChunk(), so interrupt that
+	// call first. interrupt() is connection-wide: it stops whatever the
+	// connection is running, so it is skipped whenever this stream has nothing
+	// in flight (an unread, paused, finished or failed stream).
+	const destroy = stream._destroy.bind(stream);
+	stream._destroy = (error, callback) => {
+		if (busy) db.interrupt();
+		destroy(error, callback);
+	};
+	return stream;
 };
 
-// A failed existence probe should only be read as "table does not exist" when
-// the error is a missing-table/catalog error. Any other failure (lock,
-// permission, column read error, ...) must propagate so it is not masked by a
-// confusing downstream "table already exists" from CREATE TABLE.
-const isMissingTableError = (error) => {
-	const message = String(error?.message ?? error).toLowerCase();
-	return (
-		message.includes("does not exist") ||
-		message.includes("not found") ||
-		message.includes("catalog error")
+const MS_PER_DAY = 86400000;
+
+const TEMPORAL_TARGETS = new Set([
+	DuckDBTypeId.DATE,
+	DuckDBTypeId.TIMESTAMP,
+	DuckDBTypeId.TIMESTAMP_S,
+	DuckDBTypeId.TIMESTAMP_MS,
+	DuckDBTypeId.TIMESTAMP_NS,
+	DuckDBTypeId.TIMESTAMP_TZ,
+]);
+
+// apache-arrow's get() returns Date and Timestamp values as epoch-millisecond
+// numbers, which the appender would bind as BIGINT (no BIGINT -> DATE/TIMESTAMP
+// cast). Wrap them in DuckDB values; the appender casts TIMESTAMP (µs) to the
+// column's own unit. Sub-microsecond nanos are already lost by arrow's get().
+const toDuckDBValue = {
+	[ARROW_DATE]: (value) => new DuckDBDateValue(Math.floor(value / MS_PER_DAY)),
+	[ARROW_TIMESTAMP]: (value) =>
+		new DuckDBTimestampValue(BigInt(Math.round(value * 1000))),
+};
+
+const ensureTable = (db, table, schema) =>
+	ensureTableAndColumns(
+		{
+			run: (sql) => db.run(sql),
+			readColumnNames: async (sql) =>
+				(await db.runAndReadAll(sql)).columnNames(),
+		},
+		table,
+		schema,
 	);
-};
 
-const tableExists = async (db, table) => {
-	try {
-		await db.run(`SELECT 1 FROM ${quoteIdent(table)} LIMIT 0`);
-		return true;
-	} catch (error) {
-		if (isMissingTableError(error)) return false;
-		throw error;
-	}
-};
-
-const fetchColumnNames = async (db, table) => {
-	const reader = await db.runAndReadAll(
-		`SELECT * FROM ${quoteIdent(table)} LIMIT 0`,
-	);
-	return reader.columnNames();
-};
-
-const arrowTypeToDuckDBSQL = (type) => {
-	const name = type?.constructor?.name;
-	switch (name) {
-		case "Bool":
-			return "BOOLEAN";
-		case "Int8":
-			return "TINYINT";
-		case "Int16":
-			return "SMALLINT";
-		case "Int32":
-			return "INTEGER";
-		case "Int64":
-			return "BIGINT";
-		case "Uint8":
-			return "UTINYINT";
-		case "Uint16":
-			return "USMALLINT";
-		case "Uint32":
-			return "UINTEGER";
-		case "Uint64":
-			return "UBIGINT";
-		case "Float32":
-			return "REAL";
-		case "Float64":
-			return "DOUBLE";
-		case "Date_":
-			return "DATE";
-		case "TimestampSecond":
-			return "TIMESTAMP_S";
-		case "TimestampMillisecond":
-			return "TIMESTAMP_MS";
-		case "TimestampMicrosecond":
-			return "TIMESTAMP";
-		case "TimestampNanosecond":
-			return "TIMESTAMP_NS";
-		default:
-			return "VARCHAR";
-	}
-};
-
-const createTableFromArrowSchema = async (db, table, schema) => {
-	const cols = schema.fields
-		.map((f) => `${quoteIdent(f.name)} ${arrowTypeToDuckDBSQL(f.type)}`)
-		.join(", ");
-	await db.run(`CREATE TABLE ${quoteIdent(table)} (${cols})`);
-};
-
-const ensureTableAndColumns = async (db, table, schema) => {
-	if (schema && !(await tableExists(db, table))) {
-		await createTableFromArrowSchema(db, table, schema);
-	}
-	// Always derive the column order from the table's PHYSICAL layout. The
-	// appender appends positionally into physical columns, so trusting the
-	// provided schema.fields order would misalign (or hard-fail with a cast
-	// error) whenever the schema order differs from the physical column order.
-	return fetchColumnNames(db, table);
-};
-
-const appendCell = (appender, value) => {
+const appendCell = (appender, value, typeId) => {
 	if (value === null || value === undefined) {
 		appender.appendNull();
-	} else {
+	} else if (typeId !== undefined) {
+		appender.appendValue(toDuckDBValue[typeId](value));
+	} else if (typeof value === "string") {
+		appender.appendVarchar(value);
+	} else if (typeof value === "boolean") {
+		appender.appendBoolean(value);
+	} else if (typeof value !== "number") {
 		appender.appendValue(value);
+	} else if ((value | 0) === value) {
+		appender.appendInteger(value);
+	} else if (Number.isInteger(value)) {
+		appender.appendValue(value);
+	} else {
+		appender.appendDouble(value);
 	}
 };
 
-// Release a native appender handle exactly once. createWritableStream only runs
-// final() on normal completion, so a thrown write() (or an aborted pipeline)
-// would otherwise leak the underlying native appender.
 const closeAppenderOnce = (state) => {
 	if (!state.appender || state.closed) return;
 	state.closed = true;
 	try {
 		state.appender.closeSync();
-	} catch (_error) {
-		// best-effort: the handle is being torn down on an error path.
-	}
+	} catch (_error) {}
 };
 
-// createWritableStream (core) only wires write/final, so error/abort teardown
-// never releases the native appender. Attach cleanup to the Writable's lifecycle
-// (error/close) and to streamOptions.signal so an upstream error or an abort
-// still closes the handle. closeAppenderOnce is idempotent, so the normal
-// final()-then-close path stays a no-op here.
-const wireAppenderCleanup = (stream, state, streamOptions) => {
-	const cleanup = () => closeAppenderOnce(state);
-	stream.once("error", cleanup);
-	stream.once("close", cleanup);
-	// streamOptions always defaults to {} at the public entry points, so it is
-	// never nullish here.
-	const signal = streamOptions.signal;
-	if (signal) {
-		// The appender is created lazily (during the first write), so it never
-		// exists yet at wiring time; an already-aborted signal is therefore handled
-		// by the stream's own abort teardown (which fires "error"/"close" above).
-		// For a not-yet-aborted signal, release the handle when it aborts and stop
-		// listening once the stream closes normally.
-		signal.addEventListener("abort", cleanup, { once: true });
-		stream.once("close", () => signal.removeEventListener("abort", cleanup));
-	}
-	return stream;
-};
-
-export const duckdbAppenderStream = async (
-	{ db, table, schema },
-	streamOptions = {},
-) => {
-	// state.appender starts undefined (set lazily in init) and state.closed starts
-	// falsy; both are read with truthiness checks, so an empty object suffices.
+const appenderStream = ({ db, table, schema }, append, streamOptions) => {
 	const state = {};
-	let columnNames;
-
-	const init = async () => {
-		const resolvedSchema = resolveLazy(schema);
-		columnNames = await ensureTableAndColumns(db, table, resolvedSchema);
-		state.appender = await db.createAppender(table);
-	};
-
-	const write = async (row) => {
-		if (!state.appender) await init();
-		try {
-			const isArray = Array.isArray(row);
-			for (let i = 0, l = columnNames.length; i < l; i++) {
-				const v = isArray ? row[i] : row[columnNames[i]];
-				appendCell(state.appender, v);
-			}
-			state.appender.endRow();
-		} catch (error) {
-			closeAppenderOnce(state);
-			throw error;
-		}
-	};
-	const final = async () => {
-		if (state.appender && !state.closed) {
-			state.appender.flushSync();
-			closeAppenderOnce(state);
-		}
-	};
-
-	return wireAppenderCleanup(
-		createWritableStream(write, final, streamOptions),
-		state,
+	return createTransactionStream(
+		{
+			run: (sql) => db.run(sql),
+			init: async () => {
+				state.columnNames = await ensureTable(db, table, resolveLazy(schema));
+				state.appender = await db.createAppender(table);
+			},
+			write: (chunk) => append(state, chunk),
+			final: () => {
+				state.appender.flushSync();
+				closeAppenderOnce(state);
+			},
+			release: () => closeAppenderOnce(state),
+		},
 		streamOptions,
 	);
 };
 
-export const duckdbArrowInsertStream = async (
-	{ db, table, schema },
-	streamOptions = {},
-) => {
-	// See duckdbAppenderStream: appender/closed are only read for truthiness.
-	const state = {};
-	let columnNames;
+export const duckdbAppenderStream = async (options, streamOptions = {}) =>
+	appenderStream(
+		options,
+		({ appender, columnNames }, row) => {
+			const isArray = Array.isArray(row);
+			for (let i = 0, l = columnNames.length; i < l; i++) {
+				appendCell(appender, isArray ? row[i] : row[columnNames[i]]);
+			}
+			appender.endRow();
+		},
+		streamOptions,
+	);
 
-	const init = async () => {
-		const resolvedSchema = resolveLazy(schema);
-		columnNames = await ensureTableAndColumns(db, table, resolvedSchema);
-		state.appender = await db.createAppender(table);
-	};
-
-	const write = async (batch) => {
-		if (!state.appender) await init();
-		try {
+export const duckdbArrowInsertStream = async (options, streamOptions = {}) =>
+	appenderStream(
+		options,
+		({ appender, columnNames }, batch) => {
+			const { table } = options;
 			const colCount = columnNames.length;
 			// Validate the batch's column count against the target table so a
 			// mismatch surfaces a clear schema error instead of a null-deref
@@ -229,43 +165,38 @@ export const duckdbArrowInsertStream = async (
 					`duckdb: record batch column count (${batchColCount}) does not match table "${table}" column count (${colCount})`,
 				);
 			}
+			// Look each table column up by NAME: the appender is positional over the
+			// table's physical columns, but a batch's field order is arbitrary.
+			// DuckDB identifiers are case-insensitive (table "ID" vs Arrow "id"), so
+			// match case-insensitively.
+			const fieldNames = new Map(
+				(batch.schema?.fields ?? []).map((f) => [f.name.toLowerCase(), f.name]),
+			);
 			const cols = [];
+			const typeIds = [];
 			for (let i = 0; i < colCount; i++) {
-				const col = batch.getChildAt(i);
+				const name = columnNames[i];
+				const col = batch.getChild(fieldNames.get(name.toLowerCase()) ?? name);
 				if (col === null || col === undefined) {
 					throw new Error(
-						`duckdb: record batch is missing column ${i} for table "${table}"`,
+						`duckdb: record batch is missing column "${name}" for table "${table}"`,
 					);
 				}
 				cols.push(col);
+				const typeId = col.type?.typeId;
+				typeIds.push(
+					(typeId === ARROW_DATE || typeId === ARROW_TIMESTAMP) &&
+						TEMPORAL_TARGETS.has(appender.columnType(i).typeId)
+						? typeId
+						: undefined,
+				);
 			}
 			const rowCount = batch.numRows;
 			for (let r = 0; r < rowCount; r++) {
 				for (let i = 0; i < colCount; i++)
-					appendCell(state.appender, cols[i].get(r));
-				state.appender.endRow();
+					appendCell(appender, cols[i].get(r), typeIds[i]);
+				appender.endRow();
 			}
-		} catch (error) {
-			closeAppenderOnce(state);
-			throw error;
-		}
-	};
-	const final = async () => {
-		if (state.appender && !state.closed) {
-			state.appender.flushSync();
-			closeAppenderOnce(state);
-		}
-	};
-
-	return wireAppenderCleanup(
-		createWritableStream(write, final, streamOptions),
-		state,
+		},
 		streamOptions,
 	);
-};
-
-export default {
-	connect: duckdbConnect,
-	appenderStream: duckdbAppenderStream,
-	arrowInsertStream: duckdbArrowInsertStream,
-};

@@ -28,18 +28,22 @@ export interface FetchOptions {
 	offsetParam?: string;
 	offsetAmount?: number;
 	rateLimitTimestamp?: number;
+	concurrency?: number;
+	retryMaxCount?: number | null;
+	retryAfterMax?: number | null;
+	timeout?: number | null;
+	maxPages?: number | null;
+	maxBodySize?: number | null;
 }
 
-export interface FetchStreamOptions extends StreamOptions {
-	// Max array items fetched concurrently (default 1 = sequential). Items are
-	// yielded in array order; request starts are spaced by rateLimit.
-	concurrency?: number;
+export interface FetchWritableOptions extends FetchOptions {
+	resultKey?: string;
 }
 
 export function fetchSetDefaults(options: Partial<FetchOptions>): void;
 
 export function fetchWritableStream(
-	options: FetchOptions,
+	options: FetchWritableOptions,
 	streamOptions?: StreamOptions,
 ): Promise<
 	DatastreamWritable & {
@@ -50,7 +54,7 @@ export { fetchWritableStream as fetchRequestStream };
 
 export function fetchReadableStream(
 	fetchOptions: FetchOptions | FetchOptions[],
-	streamOptions?: FetchStreamOptions,
+	streamOptions?: StreamOptions,
 ): DatastreamReadable;
 export { fetchReadableStream as fetchResponseStream };
 
@@ -58,10 +62,3 @@ export function fetchRateLimit(
 	options: FetchOptions,
 	streamOptions?: StreamOptions,
 ): Promise<Response>;
-
-declare const _default: {
-	setDefaults: typeof fetchSetDefaults;
-	readableStream: typeof fetchReadableStream;
-	responseStream: typeof fetchReadableStream;
-};
-export default _default;

@@ -23,6 +23,22 @@ describe("transpileSchema", () => {
 });
 
 describe("validateStream", () => {
+	test("accepts maxErrorKeys", () => {
+		expect(
+			validateStream({ schema: { type: "object" }, maxErrorKeys: 10 }),
+		).type.not.toBeAssignableTo<never>();
+	});
+
+	test("accepts null (unlimited) error limits", () => {
+		expect(
+			validateStream({
+				schema: { type: "object" },
+				maxErrorRows: null,
+				maxErrorKeys: null,
+			}),
+		).type.not.toBeAssignableTo<never>();
+	});
+
 	test("accepts schema object", () => {
 		expect(
 			validateStream({ schema: { type: "object" } }),

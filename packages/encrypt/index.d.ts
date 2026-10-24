@@ -7,7 +7,9 @@ import type {
 } from "@datastream/core";
 
 export type EncryptAlgorithm =
+	| "AES-128-GCM"
 	| "AES-256-GCM"
+	| "AES-128-CTR"
 	| "AES-256-CTR"
 	| "CHACHA20-POLY1305";
 
@@ -24,12 +26,12 @@ export function encryptStream(
 		algorithm?: EncryptAlgorithm;
 		key: Uint8Array | Buffer;
 		iv?: Uint8Array | Buffer;
-		aad?: Uint8Array | Buffer;
-		maxInputSize?: number;
+		aad?: Uint8Array | Buffer | null;
+		maxInputSize?: number | null;
 		resultKey?: string;
 	},
 	streamOptions?: StreamOptions,
-): EncryptStreamResult | Promise<EncryptStreamResult>;
+): Promise<EncryptStreamResult>;
 
 export function decryptStream(
 	options: {
@@ -37,18 +39,13 @@ export function decryptStream(
 		key: Uint8Array | Buffer;
 		iv: Uint8Array | Buffer;
 		authTag?: Uint8Array | Buffer;
-		aad?: Uint8Array | Buffer;
-		maxOutputSize?: number;
+		aad?: Uint8Array | Buffer | null;
+		maxInputSize?: number | null;
+		maxOutputSize?: number | null;
 	},
 	streamOptions?: StreamOptions,
-): DatastreamTransform | Promise<DatastreamTransform>;
+): Promise<DatastreamTransform>;
 
 export function generateEncryptionKey(options?: {
 	bits?: 128 | 256;
 }): Uint8Array;
-
-export default {
-	encryptStream,
-	decryptStream,
-	generateEncryptionKey,
-};

@@ -1,9 +1,7 @@
 /// <reference lib="dom" />
 /// <reference types="node" />
-import _default, {
-	base64DecodeStream,
-	base64EncodeStream,
-} from "@datastream/base64";
+import type * as base64 from "@datastream/base64";
+import { base64DecodeStream, base64EncodeStream } from "@datastream/base64";
 import { describe, expect, test } from "tstyche";
 
 describe("base64EncodeStream", () => {
@@ -25,11 +23,7 @@ describe("base64DecodeStream", () => {
 });
 
 describe("default export", () => {
-	test("has encodeStream", () => {
-		expect(_default.encodeStream).type.toBe<typeof base64EncodeStream>();
-	});
-
-	test("has decodeStream", () => {
-		expect(_default.decodeStream).type.toBe<typeof base64DecodeStream>();
+	test("is removed", () => {
+		expect<typeof base64>().type.not.toHaveProperty("default");
 	});
 });

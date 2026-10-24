@@ -2,6 +2,7 @@
 version: 2
 updates:
   - package-ecosystem: "github-actions"
+    target-branch: develop
     directory: "/"
     schedule:
       interval: "weekly"
@@ -14,6 +15,13 @@ updates:
   - package-ecosystem: npm
     target-branch: develop
     directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 14
+  - package-ecosystem: docker
+    target-branch: develop
+    directory: "/.github/docker/semgrep"
     schedule:
       interval: "weekly"
     cooldown:

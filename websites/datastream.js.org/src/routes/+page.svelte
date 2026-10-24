@@ -1,30 +1,54 @@
 <script>
-import Card from "@design-system/components/Card.svelte";
-import Codeblock from "@design-system/components/Codeblock.svelte";
-import H1 from "@design-system/components/Heading1.svelte";
-import H2 from "@design-system/components/Heading2.svelte";
-import H3 from "@design-system/components/Heading3.svelte";
-import Icon from "@design-system/components/Icon.svelte";
-import Image from "@design-system/components/Image.svelte";
-import LayoutSlices from "@design-system/components/LayoutSlices.svelte";
-import A from "@design-system/elements/a.svelte";
-import Div from "@design-system/elements/div.svelte";
-import Li from "@design-system/elements/li.svelte";
-import P from "@design-system/elements/p.svelte";
-import Section from "@design-system/elements/section.svelte";
-import Span from "@design-system/elements/span.svelte";
-import Ul from "@design-system/elements/ul.svelte";
+import Card from "@willfarrell-ds/svelte/components/Card.svelte";
+import Codeblock from "@willfarrell-ds/svelte/components/Codeblock.svelte";
+import H1 from "@willfarrell-ds/svelte/components/Heading1.svelte";
+import H2 from "@willfarrell-ds/svelte/components/Heading2.svelte";
+import H3 from "@willfarrell-ds/svelte/components/Heading3.svelte";
+import Icon from "@willfarrell-ds/svelte/components/Icon.svelte";
+import Image from "@willfarrell-ds/svelte/components/Image.svelte";
+import LayoutSlices from "@willfarrell-ds/svelte/components/LayoutSlices.svelte";
+import A from "@willfarrell-ds/svelte/elements/a.svelte";
+import Div from "@willfarrell-ds/svelte/elements/div.svelte";
+import Li from "@willfarrell-ds/svelte/elements/li.svelte";
+import P from "@willfarrell-ds/svelte/elements/p.svelte";
+import Section from "@willfarrell-ds/svelte/elements/section.svelte";
+import Span from "@willfarrell-ds/svelte/elements/span.svelte";
+import Ul from "@willfarrell-ds/svelte/elements/ul.svelte";
 
-const codeExample = `import { pipeline, createReadableStream } from '@datastream/core'
-import { csvParseStream } from '@datastream/csv'
+const codeExample = `import { pipeline } from '@datastream/core'
+import { fileReadStream, fileWriteStream } from '@datastream/file'
+import {
+  csvDetectHeaderStream,
+  csvParseStream,
+  csvArrayToObjectStream,
+  csvObjectToArrayStream,
+  csvInjectHeaderStream,
+  csvFormatStream,
+} from '@datastream/csv'
 import { validateStream } from '@datastream/validate'
 import { gzipCompressStream } from '@datastream/compress'
 
+const headers = ['name', 'age']
+const schema = {
+  type: 'object',
+  required: headers,
+  properties: {
+    name: { type: 'string' },
+    age: { type: 'number' },
+  },
+}
+
 const streams = [
-  createReadableStream(csvData),
-  csvParseStream({ header: true }),
-  validateStream(schema),
-  gzipCompressStream()
+  await fileReadStream({ path: './people.csv' }),
+  csvDetectHeaderStream(),
+  csvParseStream(),
+  csvArrayToObjectStream({ headers }),
+  validateStream({ schema }),
+  csvObjectToArrayStream({ headers }),
+  csvInjectHeaderStream({ header: headers }),
+  csvFormatStream(),
+  gzipCompressStream(),
+  await fileWriteStream({ path: './people.csv.gz' }),
 ]
 
 await pipeline(streams)`;
@@ -82,7 +106,7 @@ await pipeline(streams)`;
                 <Li class="stat">
                     <H3
                         ><Icon src="/img/icons.svg#list-check" />
-                        <Span>96%+</Span></H3
+                        <Span>100%</Span></H3
                     >
                     <P>Test coverage</P>
                 </Li>
@@ -98,7 +122,11 @@ await pipeline(streams)`;
                 <H3>Dual platform</H3>
                 <P
                     >Works with both Web Streams API and Node.js Streams.
-                    Write once, run anywhere — server, browser, or edge.</P
+                    Most packages ship a Node.js and a browser build with the
+                    same API, so one pipeline runs on the server and in the
+                    browser. A few are platform-specific: aws, azure, gcp,
+                    kafka, sqlite, and avro are Node.js only, and indexeddb is browser
+                    only.</P
                 >
             </Li>
             <Li class="card feature">
@@ -125,10 +153,14 @@ await pipeline(streams)`;
                 >
             </Li>
             <Li class="card feature">
-                <H3>AWS integrations</H3>
+                <H3>Cloud, Kafka, and SQL integrations</H3>
                 <P
-                    >Stream data to and from DynamoDB, S3, SQS, SNS, and Lambda
-                    with purpose-built stream adapters.</P
+                    >Stream data to and from AWS (S3, DynamoDB, DynamoDB
+                    Streams, Kinesis, SQS, SNS, Lambda, CloudWatch Logs, and
+                    Glue Schema Registry), Azure (Blob, Cosmos DB, Event Hubs,
+                    Queue, and Service Bus), Google Cloud (Cloud Storage,
+                    Pub/Sub, and BigQuery), Kafka, SQLite, and DuckDB with
+                    purpose-built stream adapters.</P
                 >
             </Li>
             <Li class="card feature">
@@ -164,7 +196,15 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="aws">
                 <H3><A href="/docs/packages/aws">aws</A></H3>
-                <P>DynamoDB, S3, SQS, SNS, and Lambda streams.</P>
+                <P>CloudWatch Logs, DynamoDB, DynamoDB Streams, Kinesis, Lambda, S3, SNS, SQS, MSK IAM, and Glue Schema Registry streams (Node.js only).</P>
+            </Card>
+            <Card class="package" id="azure">
+                <H3><A href="/docs/packages/azure">azure</A></H3>
+                <P>Blob, Cosmos DB, Event Hubs, Queue, and Service Bus streams (Node.js only).</P>
+            </Card>
+            <Card class="package" id="gcp">
+                <H3><A href="/docs/packages/gcp">gcp</A></H3>
+                <P>Cloud Storage, Pub/Sub, and BigQuery streams. Bring your own SDK client (Node.js only).</P>
             </Card>
             <Card class="package" id="csv">
                 <H3><A href="/docs/packages/csv">csv</A></H3>
@@ -172,7 +212,7 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="compress">
                 <H3><A href="/docs/packages/compress">compress</A></H3>
-                <P>Brotli, gzip, deflate, and zstd compression.</P>
+                <P>Brotli, gzip, deflate, and zstd (Node.js only) compression.</P>
             </Card>
             <Card class="package" id="charset">
                 <H3><A href="/docs/packages/charset">charset</A></H3>
@@ -196,11 +236,19 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="duckdb">
                 <H3><A href="/docs/packages/duckdb">duckdb</A></H3>
-                <P>DuckDB writable streams for rows and Arrow batches.</P>
+                <P>DuckDB query, append, and Arrow insert streams. Each write runs in one transaction, so a failed pipeline commits nothing. Read and write Parquet and CSV through SQL.</P>
             </Card>
             <Card class="package" id="kafka">
                 <H3><A href="/docs/packages/kafka">kafka</A></H3>
-                <P>Kafka producer and consumer streams.</P>
+                <P>Kafka produce, consume, and commit streams (Node.js only).</P>
+            </Card>
+            <Card class="package" id="sqlite">
+                <H3><A href="/docs/packages/sqlite">sqlite</A></H3>
+                <P>SQLite query and insert streams via node:sqlite (Node.js only).</P>
+            </Card>
+            <Card class="package" id="avro">
+                <H3><A href="/docs/packages/avro">avro</A></H3>
+                <P>Apache Avro encode and decode (Node.js only).</P>
             </Card>
             <Card class="package" id="protobuf">
                 <H3><A href="/docs/packages/protobuf">protobuf</A></H3>
@@ -208,7 +256,39 @@ await pipeline(streams)`;
             </Card>
             <Card class="package" id="schema-registry">
                 <H3><A href="/docs/packages/schema-registry">schema-registry</A></H3>
-                <P>Confluent and Glue Schema Registry framing.</P>
+                <P>Confluent and Glue Schema Registry framing, plus a Confluent schema resolver.</P>
+            </Card>
+            <Card class="package" id="base64">
+                <H3><A href="/docs/packages/base64">base64</A></H3>
+                <P>Base64 encoding and decoding transform streams.</P>
+            </Card>
+            <Card class="package" id="digest">
+                <H3><A href="/docs/packages/digest">digest</A></H3>
+                <P>Cryptographic hash digest pass-through streams.</P>
+            </Card>
+            <Card class="package" id="encrypt">
+                <H3><A href="/docs/packages/encrypt">encrypt</A></H3>
+                <P>Symmetric encryption and decryption streams.</P>
+            </Card>
+            <Card class="package" id="fetch">
+                <H3><A href="/docs/packages/fetch">fetch</A></H3>
+                <P>HTTP fetch readable and writable streams with pagination and rate limiting.</P>
+            </Card>
+            <Card class="package" id="file">
+                <H3><A href="/docs/packages/file">file</A></H3>
+                <P>File system readable and writable streams with extension type enforcement.</P>
+            </Card>
+            <Card class="package" id="indexeddb">
+                <H3><A href="/docs/packages/indexeddb">indexeddb</A></H3>
+                <P>IndexedDB readable and writable streams (browser only).</P>
+            </Card>
+            <Card class="package" id="ipfs">
+                <H3><A href="/docs/packages/ipfs">ipfs</A></H3>
+                <P>IPFS get and add streams.</P>
+            </Card>
+            <Card class="package" id="json">
+                <H3><A href="/docs/packages/json">json</A></H3>
+                <P>JSON and NDJSON (JSON Lines) parsing and formatting.</P>
             </Card>
         </Ul>
     </Section>

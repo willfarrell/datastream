@@ -2,13 +2,14 @@ name: Tests (mutation)
 
 on:
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: 24.x
+  NODE_VERSION: 26.x
 
 permissions:
   contents: read
@@ -19,56 +20,118 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      packages: ${{ steps.list.outputs.packages }}
+      include: ${{ steps.list.outputs.include }}
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            github.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   github.com:443
       - name: List packages
         id: list
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          echo "packages=$(find packages -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+          # ponytail: only mutate packages the PR touches. A package's mutation
+          # score depends on its own source + tests, so dependency-only PRs
+          # (dependabot) run nothing; stryker/build/workflow edits and manual
+          # dispatch (no BASE_REF) run everything.
+          all() { find packages -maxdepth 1 -mindepth 1 -type d -printf '%f\n'; }
+          if [ -z "$BASE_REF" ]; then
+            packages=$(all)
+          else
+            git fetch --no-tags --depth=1 origin "$BASE_REF"
+            changed=$(git diff --name-only FETCH_HEAD HEAD)
+            if echo "$changed" | grep -qE '^(stryker(\.node-test)?\.config\.mjs|bin/esbuild|package\.json|packages/variant\.js|\.github/workflows/test-mutation\.yml)$'; then
+              packages=$(all)
+            else
+              packages=$(echo "$changed" | grep -E '^packages/[^/]+/' | cut -d/ -f2 | sort -u)
+            fi
+          fi
+          # Variants follow the export conditions, exactly as in bin/stryker: a
+          # "node" condition gets a node run, a "browser" condition a browser run
+          # (node-only aws/azure/avro/kafka/sqlite, browser-only indexeddb).
+          # Deleted packages (no package.json) are skipped.
+          include=$(for package in $packages; do
+            manifest="packages/${package}/package.json"
+            [ -f "$manifest" ] || continue
+            for variant in node browser; do
+              if [ "$(jq --arg v "$variant" '[.exports | .. | objects | has($v)] | any' "$manifest")" = "true" ]; then
+                jq -n -c --arg package "$package" --arg variant "$variant" '{package: $package, variant: $variant}'
+              fi
+            done
+          done | jq -s -c '.')
+          echo "include=${include}" >> "$GITHUB_OUTPUT"
 
   mutation:
-    name: Tests (mutation)
+    name: Tests (mutation, ${{ matrix.package }}, ${{ matrix.variant }})
     needs: setup
+    if: needs.setup.outputs.include != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        package: ${{ fromJson(needs.setup.outputs.packages) }}
+        include: ${{ fromJson(needs.setup.outputs.include) }}
 
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: audit
+          egress-policy: block
+          disable-sudo: true
           disable-telemetry: true
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            nodejs.org:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+      # allowed-endpoints: >
+      #   github.com:443
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # allowed-endpoints: >
+      #   api.github.com:443
+      #   nodejs.org:443
+      #   objects.githubusercontent.com:443
+      #   registry.npmjs.org:443
+      #   release-assets.githubusercontent.com:443
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
           cache: npm
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Build
         run: |
           npm run build --if-present
+      # allowed-endpoints: >
+      #   registry.npmjs.org:443
       - name: Mutation tests
         env:
           MUTATE_PACKAGE: ${{ matrix.package }}
+          MUTATE_VARIANT: ${{ matrix.variant }}
         run: |
           npx stryker run

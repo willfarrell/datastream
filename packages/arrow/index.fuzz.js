@@ -18,6 +18,13 @@ const catchError = (input, e) => {
 	if (expectedErrors.includes(e.message)) {
 		return;
 	}
+	if (
+		/^arrowBatchFrom(Object|Array)Stream: row \d+, field ".*" expects /s.test(
+			e.message,
+		)
+	) {
+		return;
+	}
 	console.error(input, e);
 	throw e;
 };

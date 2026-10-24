@@ -30,7 +30,7 @@ export function kafkaConnect(options?: {
 }): Promise<KafkaConnection>;
 
 export interface KafkaMessage {
-	value: Uint8Array | string;
+	value: Uint8Array | string | null;
 	key?: Uint8Array | string;
 	partition?: number;
 	headers?: Record<string, unknown>;
@@ -65,18 +65,39 @@ export function kafkaConsumeStream(
 		consumer: unknown;
 		topics: string | string[];
 		fromBeginning?: boolean;
+		/**
+		 * Let kafkajs auto-commit offsets. Defaults to `false` (was `true`): an
+		 * auto-commit happens once a message is buffered in the stream, not
+		 * processed, so a crash loses buffered messages. Commit `offset + 1` via
+		 * `consumer.commitOffsets` after processing, or pass `true` to opt back in.
+		 */
 		autoCommit?: boolean;
 		partitionsConsumedConcurrently?: number;
-		signal?: AbortSignal;
 	},
 	streamOptions?: StreamOptions,
 ): Promise<
-	DatastreamReadable<KafkaConsumedMessage> & { stop: () => Promise<void> }
+	DatastreamReadable<KafkaConsumedMessage> & {
+		/**
+		 * Graceful shutdown: ends the readable, waits until every open
+		 * `kafkaCommitStream` on the same consumer has closed (so its final
+		 * commit runs while the group is still joined), then calls
+		 * `consumer.stop()`. Aborting the `signal` instead stops the consumer
+		 * first, so nothing pending is committed.
+		 */
+		stop: () => Promise<void>;
+	}
 >;
 
-declare const _default: {
-	connect: typeof kafkaConnect;
-	produceStream: typeof kafkaProduceStream;
-	consumeStream: typeof kafkaConsumeStream;
-};
-export default _default;
+export function kafkaCommitStream(
+	options: {
+		/** kafkajs consumer: needs `commitOffsets`, `on` and `events.GROUP_JOIN`. */
+		consumer: unknown;
+		/** Commit every N messages (and always at the end). Defaults to 100. */
+		batchSize?: number;
+	},
+	streamOptions?: StreamOptions,
+): Promise<
+	DatastreamWritable<
+		Pick<KafkaConsumedMessage, "topic" | "partition" | "offset">
+	>
+>;

@@ -9,17 +9,19 @@ Compute cryptographic hash digests while streaming data.
 
 ```bash
 npm install @datastream/digest
+# browser build only
+npm install hash-wasm
 ```
 
-## `digestStream` <span class="badge">PassThrough</span> <span class="badge">async (browser)</span>
+## `digestStream` <span class="badge">PassThrough</span>
 
-Computes a hash digest of all data passing through. The stream is async in the browser (returns a Promise) because it uses `hash-wasm`.
+Computes a hash digest of all data passing through. Both builds return the stream synchronously: the browser build starts `hash-wasm` initialization when the stream is created and waits for it inside the stream. Call `.result()` only after the stream has finished (it throws otherwise); `pipeline()` handles this for you.
 
 ### Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `algorithm` | `string` | — | Hash algorithm (see table below) |
+| `algorithm` | `string` | — | Hash algorithm (see table below). The aliases `SHA256`, `SHA384` and `SHA512` are accepted and reported as `SHA2-*` |
 | `resultKey` | `string` | `"digest"` | Key in pipeline result |
 
 ### Supported algorithms
@@ -29,9 +31,11 @@ Computes a hash digest of all data passing through. The stream is async in the b
 | `SHA2-256` | `node:crypto` | `hash-wasm` |
 | `SHA2-384` | `node:crypto` | `hash-wasm` |
 | `SHA2-512` | `node:crypto` | `hash-wasm` |
-| `SHA3-256` | — | `hash-wasm` |
-| `SHA3-384` | — | `hash-wasm` |
-| `SHA3-512` | — | `hash-wasm` |
+| `SHA3-256` | `node:crypto` | `hash-wasm` |
+| `SHA3-384` | `node:crypto` | `hash-wasm` |
+| `SHA3-512` | `node:crypto` | `hash-wasm` |
+
+Any other value throws `Unsupported algorithm`.
 
 ### Result
 
@@ -46,19 +50,13 @@ import { pipeline } from '@datastream/core'
 import { fileReadStream } from '@datastream/file'
 import { digestStream } from '@datastream/digest'
 
-// Node.js — synchronous
 const digest = digestStream({ algorithm: 'SHA2-256' })
 
 const result = await pipeline([
-  fileReadStream({ path: './data.csv' }),
+  await fileReadStream({ path: './data.csv' }),
   digest,
 ])
 
 console.log(result)
 // { digest: 'SHA2-256:e3b0c4429...' }
-```
-
-```javascript
-// Browser — async, must await
-const digest = await digestStream({ algorithm: 'SHA2-256' })
 ```

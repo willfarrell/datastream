@@ -3,6 +3,7 @@
 import { createTransformStream, resolveLazy } from "@datastream/core";
 import {
 	Bool,
+	DataType,
 	Field,
 	Float64,
 	Int32,
@@ -30,13 +31,21 @@ const inferType = (value) => {
 	return new Utf8();
 };
 
+const isNumberType = (type) => type instanceof Int32 || type instanceof Float64;
+
 const fieldsFromSamples = (samples, fieldNames, isArray) => {
 	return fieldNames.map((name, idx) => {
 		let type = null;
 		for (const sample of samples) {
-			const v = isArray ? sample[idx] : sample[name];
-			type = inferType(v);
-			if (type !== null) break;
+			const next = inferType(isArray ? sample[idx] : sample[name]);
+			if (next === null) continue;
+			if (type === null || type.typeId === next.typeId) {
+				type = next;
+			} else if (isNumberType(type) && isNumberType(next)) {
+				type = new Float64();
+			} else {
+				type = new Utf8();
+			}
 		}
 		return new Field(name, type ?? new Utf8(), true);
 	});
@@ -49,20 +58,17 @@ export const arrowDetectSchemaStream = (
 	streamOptions = {},
 ) => {
 	const value = { schema: null, fields: null };
-	const samples = [];
+	const buffered = [];
 	let sealed = false;
 
 	const seal = () => {
-		// Nothing to seal until at least one row has been sampled. Once sealed,
-		// `samples` is cleared (below), so this same guard makes a repeat call a
-		// no-op without needing a separate sealed flag here.
-		if (!samples.length) return;
-		const isArray = Array.isArray(samples[0]);
+		if (!buffered.length) return;
+		const isArray = Array.isArray(buffered[0]);
 		let fieldNames;
 		if (isArray) {
 			// Column count is the widest array seen across all sampled rows.
 			let width = 0;
-			for (const sample of samples) {
+			for (const sample of buffered) {
 				width = Math.max(width, sample.length);
 			}
 			fieldNames = [];
@@ -72,7 +78,7 @@ export const arrowDetectSchemaStream = (
 			// so columns that only appear in later rows are not dropped.
 			const seen = new Set();
 			fieldNames = [];
-			for (const sample of samples) {
+			for (const sample of buffered) {
 				for (const key of Object.keys(sample)) {
 					if (!seen.has(key)) {
 						seen.add(key);
@@ -81,32 +87,24 @@ export const arrowDetectSchemaStream = (
 				}
 			}
 		}
-		const fields = fieldsFromSamples(samples, fieldNames, isArray);
+		const fields = fieldsFromSamples(buffered, fieldNames, isArray);
 		value.schema = new Schema(fields);
 		value.fields = fieldNames;
 		sealed = true;
-		// The sampled rows are no longer needed once the schema is computed;
-		// release them so they are not retained for the stream's lifetime.
-		samples.length = 0;
 	};
 
-	const buffered = [];
 	const transform = (chunk, enqueue) => {
 		if (sealed) {
 			enqueue(chunk);
 			return;
 		}
-		samples.push(chunk);
 		buffered.push(chunk);
-		if (samples.length >= sampleSize) {
+		if (buffered.length >= sampleSize) {
 			seal();
 			while (buffered.length) enqueue(buffered.shift());
 		}
 	};
 	const flush = (enqueue) => {
-		// Seal a short stream that never reached sampleSize, then flush whatever is
-		// still buffered. If the stream already sealed mid-stream, `samples` is
-		// empty so seal() is a no-op and `buffered` has already been drained.
 		seal();
 		while (buffered.length) enqueue(buffered.shift());
 	};
@@ -128,8 +126,80 @@ const buildRecordBatch = (schema, builders, length) => {
 
 const makeBuilders = (schema) =>
 	schema.fields.map((field) =>
-		makeBuilder({ type: field.type, nullValues: [null, undefined] }),
+		makeBuilder({
+			type: field.type,
+			nullValues: DataType.isUtf8(field.type)
+				? [null, undefined]
+				: [null, undefined, ""],
+		}),
 	);
+
+// The Utf8 builder coerces with String(v): a Date becomes a local-timezone
+// string and an object "[object Object]". Hand it ISO / JSON text instead;
+// null stays null and other primitives keep String() semantics.
+const toUtf8 = (v) =>
+	v instanceof Date
+		? v.toISOString()
+		: typeof v === "object" && v !== null
+			? JSON.stringify(v)
+			: v;
+const identity = (v) => v;
+
+// Value checks for the column types arrowDetectSchemaStream seals (and their
+// kin from user/IPC schemas). The Arrow builders coerce silently: an Int32
+// builder wraps 3000000000 to -1294967296, truncates 2.7 to 2 and turns "oops"
+// into 0, so a schema inferred from the first sampleSize rows would corrupt any
+// later row that does not fit it. Each check returns the Error class to throw,
+// or undefined for a valid value. Other types (Utf8, Int64, ...) are unchecked.
+const pass = () => {};
+const intCheck = (type) => {
+	const max = 2 ** (type.isSigned ? type.bitWidth - 1 : type.bitWidth) - 1;
+	const min = type.isSigned ? -max - 1 : 0;
+	return (v) =>
+		!Number.isInteger(v) ? TypeError : v < min || v > max ? RangeError : pass();
+};
+const numberCheck = (v) => (typeof v === "number" ? pass() : TypeError);
+const booleanCheck = (v) => (typeof v === "boolean" ? pass() : TypeError);
+const timestampCheck = (v) =>
+	Number.isInteger(v instanceof Date ? v.getTime() : v) ? pass() : TypeError;
+const valueCheck = (type) =>
+	DataType.isInt(type) && type.bitWidth < 64
+		? intCheck(type)
+		: DataType.isFloat(type)
+			? numberCheck
+			: DataType.isBool(type)
+				? booleanCheck
+				: DataType.isTimestamp(type)
+					? timestampCheck
+					: pass;
+
+const describeValue = (v) =>
+	typeof v === "string"
+		? JSON.stringify(v)
+		: typeof v === "object" && v !== null
+			? Object.prototype.toString.call(v)
+			: String(v);
+
+const makeConverter = (name, field) => {
+	const { type, nullable } = field;
+	// typeId check (not instanceof Utf8) so schemas built with another copy of
+	// apache-arrow still match.
+	const utf8 = DataType.isUtf8(type);
+	const convert = utf8 ? toUtf8 : identity;
+	const check = valueCheck(type);
+	return (v, row) => {
+		const isNull = v === null || v === undefined || (!utf8 && v === "");
+		const ErrorType = isNull ? (nullable ? pass() : TypeError) : check(v);
+		if (ErrorType) {
+			throw new ErrorType(
+				`${name}: row ${row}, field "${field.name}" expects ${nullable ? "" : "non-null "}${type}, got ${describeValue(v)}`,
+			);
+		}
+		return convert(v);
+	};
+};
+const makeConverters = (name, schema) =>
+	schema.fields.map((field) => makeConverter(name, field));
 
 // A zero-field schema cannot represent rows: apache-arrow derives a
 // RecordBatch's length from its child columns, so with no columns every batch
@@ -148,7 +218,9 @@ export const arrowBatchFromArrayStream = (
 ) => {
 	let resolvedSchema;
 	let builders;
+	let converters;
 	let rowCount = 0;
+	let rowIndex = 0;
 
 	const init = () => {
 		if (builders) return;
@@ -157,6 +229,7 @@ export const arrowBatchFromArrayStream = (
 			resolveLazy(schema),
 		);
 		builders = makeBuilders(resolvedSchema);
+		converters = makeConverters("arrowBatchFromArrayStream", resolvedSchema);
 	};
 
 	// Eagerly validate a concrete schema at construction so a missing/misconfigured
@@ -167,8 +240,9 @@ export const arrowBatchFromArrayStream = (
 	const transform = (row, enqueue) => {
 		init();
 		for (let i = 0, l = builders.length; i < l; i++) {
-			builders[i].append(row[i]);
+			builders[i].append(converters[i](row[i], rowIndex));
 		}
+		rowIndex++;
 		rowCount++;
 		if (rowCount >= batchSize) {
 			enqueue(buildRecordBatch(resolvedSchema, builders, rowCount));
@@ -194,7 +268,9 @@ export const arrowBatchFromObjectStream = (
 	let resolvedSchema;
 	let fieldNames;
 	let builders;
+	let converters;
 	let rowCount = 0;
+	let rowIndex = 0;
 
 	const init = () => {
 		if (builders) return;
@@ -204,6 +280,7 @@ export const arrowBatchFromObjectStream = (
 		);
 		fieldNames = resolvedSchema.fields.map((f) => f.name);
 		builders = makeBuilders(resolvedSchema);
+		converters = makeConverters("arrowBatchFromObjectStream", resolvedSchema);
 	};
 
 	// Eagerly validate a concrete schema at construction so a missing/misconfigured
@@ -214,8 +291,9 @@ export const arrowBatchFromObjectStream = (
 	const transform = (row, enqueue) => {
 		init();
 		for (let i = 0, l = builders.length; i < l; i++) {
-			builders[i].append(row[fieldNames[i]]);
+			builders[i].append(converters[i](row[fieldNames[i]], rowIndex));
 		}
+		rowIndex++;
 		rowCount++;
 		if (rowCount >= batchSize) {
 			enqueue(buildRecordBatch(resolvedSchema, builders, rowCount));
@@ -268,29 +346,25 @@ export const arrowToObjectStream = (_options = {}, streamOptions = {}) => {
 	const transform = (batch, enqueue) => {
 		const fields = batch.schema.fields;
 		const colCount = fields.length;
-		const names = [];
+		// One [name, value] pair per column, reused across rows: Object.fromEntries
+		// copies the values out, and makes a column named "__proto__" an own
+		// enumerable data property instead of replacing the row's prototype (which
+		// a plain `row[name] = ...` would do, silently dropping it).
+		const entries = [];
 		const cols = [];
 		const isTimestamp = [];
 		for (let i = 0; i < colCount; i++) {
-			names.push(fields[i].name);
+			entries.push([fields[i].name, undefined]);
 			cols.push(batch.getChildAt(i));
 			isTimestamp.push(isTimestampType(fields[i].type));
 		}
 		const rowCount = batch.numRows;
 		for (let r = 0; r < rowCount; r++) {
-			const row = {};
-			for (let i = 0; i < colCount; i++)
-				row[names[i]] = readCell(cols[i], isTimestamp[i], r);
-			enqueue(row);
+			for (let i = 0; i < colCount; i++) {
+				entries[i][1] = readCell(cols[i], isTimestamp[i], r);
+			}
+			enqueue(Object.fromEntries(entries));
 		}
 	};
 	return createTransformStream(transform, streamOptions);
-};
-
-export default {
-	detectSchemaStream: arrowDetectSchemaStream,
-	batchFromArrayStream: arrowBatchFromArrayStream,
-	batchFromObjectStream: arrowBatchFromObjectStream,
-	toArrayStream: arrowToArrayStream,
-	toObjectStream: arrowToObjectStream,
 };

@@ -1,8 +1,8 @@
 <script>
-    import H1 from "@design-system/components/Heading1.svelte";
-        import Div from "@design-system/elements/div.svelte";
-        import Main from "@design-system/elements/main.svelte";
-        import P from "@design-system/elements/p.svelte";
+    import H1 from "@willfarrell-ds/svelte/components/Heading1.svelte";
+        import Div from "@willfarrell-ds/svelte/elements/div.svelte";
+        import Main from "@willfarrell-ds/svelte/elements/main.svelte";
+        import P from "@willfarrell-ds/svelte/elements/p.svelte";
         import { page } from "$app/state";
 </script>
 

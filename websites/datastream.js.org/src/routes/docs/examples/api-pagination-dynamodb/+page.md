@@ -6,11 +6,10 @@ description: Fetch paginated API data and write to DynamoDB with datastream.
 Fetch paginated API data and write to DynamoDB:
 
 ```javascript
-import { pipeline } from '@datastream/core'
+import { pipeline, createTransformStream } from '@datastream/core'
 import { fetchReadableStream } from '@datastream/fetch'
 import { objectCountStream } from '@datastream/object'
-import { awsDynamoDBPutItemStream } from '@datastream/aws'
-import { createTransformStream } from '@datastream/core'
+import { awsDynamoDBPutItemStream } from '@datastream/aws/dynamodb'
 
 const count = objectCountStream()
 
@@ -33,5 +32,5 @@ const result = await pipeline([
 ])
 
 console.log(result)
-// { count: 450 }
+// { objectCount: 450 }
 ```

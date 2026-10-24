@@ -11,9 +11,13 @@ Character set detection, decoding, and encoding streams.
 npm install @datastream/charset
 ```
 
+Each stream is also available as a subpath: `@datastream/charset/detect`, `@datastream/charset/decode` and `@datastream/charset/encode`.
+
 ## `charsetDetectStream` <span class="badge">PassThrough</span>
 
 Detects the character encoding of the data passing through by analyzing byte patterns.
+
+Only the first 64 KiB (65,536 bytes) of the stream is sampled. Every chunk still passes through unchanged, but bytes past the sample are not analysed, so memory stays bounded on large inputs. The sample is analysed once, when `result()` is read. String chunks are sampled as their UTF-8 bytes. Empty input gives `{ charset: undefined, confidence: 0 }`.
 
 ### Options
 
@@ -43,7 +47,7 @@ import { charsetDetectStream, charsetDecodeStream } from '@datastream/charset'
 const detect = charsetDetectStream()
 
 const result = await pipeline([
-  fileReadStream({ path: './data.csv' }),
+  await fileReadStream({ path: './data.csv' }),
   detect,
 ])
 
@@ -53,13 +57,15 @@ console.log(result.charset)
 
 ## `charsetDecodeStream` <span class="badge">Transform</span>
 
-Decodes binary data to text using the specified character encoding. Uses `TextDecoderStream` internally.
+Decodes binary data to text using the specified character encoding. Node.js uses [`iconv-lite`](https://github.com/pillarjs/iconv-lite); the browser uses the native `TextDecoderStream`, so the available encodings are those of the WHATWG Encoding standard.
+
+An unknown `charset` throws when the stream is created, in both builds (`Unsupported encoding "…"` on Node.js, `Unsupported web encoding "…"` in the browser). There is no silent UTF-8 fallback.
 
 ### Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `charset` | `string` | — | Character encoding name (e.g. `"UTF-8"`, `"ISO-8859-1"`) |
+| `charset` | `string` | `"UTF-8"` | Character encoding name (e.g. `"UTF-8"`, `"ISO-8859-1"`) |
 
 ### Example
 
@@ -71,13 +77,15 @@ charsetDecodeStream({ charset: 'ISO-8859-1' })
 
 ## `charsetEncodeStream` <span class="badge">Transform</span>
 
-Encodes text to binary using the specified character encoding. Uses `TextEncoderStream` internally.
+Encodes text to binary using the specified character encoding. Node.js uses `iconv-lite` and supports any encoding it knows. The browser uses the native `TextEncoderStream`, which only produces UTF-8: the labels `utf8` / `utf-8` are accepted in any letter case, and any other charset throws `Web only supports UTF-8 encoding`.
+
+An unknown `charset` throws when the stream is created, in both builds.
 
 ### Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `charset` | `string` | — | Character encoding name |
+| `charset` | `string` | `"UTF-8"` | Character encoding name. UTF-8 only in the browser |
 
 ### Example
 
