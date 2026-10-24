@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/csv",
-	"version": "0.9.0",
+	"version": "0.9.1",
 	"description": "CSV parsing and formatting transform streams",
 	"type": "module",
 	"sideEffects": false,
@@ -57,7 +57,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.9.0",
-		"@datastream/object": "0.9.0"
+		"@datastream/core": "0.9.1",
+		"@datastream/object": "0.9.1"
 	}
 }

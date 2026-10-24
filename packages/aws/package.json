@@ -1,6 +1,6 @@
 {
 	"name": "@datastream/aws",
-	"version": "0.9.0",
+	"version": "0.9.1",
 	"description": "AWS service streaming integrations for CloudWatch Logs, DynamoDB, DynamoDB Streams, Glue Schema Registry, Kinesis, Lambda, MSK IAM, S3, SNS, and SQS",
 	"type": "module",
 	"sideEffects": false,
@@ -96,7 +96,7 @@
 	},
 	"homepage": "https://datastream.js.org",
 	"dependencies": {
-		"@datastream/core": "0.9.0"
+		"@datastream/core": "0.9.1"
 	},
 	"peerDependencies": {
 		"@aws-sdk/client-cloudwatch-logs": "^3.1119.0",
