@@ -28,7 +28,7 @@
 		"test:sast:license": "node .github/license.mjs check",
 		"test:sast:lockfile": "lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https",
 		"test:sast:semgrep": "semgrep scan --config auto --error",
-		"test:sast:trivy": "trivy fs --scanners vuln --include-dev-deps --exit-code 1 --disable-telemetry . && trivy fs --config .github/trivy.yml --include-dev-deps --disable-telemetry .",
+		"test:sast:trivy": "trivy fs --scanners vuln --include-dev-deps --ignorefile .github/.trivyignore --exit-code 1 --disable-telemetry . && trivy fs --config .github/trivy.yml --include-dev-deps --disable-telemetry .",
 		"test:sast:trufflehog": "trufflehog filesystem --only-verified --log-level=-1 ./",
 		"test:sast:zizmor": "zizmor .github",
 		"test:types": "tstyche",
