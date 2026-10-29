@@ -1,0 +1,8 @@
+# Trivy vulnerability ignores. Loaded by the `Trivy: SCA` job (trivy-action `trivyignores`)
+# and `npm run test:sast:trivy` (`--ignorefile`). Every entry needs a reason and an expiry.
+# https://trivy.dev/latest/docs/configuration/filtering/#trivyignore
+
+# deepmerge@4.3.1 (latest, no fix released): prototype poisoning in mergeObject.
+# Only reached via @sveltejs/vite-plugin-svelte in websites/datastream.js.org, which merges
+# trusted local Vite/Svelte config at docs build time. Not a dependency of any published package.
+CVE-2026-93753 exp:2027-01-31
