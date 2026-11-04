@@ -47,7 +47,7 @@
 		"release:approve": "npm query '.workspace:not([private])' | jq -r '.[].name' | xargs -n1 -I{} npm stage list {} --json | jq -r --arg v \"$npm_package_version\" '.[] | select(.version == $v) | .id' | xargs -n1 -o npm stage approve",
 		"release:license:add": "node .github/license.mjs add",
 		"release:license:remove": "node .github/license.mjs remove",
-		"release:sync": "npm version $npm_package_version --workspaces; node -e 'const fs=require(\"node:fs\");for(const d of fs.readdirSync(\"packages\")){const f=`packages/${d}/package.json`;if(!fs.existsSync(f))continue;const p=JSON.parse(fs.readFileSync(f));for(const k of [\"dependencies\",\"devDependencies\",\"peerDependencies\"])for(const n in p[k])if(n.startsWith(\"@datastream/\"))p[k][n]=p.version;fs.writeFileSync(f,JSON.stringify(p,null,\"\\t\")+\"\\n\")}' && npm install",
+		"release:sync": "npm version $npm_package_version --workspaces --no-workspaces-update --allow-same-version && node .github/release-sync.mjs && npm install",
 		"release:tag": "git tag -s -m $npm_package_version $npm_package_version",
 		"test:unit:browser": "node --test --conditions=browser --experimental-test-coverage --test-coverage-include=packages/**/*.browser.mjs --test-coverage-include=packages/**/native.browser.js --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 $(find packages -name '*.test.js' -not -path 'packages/aws/*' -not -path 'packages/azure/*' -not -path 'packages/kafka/*' -not -path 'packages/gcp/*' -not -path 'packages/avro/*' -not -path 'packages/sqlite/*')",
 		"git:test": "which node && node -v && npm run build && npm run test:unit && npm run test:unit:browser",
