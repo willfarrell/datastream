@@ -56,7 +56,7 @@ jobs:
       #   api.github.com:443
       #   api.tardisec.com:443
       #   github.com:443
-      - uses: tardisec/tardisec-integration-github-action@79a37c4a612483144768e0eb020b2b7236268862 # main
+      - uses: tardisec/tardisec-integration-github-action@bfc4abe006028c3312a00d26383c72ba1ccd4ae3 # main
         with:
           base: develop
           domain: datastream.js.org
