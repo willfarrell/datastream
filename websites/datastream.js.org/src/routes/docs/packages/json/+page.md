@@ -1,4 +1,5 @@
 ---
+
 title: json
 description: JSON and NDJSON (JSON Lines) parsing and formatting streams.
 ---
@@ -17,11 +18,11 @@ Parses NDJSON (one JSON value per line) into individual JavaScript values. Split
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option          | Type             | Default           | Description                                                                                                                                                                         |
+| --------------- | ---------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `maxBufferSize` | `number \| null` | `16777216` (16MB) | Maximum size of the incomplete (not yet newline-terminated) line held between chunks; complete lines in a chunk don't count. `null` = unlimited. Exceeding it throws a `RangeError` |
-| `maxErrorRows` | `number \| null` | `1000` | Max row indexes kept in each error's `idx`. `null` = unlimited |
-| `resultKey` | `string` | `"ndjsonErrors"` | Key in pipeline result |
+| `maxErrorRows`  | `number \| null` | `1000`            | Max row indexes kept in each error's `idx`. `null` = unlimited                                                                                                                      |
+| `resultKey`     | `string`         | `"ndjsonErrors"`  | Key in pipeline result                                                                                                                                                              |
 
 ### Result
 
@@ -36,17 +37,17 @@ Parse errors collected during processing. `idx` holds at most `maxErrorRows` row
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { ndjsonParseStream } from '@datastream/json'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { ndjsonParseStream } from "@datastream/json";
 
-const parse = ndjsonParseStream()
+const parse = ndjsonParseStream();
 
 const result = await pipeline([
-  createReadableStream('{"name":"Alice"}\n{"name":"Bob"}\n'),
-  parse,
-])
+	createReadableStream('{"name":"Alice"}\n{"name":"Bob"}\n'),
+	parse,
+]);
 
-console.log(result.ndjsonErrors)
+console.log(result.ndjsonErrors);
 // {}
 ```
 
@@ -59,16 +60,16 @@ There is no `space` option: NDJSON is one record per line, and pretty-printing w
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { ndjsonFormatStream } from '@datastream/json'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { ndjsonFormatStream } from "@datastream/json";
 
 await pipeline([
-  createReadableStream([
-    { name: 'Alice', age: 30 },
-    { name: 'Bob', age: 25 },
-  ]),
-  ndjsonFormatStream(),
-])
+	createReadableStream([
+		{ name: "Alice", age: 30 },
+		{ name: "Bob", age: 25 },
+	]),
+	ndjsonFormatStream(),
+]);
 
 // Output: {"name":"Alice","age":30}\n{"name":"Bob","age":25}\n
 ```
@@ -81,12 +82,12 @@ The input must be a top-level array: only whitespace may come before the opening
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option          | Type             | Default           | Description                                                                                                              |
+| --------------- | ---------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `maxBufferSize` | `number \| null` | `16777216` (16MB) | Maximum size of the incomplete element held between chunks; complete elements in a chunk don't count. `null` = unlimited |
-| `maxValueSize` | `number \| null` | `16777216` (16MB) | Maximum size of a single JSON element. `null` = unlimited |
-| `maxErrorRows` | `number \| null` | `1000` | Max row indexes kept in each error's `idx`. `null` = unlimited |
-| `resultKey` | `string` | `"jsonErrors"` | Key in pipeline result |
+| `maxValueSize`  | `number \| null` | `16777216` (16MB) | Maximum size of a single JSON element. `null` = unlimited                                                                |
+| `maxErrorRows`  | `number \| null` | `1000`            | Max row indexes kept in each error's `idx`. `null` = unlimited                                                           |
+| `resultKey`     | `string`         | `"jsonErrors"`    | Key in pipeline result                                                                                                   |
 
 #### Buffer size protection
 
@@ -94,7 +95,7 @@ A JSON array with deeply nested or very large objects can cause the parser to bu
 
 ```javascript
 // Parse with a 1MB buffer limit for untrusted input
-jsonParseStream({ maxBufferSize: 1 * 1024 * 1024 })
+jsonParseStream({ maxBufferSize: 1 * 1024 * 1024 });
 ```
 
 ### Result
@@ -116,15 +117,19 @@ Parse errors collected during processing:
 ### Example
 
 ```javascript
-import { pipejoin, createReadableStream, streamToArray } from '@datastream/core'
-import { jsonParseStream } from '@datastream/json'
+import {
+	pipejoin,
+	createReadableStream,
+	streamToArray,
+} from "@datastream/core";
+import { jsonParseStream } from "@datastream/json";
 
 const streams = [
-  createReadableStream('[{"name":"Alice"},{"name":"Bob"}]'),
-  jsonParseStream(),
-]
+	createReadableStream('[{"name":"Alice"},{"name":"Bob"}]'),
+	jsonParseStream(),
+];
 
-const output = await streamToArray(pipejoin(streams))
+const output = await streamToArray(pipejoin(streams));
 // [{ name: 'Alice' }, { name: 'Bob' }]
 ```
 
@@ -134,23 +139,23 @@ Formats objects as a JSON array string (`[{...},{...}]`). Emits `[` with the fir
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `space` | `number \| string` | — | Passed to `JSON.stringify` for pretty-printing |
+| Option  | Type               | Default | Description                                    |
+| ------- | ------------------ | ------- | ---------------------------------------------- |
+| `space` | `number \| string` | —       | Passed to `JSON.stringify` for pretty-printing |
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { jsonFormatStream } from '@datastream/json'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { jsonFormatStream } from "@datastream/json";
 
 await pipeline([
-  createReadableStream([
-    { name: 'Alice', age: 30 },
-    { name: 'Bob', age: 25 },
-  ]),
-  jsonFormatStream({ space: 2 }),
-])
+	createReadableStream([
+		{ name: "Alice", age: 30 },
+		{ name: "Bob", age: 25 },
+	]),
+	jsonFormatStream({ space: 2 }),
+]);
 
 // Output: [{\n  "name": "Alice",\n  "age": 30\n},\n{\n  "name": "Bob",\n  "age": 25\n}\n]
 ```
@@ -160,35 +165,35 @@ await pipeline([
 Fetch NDJSON API, validate, and write as JSON array. The response body arrives as bytes, which `ndjsonParseStream` decodes itself:
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { fetchResponseStream } from '@datastream/fetch'
-import { ndjsonParseStream } from '@datastream/json'
-import { validateStream } from '@datastream/validate'
-import { objectCountStream } from '@datastream/object'
-import { jsonFormatStream } from '@datastream/json'
-import { fileWriteStream } from '@datastream/file'
+import { pipeline } from "@datastream/core";
+import { fetchResponseStream } from "@datastream/fetch";
+import { ndjsonParseStream } from "@datastream/json";
+import { validateStream } from "@datastream/validate";
+import { objectCountStream } from "@datastream/object";
+import { jsonFormatStream } from "@datastream/json";
+import { fileWriteStream } from "@datastream/file";
 
 const schema = {
-  type: 'object',
-  required: ['name', 'age'],
-  properties: {
-    name: { type: 'string' },
-    age: { type: 'number' },
-  },
-}
+	type: "object",
+	required: ["name", "age"],
+	properties: {
+		name: { type: "string" },
+		age: { type: "number" },
+	},
+};
 
-const count = objectCountStream()
-const parse = ndjsonParseStream()
+const count = objectCountStream();
+const parse = ndjsonParseStream();
 
 const result = await pipeline([
-  fetchResponseStream({ url: 'https://api.example.com/data.ndjson' }),
-  parse,
-  validateStream({ schema }),
-  count,
-  jsonFormatStream(),
-  await fileWriteStream({ path: './output.json' }),
-])
+	fetchResponseStream({ url: "https://api.example.com/data.ndjson" }),
+	parse,
+	validateStream({ schema }),
+	count,
+	jsonFormatStream(),
+	await fileWriteStream({ path: "./output.json" }),
+]);
 
-console.log(result.objectCount)  // number of objects processed
-console.log(result.ndjsonErrors) // any parse errors
+console.log(result.objectCount); // number of objects processed
+console.log(result.ndjsonErrors); // any parse errors
 ```

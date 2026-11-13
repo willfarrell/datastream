@@ -1,4 +1,5 @@
 ---
+
 title: API pagination to DynamoDB
 description: Fetch paginated API data and write to DynamoDB with datastream.
 ---
@@ -6,31 +7,31 @@ description: Fetch paginated API data and write to DynamoDB with datastream.
 Fetch paginated API data and write to DynamoDB:
 
 ```javascript
-import { pipeline, createTransformStream } from '@datastream/core'
-import { fetchReadableStream } from '@datastream/fetch'
-import { objectCountStream } from '@datastream/object'
-import { awsDynamoDBPutItemStream } from '@datastream/aws/dynamodb'
+import { pipeline, createTransformStream } from "@datastream/core";
+import { fetchReadableStream } from "@datastream/fetch";
+import { objectCountStream } from "@datastream/object";
+import { awsDynamoDBPutItemStream } from "@datastream/aws/dynamodb";
 
-const count = objectCountStream()
+const count = objectCountStream();
 
 const result = await pipeline([
-  fetchReadableStream({
-    url: 'https://api.example.com/users',
-    dataPath: 'data',
-    nextPath: 'pagination.next_url',
-  }),
-  createTransformStream((item, enqueue) => {
-    enqueue({
-      PK: { S: `USER#${item.id}` },
-      SK: { S: `PROFILE` },
-      name: { S: item.name },
-      email: { S: item.email },
-    })
-  }),
-  count,
-  awsDynamoDBPutItemStream({ TableName: 'Users' }),
-])
+	fetchReadableStream({
+		url: "https://api.example.com/users",
+		dataPath: "data",
+		nextPath: "pagination.next_url",
+	}),
+	createTransformStream((item, enqueue) => {
+		enqueue({
+			PK: { S: `USER#${item.id}` },
+			SK: { S: `PROFILE` },
+			name: { S: item.name },
+			email: { S: item.email },
+		});
+	}),
+	count,
+	awsDynamoDBPutItemStream({ TableName: "Users" }),
+]);
 
-console.log(result)
+console.log(result);
 // { objectCount: 450 }
 ```

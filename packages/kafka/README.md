@@ -27,7 +27,6 @@
 <p>You can read the documentation at: <a href="https://datastream.js.org">https://datastream.js.org</a></p>
 </div>
 
-
 ## Install
 
 To install datastream you can use NPM:
@@ -36,16 +35,13 @@ To install datastream you can use NPM:
 npm install --save @datastream/kafka
 ```
 
-
 ## Documentation and examples
 
 For documentation and examples, refer to the main [datastream monorepo on GitHub](https://github.com/willfarrell/datastream) or [datastream official website](https://datastream.js.org).
 
-
 ## Contributing
 
 Everyone is very welcome to contribute to this repository. Feel free to [raise issues](https://github.com/willfarrell/datastream/issues) or to [submit Pull Requests](https://github.com/willfarrell/datastream/pulls).
-
 
 ## License
 

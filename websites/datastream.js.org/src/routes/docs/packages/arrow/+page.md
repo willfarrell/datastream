@@ -1,4 +1,5 @@
 ---
+
 title: arrow
 description: Apache Arrow record batch transform streams.
 ---
@@ -19,10 +20,10 @@ Samples the first rows of the stream and infers an Arrow `Schema`. Rows pass thr
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `sampleSize` | `number` | `100` | Number of rows to buffer before sealing the schema |
-| `resultKey` | `string` | `"arrowDetectSchema"` | Key in pipeline result |
+| Option       | Type     | Default               | Description                                        |
+| ------------ | -------- | --------------------- | -------------------------------------------------- |
+| `sampleSize` | `number` | `100`                 | Number of rows to buffer before sealing the schema |
+| `resultKey`  | `string` | `"arrowDetectSchema"` | Key in pipeline result                             |
 
 ### Result
 
@@ -32,13 +33,13 @@ Samples the first rows of the stream and infers an Arrow `Schema`. Rows pass thr
 
 ### Type inference
 
-| Value | Arrow type |
-|-------|------------|
-| `boolean` | `Bool` |
-| Integer in signed 32-bit range | `Int32` |
-| Integer outside 32-bit range / non-integer `number` | `Float64` |
-| `Date` | `TimestampMillisecond` |
-| Anything else | `Utf8` |
+| Value                                               | Arrow type             |
+| --------------------------------------------------- | ---------------------- |
+| `boolean`                                           | `Bool`                 |
+| Integer in signed 32-bit range                      | `Int32`                |
+| Integer outside 32-bit range / non-integer `number` | `Float64`              |
+| `Date`                                              | `TimestampMillisecond` |
+| Anything else                                       | `Utf8`                 |
 
 Integers outside the signed 32-bit range widen to `Float64` (exact up to 2^53) instead of silently wrapping inside an `Int32` builder.
 
@@ -54,20 +55,20 @@ The schema is inferred from the first `sampleSize` rows only. Later rows are not
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { arrowDetectSchemaStream } from '@datastream/arrow'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { arrowDetectSchemaStream } from "@datastream/arrow";
 
-const detect = arrowDetectSchemaStream()
+const detect = arrowDetectSchemaStream();
 
 const result = await pipeline([
-  createReadableStream([
-    { id: 1, name: 'Alice' },
-    { id: 2, name: 'Bob' },
-  ]),
-  detect,
-])
+	createReadableStream([
+		{ id: 1, name: "Alice" },
+		{ id: 2, name: "Bob" },
+	]),
+	detect,
+]);
 
-console.log(result.arrowDetectSchema.fields) // ['id', 'name']
+console.log(result.arrowDetectSchema.fields); // ['id', 'name']
 ```
 
 ## `arrowBatchFromArrayStream` <span class="badge">Transform</span>
@@ -76,10 +77,10 @@ Builds Arrow `RecordBatch` objects from incoming array rows. Each row is an arra
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `schema` | `Schema \| () => Schema` | — | Arrow schema, or a lazy function returning one (required) |
-| `batchSize` | `number` | `10000` | Rows per emitted `RecordBatch` |
+| Option      | Type                     | Default | Description                                               |
+| ----------- | ------------------------ | ------- | --------------------------------------------------------- |
+| `schema`    | `Schema \| () => Schema` | —       | Arrow schema, or a lazy function returning one (required) |
+| `batchSize` | `number`                 | `10000` | Rows per emitted `RecordBatch`                            |
 
 ## `arrowBatchFromObjectStream` <span class="badge">Transform</span>
 
@@ -87,41 +88,44 @@ Builds Arrow `RecordBatch` objects from incoming object rows, mapping each schem
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `schema` | `Schema \| () => Schema` | — | Arrow schema, or a lazy function returning one (required) |
-| `batchSize` | `number` | `10000` | Rows per emitted `RecordBatch` |
+| Option      | Type                     | Default | Description                                               |
+| ----------- | ------------------------ | ------- | --------------------------------------------------------- |
+| `schema`    | `Schema \| () => Schema` | —       | Arrow schema, or a lazy function returning one (required) |
+| `batchSize` | `number`                 | `10000` | Rows per emitted `RecordBatch`                            |
 
 ### Value checks
 
 Both batch streams check each value against its field before it reaches the Arrow builder, which would otherwise coerce it silently:
 
-| Field type | Accepted values |
-|------------|-----------------|
+| Field type                           | Accepted values                          |
+| ------------------------------------ | ---------------------------------------- |
 | `Int8` … `Int32`, `Uint8` … `Uint32` | Integer `number` within the type's range |
-| `Float16` / `Float32` / `Float64` | Any `number` |
-| `Bool` | `boolean` |
-| `Timestamp` | Valid `Date`, or integer epoch `number` |
-| Other types (`Utf8`, `Int64`, …) | Not checked |
+| `Float16` / `Float32` / `Float64`    | Any `number`                             |
+| `Bool`                               | `boolean`                                |
+| `Timestamp`                          | Valid `Date`, or integer epoch `number`  |
+| Other types (`Utf8`, `Int64`, …)     | Not checked                              |
 
 `null` and `undefined` are allowed only in nullable fields. `""` counts as null, except in `Utf8` fields. A value that fails the check errors the stream. An integer out of range throws a `RangeError`, and any other mismatch a `TypeError`. The message names the stream, the zero-based row index, and the field: `arrowBatchFromObjectStream: row 2, field "id" expects Int32, got 3000000000`.
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { arrowDetectSchemaStream, arrowBatchFromObjectStream } from '@datastream/arrow'
+import { pipeline, createReadableStream } from "@datastream/core";
+import {
+	arrowDetectSchemaStream,
+	arrowBatchFromObjectStream,
+} from "@datastream/arrow";
 
-const detect = arrowDetectSchemaStream()
+const detect = arrowDetectSchemaStream();
 
 await pipeline([
-  createReadableStream(rows),
-  detect,
-  arrowBatchFromObjectStream({
-    schema: () => detect.result().value.schema,
-  }),
-  // ... e.g. duckdbArrowInsertStream
-])
+	createReadableStream(rows),
+	detect,
+	arrowBatchFromObjectStream({
+		schema: () => detect.result().value.schema,
+	}),
+	// ... e.g. duckdbArrowInsertStream
+]);
 ```
 
 ## `arrowToArrayStream` <span class="badge">Transform</span>
@@ -135,12 +139,12 @@ Expands each incoming `RecordBatch` into object rows, keyed by the batch schema'
 ### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { arrowToObjectStream } from '@datastream/arrow'
+import { pipeline } from "@datastream/core";
+import { arrowToObjectStream } from "@datastream/arrow";
 
 await pipeline([
-  recordBatchReadableStream,
-  arrowToObjectStream(),
-  // ... each chunk is { id, name, ... }
-])
+	recordBatchReadableStream,
+	arrowToObjectStream(),
+	// ... each chunk is { id, name, ... }
+]);
 ```

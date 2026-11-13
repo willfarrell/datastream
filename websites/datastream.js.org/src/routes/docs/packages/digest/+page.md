@@ -1,4 +1,5 @@
 ---
+
 title: digest
 description: Compute cryptographic hash digests while streaming data.
 ---
@@ -19,15 +20,15 @@ Computes a hash digest of all data passing through. Both builds return the strea
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `algorithm` | `string` | — | Hash algorithm (see table below). The aliases `SHA256`, `SHA384` and `SHA512` are accepted and reported as `SHA2-*` |
-| `resultKey` | `string` | `"digest"` | Key in pipeline result |
+| Option      | Type     | Default    | Description                                                                                                         |
+| ----------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| `algorithm` | `string` | —          | Hash algorithm (see table below). The aliases `SHA256`, `SHA384` and `SHA512` are accepted and reported as `SHA2-*` |
+| `resultKey` | `string` | `"digest"` | Key in pipeline result                                                                                              |
 
 ### Supported algorithms
 
-| Algorithm | Node.js | Browser |
-|-----------|---------|---------|
+| Algorithm  | Node.js       | Browser     |
+| ---------- | ------------- | ----------- |
 | `SHA2-256` | `node:crypto` | `hash-wasm` |
 | `SHA2-384` | `node:crypto` | `hash-wasm` |
 | `SHA2-512` | `node:crypto` | `hash-wasm` |
@@ -40,23 +41,23 @@ Any other value throws `Unsupported algorithm`.
 ### Result
 
 ```javascript
-'SHA2-256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+"SHA2-256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 ```
 
 ### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { fileReadStream } from '@datastream/file'
-import { digestStream } from '@datastream/digest'
+import { pipeline } from "@datastream/core";
+import { fileReadStream } from "@datastream/file";
+import { digestStream } from "@datastream/digest";
 
-const digest = digestStream({ algorithm: 'SHA2-256' })
+const digest = digestStream({ algorithm: "SHA2-256" });
 
 const result = await pipeline([
-  await fileReadStream({ path: './data.csv' }),
-  digest,
-])
+	await fileReadStream({ path: "./data.csv" }),
+	digest,
+]);
 
-console.log(result)
+console.log(result);
 // { digest: 'SHA2-256:e3b0c4429...' }
 ```

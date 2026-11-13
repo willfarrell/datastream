@@ -1,4 +1,5 @@
 ---
+
 title: fetch
 description: HTTP client streams with pagination, rate limiting, and retries for 429, 5xx and network errors.
 ---
@@ -17,34 +18,34 @@ Set global defaults for all fetch streams. Mutates module-level state — not sa
 
 ### Defaults
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `method` | `string` | `"GET"` | HTTP method |
-| `headers` | `object` | `{ Accept: 'application/json', 'Accept-Encoding': 'br, gzip, deflate' }` | Request headers |
-| `rateLimit` | `number` | `0.01` | Minimum seconds between requests (0.01 = 100/sec) |
-| `dataPath` | `string` | — | Dot-path to data array in JSON response body |
-| `nextPath` | `string` | — | Dot-path to next page URL in JSON response body |
-| `qs` | `object` | `{}` | Default query string parameters |
-| `offsetParam` | `string` | — | Query parameter name for offset pagination |
-| `offsetAmount` | `number` | — | Increment per page for offset pagination |
-| `concurrency` | `number` | `1` | Array items fetched at once |
-| `maxPages` | `number \| null` | `10000` | Maximum JSON pages fetched per request config (`null` = unlimited) |
-| `maxBodySize` | `number \| null` | `16777216` | Maximum bytes of a JSON response body (`null` = unlimited) |
-| `retryMaxCount` | `number \| null` | `10` | Maximum attempts per request when retrying (`null` = unlimited) |
-| `retryAfterMax` | `number \| null` | `60000` | Upper bound in ms for a `Retry-After` wait (`null` = no cap) |
-| `timeout` | `number \| null` | — | Per-attempt timeout in ms (`null` or unset = none) |
+| Option          | Type             | Default                                                                  | Description                                                        |
+| --------------- | ---------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `method`        | `string`         | `"GET"`                                                                  | HTTP method                                                        |
+| `headers`       | `object`         | `{ Accept: 'application/json', 'Accept-Encoding': 'br, gzip, deflate' }` | Request headers                                                    |
+| `rateLimit`     | `number`         | `0.01`                                                                   | Minimum seconds between requests (0.01 = 100/sec)                  |
+| `dataPath`      | `string`         | —                                                                        | Dot-path to data array in JSON response body                       |
+| `nextPath`      | `string`         | —                                                                        | Dot-path to next page URL in JSON response body                    |
+| `qs`            | `object`         | `{}`                                                                     | Default query string parameters                                    |
+| `offsetParam`   | `string`         | —                                                                        | Query parameter name for offset pagination                         |
+| `offsetAmount`  | `number`         | —                                                                        | Increment per page for offset pagination                           |
+| `concurrency`   | `number`         | `1`                                                                      | Array items fetched at once                                        |
+| `maxPages`      | `number \| null` | `10000`                                                                  | Maximum JSON pages fetched per request config (`null` = unlimited) |
+| `maxBodySize`   | `number \| null` | `16777216`                                                               | Maximum bytes of a JSON response body (`null` = unlimited)         |
+| `retryMaxCount` | `number \| null` | `10`                                                                     | Maximum attempts per request when retrying (`null` = unlimited)    |
+| `retryAfterMax` | `number \| null` | `60000`                                                                  | Upper bound in ms for a `Retry-After` wait (`null` = no cap)       |
+| `timeout`       | `number \| null` | —                                                                        | Per-attempt timeout in ms (`null` or unset = none)                 |
 
 An option left `undefined` on a request uses its default. Only `null` lifts a limit. Going over a limit throws a `RangeError`.
 
 ### Example
 
 ```javascript
-import { fetchSetDefaults } from '@datastream/fetch'
+import { fetchSetDefaults } from "@datastream/fetch";
 
 fetchSetDefaults({
-  headers: { Authorization: 'Bearer token123' },
-  rateLimit: 0.1, // 10 requests/sec
-})
+	headers: { Authorization: "Bearer token123" },
+	rateLimit: 0.1, // 10 requests/sec
+});
 ```
 
 ## `fetchReadableStream` <span class="badge">Readable</span>
@@ -55,21 +56,21 @@ Also exported as `fetchResponseStream`.
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `url` | `string` | — | Request URL |
-| `method` | `string` | `"GET"` | HTTP method |
-| `headers` | `object` | — | Request headers (merged with defaults) |
-| `rateLimit` | `number` | `0.01` | Seconds between requests |
-| `dataPath` | `string` | — | Dot-path to data in JSON body |
-| `nextPath` | `string` | — | Dot-path to next URL in JSON body |
-| `qs` | `object` | `{}` | Query string parameters (appended to any query already on `url`) |
-| `offsetParam` | `string` | — | Query param for offset-based pagination |
-| `offsetAmount` | `number` | — | Offset increment per page |
-| `concurrency` | `number` | `1` | Array items fetched at once (see below) |
-| `maxPages` | `number \| null` | `10000` | Maximum JSON pages per request config; exceeding it throws a `RangeError`; `null` = unlimited |
-| `maxBodySize` | `number \| null` | `16777216` | Maximum bytes of a JSON response body; exceeding it throws a `RangeError`; `null` = unlimited |
-| `timeout` | `number \| null` | — | Per-attempt timeout in ms; see [Timeout](#timeout) |
+| Option         | Type             | Default    | Description                                                                                   |
+| -------------- | ---------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `url`          | `string`         | —          | Request URL                                                                                   |
+| `method`       | `string`         | `"GET"`    | HTTP method                                                                                   |
+| `headers`      | `object`         | —          | Request headers (merged with defaults)                                                        |
+| `rateLimit`    | `number`         | `0.01`     | Seconds between requests                                                                      |
+| `dataPath`     | `string`         | —          | Dot-path to data in JSON body                                                                 |
+| `nextPath`     | `string`         | —          | Dot-path to next URL in JSON body                                                             |
+| `qs`           | `object`         | `{}`       | Query string parameters (appended to any query already on `url`)                              |
+| `offsetParam`  | `string`         | —          | Query param for offset-based pagination                                                       |
+| `offsetAmount` | `number`         | —          | Offset increment per page                                                                     |
+| `concurrency`  | `number`         | `1`        | Array items fetched at once (see below)                                                       |
+| `maxPages`     | `number \| null` | `10000`    | Maximum JSON pages per request config; exceeding it throws a `RangeError`; `null` = unlimited |
+| `maxBodySize`  | `number \| null` | `16777216` | Maximum bytes of a JSON response body; exceeding it throws a `RangeError`; `null` = unlimited |
+| `timeout`      | `number \| null` | —          | Per-attempt timeout in ms; see [Timeout](#timeout)                                            |
 
 `url` must be an absolute `http:` or `https:` URL. In a browser a relative URL resolves against the page first, as `fetch()` does. Any other scheme (`file:`, `data:`, `blob:`, `javascript:`, …), a relative URL in Node, or an unparseable one throws a `TypeError` (`fetch <method> <url> is not an http: or https: URL`) before any request is made. Pagination and redirect targets can't switch scheme either: they must stay on the first request's origin, and an origin includes the scheme.
 
@@ -81,38 +82,41 @@ Set the `concurrency` option to fetch array items in parallel. It is read from t
 
 ```javascript
 fetchReadableStream(
-  ['a', 'b', 'c'].map((name) => ({
-    url: `https://api.example.com/${name}`,
-    dataPath: 'data',
-    concurrency: 3,
-  })),
-)
+	["a", "b", "c"].map((name) => ({
+		url: `https://api.example.com/${name}`,
+		dataPath: "data",
+		concurrency: 3,
+	})),
+);
 ```
 
 ### Pagination strategies
 
 **Link header** — the `rel="next"` link is automatically followed when present. Relative targets resolve against the current page URL. The `rel` parameter name and values are case-insensitive, and only the first `rel` of each link counts:
+
 ```
 Link: <https://api.example.com/users?page=1>; rel="prev", </users?page=3>; rel="next"
 ```
 
 **Body path** — use `nextPath` to extract the next URL (absolute or relative) from the JSON response:
+
 ```javascript
 fetchReadableStream({
-  url: 'https://api.example.com/users',
-  dataPath: 'data',
-  nextPath: 'pagination.next_url',
-})
+	url: "https://api.example.com/users",
+	dataPath: "data",
+	nextPath: "pagination.next_url",
+});
 ```
 
 **Offset** — use `offsetParam` and `offsetAmount` for numeric pagination:
+
 ```javascript
 fetchReadableStream({
-  url: 'https://api.example.com/users',
-  dataPath: 'results',
-  offsetParam: 'offset',
-  offsetAmount: 100,
-})
+	url: "https://api.example.com/users",
+	dataPath: "results",
+	offsetParam: "offset",
+	offsetAmount: 100,
+});
 ```
 
 Pagination stays on the origin of the first request. It stops with an error when a next URL is the same as the current page (a page linking to itself) or when more than `maxPages` pages would be fetched (a `RangeError`).
@@ -137,9 +141,9 @@ If a `Retry-After` header is present (on a `429` or a 5xx), its value (seconds, 
 
 Attempts are capped at `retryMaxCount` (default: 10; `null` = unlimited), counted per request. The count resets after each successful response, so every page gets the full budget. Running out on a `429` or 5xx throws a `RangeError` (`fetch <status> <method> <url> max retries (<n>) exceeded`). Running out on network errors throws the last `TypeError` from `fetch`.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `retryMaxCount` | `number \| null` | `10` | Maximum attempts per request; `null` = unlimited |
+| Option          | Type             | Default | Description                                                                        |
+| --------------- | ---------------- | ------- | ---------------------------------------------------------------------------------- |
+| `retryMaxCount` | `number \| null` | `10`    | Maximum attempts per request; `null` = unlimited                                   |
 | `retryAfterMax` | `number \| null` | `60000` | Upper bound in ms for a `Retry-After` wait; `null` = no cap (still at most 2^31-1) |
 
 ### Timeout
@@ -147,29 +151,29 @@ Attempts are capped at `retryMaxCount` (default: 10; `null` = unlimited), counte
 Set `timeout` (ms) to abort a request that takes too long. It is combined with `streamOptions.signal`, so either one cancels the request. Each attempt gets its own timeout, so a retry doesn't start out already expired. The timeout also covers reading the response body, so for a large download set it to the longest the whole transfer may take. When it fires, the request rejects with a `TimeoutError` `DOMException`, which isn't retried. Unset or `null` (the default) means no timeout.
 
 ```javascript
-fetchReadableStream({ url: 'https://api.example.com/users', timeout: 30_000 })
+fetchReadableStream({ url: "https://api.example.com/users", timeout: 30_000 });
 ```
 
 ### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { fetchReadableStream } from '@datastream/fetch'
-import { objectCountStream } from '@datastream/object'
+import { pipeline } from "@datastream/core";
+import { fetchReadableStream } from "@datastream/fetch";
+import { objectCountStream } from "@datastream/object";
 
-const count = objectCountStream()
+const count = objectCountStream();
 
 const result = await pipeline([
-  fetchReadableStream({
-    url: 'https://api.example.com/users',
-    dataPath: 'data',
-    nextPath: 'meta.next',
-    headers: { Authorization: 'Bearer token' },
-  }),
-  count,
-])
+	fetchReadableStream({
+		url: "https://api.example.com/users",
+		dataPath: "data",
+		nextPath: "meta.next",
+		headers: { Authorization: "Bearer token" },
+	}),
+	count,
+]);
 
-console.log(result)
+console.log(result);
 // { objectCount: 450 }
 ```
 
@@ -177,9 +181,9 @@ console.log(result)
 
 ```javascript
 fetchReadableStream([
-  { url: 'https://api.example.com/users?status=active', dataPath: 'data' },
-  { url: 'https://api.example.com/users?status=inactive', dataPath: 'data' },
-])
+	{ url: "https://api.example.com/users?status=active", dataPath: "data" },
+	{ url: "https://api.example.com/users?status=inactive", dataPath: "data" },
+]);
 ```
 
 ## `fetchWritableStream` <span class="badge">Writable, async</span>
@@ -200,35 +204,35 @@ Also exported as `fetchRequestStream`.
 
 Takes the same request options as `fetchReadableStream`, plus:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option      | Type     | Default    | Description                                |
+| ----------- | -------- | ---------- | ------------------------------------------ |
 | `resultKey` | `string` | `"output"` | Key of the response in the pipeline result |
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { fetchWritableStream } from '@datastream/fetch'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { fetchWritableStream } from "@datastream/fetch";
 import {
-  csvObjectToArrayStream,
-  csvInjectHeaderStream,
-  csvFormatStream,
-} from '@datastream/csv'
+	csvObjectToArrayStream,
+	csvInjectHeaderStream,
+	csvFormatStream,
+} from "@datastream/csv";
 
-const headers = ['id', 'name']
+const headers = ["id", "name"];
 
 await pipeline([
-  createReadableStream(data), // [{ id: 1, name: 'a' }, ...]
-  // csvFormatStream formats array rows: convert objects and add the header row
-  csvObjectToArrayStream({ headers }),
-  csvInjectHeaderStream({ header: headers }),
-  csvFormatStream(),
-  await fetchWritableStream({
-    url: 'https://api.example.com/upload',
-    method: 'PUT',
-    headers: { 'Content-Type': 'text/csv' },
-  }),
-])
+	createReadableStream(data), // [{ id: 1, name: 'a' }, ...]
+	// csvFormatStream formats array rows: convert objects and add the header row
+	csvObjectToArrayStream({ headers }),
+	csvInjectHeaderStream({ header: headers }),
+	csvFormatStream(),
+	await fetchWritableStream({
+		url: "https://api.example.com/upload",
+		method: "PUT",
+		headers: { "Content-Type": "text/csv" },
+	}),
+]);
 ```
 
 ## `fetchRateLimit` <span class="badge">async</span>
@@ -238,10 +242,10 @@ The single request function the streams above use, exported for one-off calls. I
 `fetchRateLimit(options, streamOptions)` takes the same request options as `fetchReadableStream` (pagination options are ignored) and `streamOptions.signal` to cancel. It writes `rateLimitTimestamp` back onto `options`: pass the same object again to keep the next call `rateLimit` seconds after this one.
 
 ```javascript
-import { fetchRateLimit } from '@datastream/fetch'
+import { fetchRateLimit } from "@datastream/fetch";
 
-const options = { url: 'https://api.example.com/health', rateLimit: 1 }
-const response = await fetchRateLimit(options)
-console.log(response.status, await response.json())
-await fetchRateLimit(options) // waits until 1 s after the first request
+const options = { url: "https://api.example.com/health", rateLimit: 1 };
+const response = await fetchRateLimit(options);
+console.log(response.status, await response.json());
+await fetchRateLimit(options); // waits until 1 s after the first request
 ```

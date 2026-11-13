@@ -1,4 +1,5 @@
 ---
+
 title: charset
 description: Character set detection, decoding, and encoding streams.
 ---
@@ -21,8 +22,8 @@ Only the first 64 KiB (65,536 bytes) of the stream is sampled. Every chunk still
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option      | Type     | Default     | Description            |
+| ----------- | -------- | ----------- | ---------------------- |
 | `resultKey` | `string` | `"charset"` | Key in pipeline result |
 
 ### Result
@@ -40,18 +41,18 @@ UTF-8, UTF-16BE, UTF-16LE, UTF-32BE, UTF-32LE, Shift_JIS, ISO-2022-JP, ISO-2022-
 ### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { fileReadStream } from '@datastream/file'
-import { charsetDetectStream, charsetDecodeStream } from '@datastream/charset'
+import { pipeline } from "@datastream/core";
+import { fileReadStream } from "@datastream/file";
+import { charsetDetectStream, charsetDecodeStream } from "@datastream/charset";
 
-const detect = charsetDetectStream()
+const detect = charsetDetectStream();
 
 const result = await pipeline([
-  await fileReadStream({ path: './data.csv' }),
-  detect,
-])
+	await fileReadStream({ path: "./data.csv" }),
+	detect,
+]);
 
-console.log(result.charset)
+console.log(result.charset);
 // { charset: 'UTF-8', confidence: 80 }
 ```
 
@@ -63,16 +64,16 @@ An unknown `charset` throws when the stream is created, in both builds (`Unsuppo
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option    | Type     | Default   | Description                                              |
+| --------- | -------- | --------- | -------------------------------------------------------- |
 | `charset` | `string` | `"UTF-8"` | Character encoding name (e.g. `"UTF-8"`, `"ISO-8859-1"`) |
 
 ### Example
 
 ```javascript
-import { charsetDecodeStream } from '@datastream/charset'
+import { charsetDecodeStream } from "@datastream/charset";
 
-charsetDecodeStream({ charset: 'ISO-8859-1' })
+charsetDecodeStream({ charset: "ISO-8859-1" });
 ```
 
 ## `charsetEncodeStream` <span class="badge">Transform</span>
@@ -83,14 +84,14 @@ An unknown `charset` throws when the stream is created, in both builds.
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option    | Type     | Default   | Description                                        |
+| --------- | -------- | --------- | -------------------------------------------------- |
 | `charset` | `string` | `"UTF-8"` | Character encoding name. UTF-8 only in the browser |
 
 ### Example
 
 ```javascript
-import { charsetEncodeStream } from '@datastream/charset'
+import { charsetEncodeStream } from "@datastream/charset";
 
-charsetEncodeStream({ charset: 'UTF-8' })
+charsetEncodeStream({ charset: "UTF-8" });
 ```

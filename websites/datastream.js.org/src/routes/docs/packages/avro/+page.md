@@ -1,4 +1,5 @@
 ---
+
 title: avro
 description: Apache Avro encode/decode transform streams built on avsc.
 ---
@@ -30,31 +31,31 @@ Encodes each incoming object into Avro binary (`Uint8Array`).
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `schema` | `object \| string \| Type \| () => …` | — | Avro schema (required) |
+| Option   | Type                                  | Default | Description            |
+| -------- | ------------------------------------- | ------- | ---------------------- |
+| `schema` | `object \| string \| Type \| () => …` | —       | Avro schema (required) |
 
 A record that does not match the schema errors the stream with a `TypeError` that lists the path of each bad field, for example `avroEncodeStream: record does not match schema at $.id, $.name`. Field values are not included in the message.
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { avroEncodeStream } from '@datastream/avro'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { avroEncodeStream } from "@datastream/avro";
 
 const schema = {
-  type: 'record',
-  name: 'User',
-  fields: [
-    { name: 'id', type: 'int' },
-    { name: 'name', type: 'string' },
-  ],
-}
+	type: "record",
+	name: "User",
+	fields: [
+		{ name: "id", type: "int" },
+		{ name: "name", type: "string" },
+	],
+};
 
 await pipeline([
-  createReadableStream([{ id: 1, name: 'Alice' }]),
-  avroEncodeStream({ schema }),
-])
+	createReadableStream([{ id: 1, name: "Alice" }]),
+	avroEncodeStream({ schema }),
+]);
 ```
 
 ## `avroDecodeStream` <span class="badge">Transform</span>
@@ -63,11 +64,11 @@ Decodes each chunk (one whole Avro record) into an object. A chunk is a `Uint8Ar
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `schema` | `object \| string \| Type \| () => …` | — | Writer schema. Required unless `resolveSchema` is set |
-| `resolveSchema` | `(id) => schema \| Promise<schema>` | — | Looks the writer schema up per message. Each chunk is then an unframe stream's envelope (see below). Cannot be combined with `schema` |
-| `maxMessageSize` | `number \| null` | `67108864` (64MiB) | Maximum bytes per message; a larger one errors the stream with a `RangeError`. `null` disables the limit |
+| Option           | Type                                  | Default            | Description                                                                                                                           |
+| ---------------- | ------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema`         | `object \| string \| Type \| () => …` | —                  | Writer schema. Required unless `resolveSchema` is set                                                                                 |
+| `resolveSchema`  | `(id) => schema \| Promise<schema>`   | —                  | Looks the writer schema up per message. Each chunk is then an unframe stream's envelope (see below). Cannot be combined with `schema` |
+| `maxMessageSize` | `number \| null`                      | `67108864` (64MiB) | Maximum bytes per message; a larger one errors the stream with a `RangeError`. `null` disables the limit                              |
 
 ### Per-message schemas: `resolveSchema`
 
@@ -85,26 +86,28 @@ With `resolveSchema`, each chunk is an envelope from [`confluentUnframeStream`](
 Unframe each Kafka message, decode it with the writer schema its id points to, then commit it. The topic, partition and offset survive both steps, so `kafkaCommitStream` can commit the decoded messages:
 
 ```javascript
-import { pipeline, createTransformStream } from '@datastream/core'
-import { kafkaConsumeStream, kafkaCommitStream } from '@datastream/kafka'
+import { pipeline, createTransformStream } from "@datastream/core";
+import { kafkaConsumeStream, kafkaCommitStream } from "@datastream/kafka";
 import {
-  confluentSchemaRegistryResolver,
-  confluentUnframeStream,
-} from '@datastream/schema-registry'
-import { avroDecodeStream } from '@datastream/avro'
+	confluentSchemaRegistryResolver,
+	confluentUnframeStream,
+} from "@datastream/schema-registry";
+import { avroDecodeStream } from "@datastream/avro";
 
 await pipeline([
-  await kafkaConsumeStream({ consumer, topics: ['orders'] }),
-  confluentUnframeStream(),
-  avroDecodeStream({
-    resolveSchema: confluentSchemaRegistryResolver({ url: 'https://registry.example.com' }),
-  }),
-  createTransformStream(async (message, enqueue) => {
-    await handleOrder(message.value)
-    enqueue(message)
-  }),
-  await kafkaCommitStream({ consumer }),
-])
+	await kafkaConsumeStream({ consumer, topics: ["orders"] }),
+	confluentUnframeStream(),
+	avroDecodeStream({
+		resolveSchema: confluentSchemaRegistryResolver({
+			url: "https://registry.example.com",
+		}),
+	}),
+	createTransformStream(async (message, enqueue) => {
+		await handleOrder(message.value);
+		enqueue(message);
+	}),
+	await kafkaCommitStream({ consumer }),
+]);
 ```
 
 Messages may carry different schema ids; each id is looked up once.

@@ -1,4 +1,5 @@
 ---
+
 title: indexeddb
 description: IndexedDB read and write streams for the browser.
 ---
@@ -16,13 +17,13 @@ npm install @datastream/indexeddb
 Opens (or creates) an IndexedDB database. Re-exported from the [idb](https://www.npmjs.com/package/idb) library.
 
 ```javascript
-import { indexedDBConnect } from '@datastream/indexeddb'
+import { indexedDBConnect } from "@datastream/indexeddb";
 
-const db = await indexedDBConnect('my-database', 1, {
-  upgrade(db) {
-    db.createObjectStore('records', { keyPath: 'id' })
-  },
-})
+const db = await indexedDBConnect("my-database", 1, {
+	upgrade(db) {
+		db.createObjectStore("records", { keyPath: "id" });
+	},
+});
 ```
 
 ## `indexedDBReadStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -35,42 +36,51 @@ Creating the stream does not touch the database. A missing store or index surfac
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `db` | `IDBPDatabase` | — | idb-wrapped database from `indexedDBConnect` (a raw `IDBDatabase` does not work) |
-| `store` | `string` | — | Object store name |
-| `index` | `string` | — | Optional index name. Records are read in index order |
-| `key` | `IDBKeyRange \| IDBValidKey` | — | Optional key or key range. Filters on the primary key, or on the index key when `index` is set |
+| Option  | Type                         | Default | Description                                                                                    |
+| ------- | ---------------------------- | ------- | ---------------------------------------------------------------------------------------------- |
+| `db`    | `IDBPDatabase`               | —       | idb-wrapped database from `indexedDBConnect` (a raw `IDBDatabase` does not work)               |
+| `store` | `string`                     | —       | Object store name                                                                              |
+| `index` | `string`                     | —       | Optional index name. Records are read in index order                                           |
+| `key`   | `IDBKeyRange \| IDBValidKey` | —       | Optional key or key range. Filters on the primary key, or on the index key when `index` is set |
 
 `index` and `key` are independent: `key` alone filters by primary key, `index` alone walks the whole index, and both together filter by index key.
 
 ```javascript
 // Primary keys 2 to 3
-await indexedDBReadStream({ db, store: 'records', key: IDBKeyRange.bound(2, 3) })
+await indexedDBReadStream({
+	db,
+	store: "records",
+	key: IDBKeyRange.bound(2, 3),
+});
 
 // Every record, ordered by the 'byCity' index
-await indexedDBReadStream({ db, store: 'records', index: 'byCity' })
+await indexedDBReadStream({ db, store: "records", index: "byCity" });
 
 // Records whose 'byCity' index key is 'Toronto'
-await indexedDBReadStream({ db, store: 'records', index: 'byCity', key: 'Toronto' })
+await indexedDBReadStream({
+	db,
+	store: "records",
+	index: "byCity",
+	key: "Toronto",
+});
 ```
 
 ### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { indexedDBConnect, indexedDBReadStream } from '@datastream/indexeddb'
-import { objectCountStream } from '@datastream/object'
+import { pipeline } from "@datastream/core";
+import { indexedDBConnect, indexedDBReadStream } from "@datastream/indexeddb";
+import { objectCountStream } from "@datastream/object";
 
-const db = await indexedDBConnect('my-database', 1)
-const count = objectCountStream()
+const db = await indexedDBConnect("my-database", 1);
+const count = objectCountStream();
 
 const result = await pipeline([
-  await indexedDBReadStream({ db, store: 'records' }),
-  count,
-])
+	await indexedDBReadStream({ db, store: "records" }),
+	count,
+]);
 
-console.log(result)
+console.log(result);
 // { objectCount: 100 }
 ```
 
@@ -82,26 +92,26 @@ Each record is inserted with `add()` in its own `readwrite` transaction, and the
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `db` | `IDBPDatabase` | — | idb-wrapped database from `indexedDBConnect` (a raw `IDBDatabase` does not work) |
-| `store` | `string` | — | Object store name |
+| Option  | Type           | Default | Description                                                                      |
+| ------- | -------------- | ------- | -------------------------------------------------------------------------------- |
+| `db`    | `IDBPDatabase` | —       | idb-wrapped database from `indexedDBConnect` (a raw `IDBDatabase` does not work) |
+| `store` | `string`       | —       | Object store name                                                                |
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { indexedDBConnect, indexedDBWriteStream } from '@datastream/indexeddb'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { indexedDBConnect, indexedDBWriteStream } from "@datastream/indexeddb";
 
-const db = await indexedDBConnect('my-database', 1)
+const db = await indexedDBConnect("my-database", 1);
 
 await pipeline([
-  createReadableStream([
-    { id: 1, name: 'Alice' },
-    { id: 2, name: 'Bob' },
-  ]),
-  await indexedDBWriteStream({ db, store: 'records' }),
-])
+	createReadableStream([
+		{ id: 1, name: "Alice" },
+		{ id: 2, name: "Bob" },
+	]),
+	await indexedDBWriteStream({ db, store: "records" }),
+]);
 ```
 
 ## Platform support

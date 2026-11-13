@@ -1,4 +1,5 @@
 ---
+
 title: duckdb
 description: DuckDB query readable and transactional writable streams for inserting rows and Arrow record batches.
 ---
@@ -13,10 +14,10 @@ npm install @datastream/duckdb
 
 DuckDB is provided through optional peer dependencies. Install the runtime for your platform:
 
-| Platform | Package |
-|----------|---------|
-| Node.js | `@duckdb/node-api` |
-| Browser | `@duckdb/duckdb-wasm` |
+| Platform | Package               |
+| -------- | --------------------- |
+| Node.js  | `@duckdb/node-api`    |
+| Browser  | `@duckdb/duckdb-wasm` |
 
 The Arrow insert stream also requires `apache-arrow`.
 
@@ -24,15 +25,15 @@ The Arrow insert stream also requires `apache-arrow`.
 
 Opens a DuckDB connection. Defaults to an in-memory database.
 
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `path` | `string` | `":memory:"` | Database file path, or `:memory:` |
-| `options` | `object` | — | Node.js: DuckDB instance options. Browser: `{ bundles }` (see below) |
+| Argument  | Type     | Default      | Description                                                          |
+| --------- | -------- | ------------ | -------------------------------------------------------------------- |
+| `path`    | `string` | `":memory:"` | Database file path, or `:memory:`                                    |
+| `options` | `object` | —            | Node.js: DuckDB instance options. Browser: `{ bundles }` (see below) |
 
 ```javascript
-import { duckdbConnect } from '@datastream/duckdb'
+import { duckdbConnect } from "@datastream/duckdb";
 
-const db = await duckdbConnect() // in-memory
+const db = await duckdbConnect(); // in-memory
 ```
 
 ### Browser bundles
@@ -40,20 +41,20 @@ const db = await duckdbConnect() // in-memory
 In the browser, `duckdbConnect` loads the duckdb-wasm module and worker. By default they come from jsDelivr (`getJsDelivrBundles()`). That code has no integrity pin, and browsers refuse to start a `Worker` from a cross-origin URL, so in production host the bundle files yourself and pass them as `bundles`:
 
 ```javascript
-import { duckdbConnect } from '@datastream/duckdb'
+import { duckdbConnect } from "@datastream/duckdb";
 
-const db = await duckdbConnect(':memory:', {
-  bundles: {
-    mvp: {
-      mainModule: '/duckdb/duckdb-mvp.wasm',
-      mainWorker: '/duckdb/duckdb-browser-mvp.worker.js',
-    },
-    eh: {
-      mainModule: '/duckdb/duckdb-eh.wasm',
-      mainWorker: '/duckdb/duckdb-browser-eh.worker.js',
-    },
-  },
-})
+const db = await duckdbConnect(":memory:", {
+	bundles: {
+		mvp: {
+			mainModule: "/duckdb/duckdb-mvp.wasm",
+			mainWorker: "/duckdb/duckdb-browser-mvp.worker.js",
+		},
+		eh: {
+			mainModule: "/duckdb/duckdb-eh.wasm",
+			mainWorker: "/duckdb/duckdb-browser-eh.worker.js",
+		},
+	},
+});
 ```
 
 The files ship in `@duckdb/duckdb-wasm/dist`. `bundles` is passed to duckdb-wasm's `selectBundle()`.
@@ -64,11 +65,11 @@ Runs a query and streams each result row as a plain object. Returns the readable
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `db` | `Connection` | — | DuckDB connection from `duckdbConnect` (required) |
-| `sql` | `string` | — | Query to run (required) |
-| `params` | `array` | — | Values bound to positional `?` params in order |
+| Option   | Type         | Default | Description                                       |
+| -------- | ------------ | ------- | ------------------------------------------------- |
+| `db`     | `Connection` | —       | DuckDB connection from `duckdbConnect` (required) |
+| `sql`    | `string`     | —       | Query to run (required)                           |
+| `params` | `array`      | —       | Values bound to positional `?` params in order    |
 
 Rows are pulled from DuckDB as the stream is read, one result chunk (Node.js) or Arrow record batch (browser) at a time, so large results are not loaded into memory.
 
@@ -78,26 +79,26 @@ Destroying the stream early (for example, `break` in a `for await` loop, a pipel
 
 Numbers, strings, booleans and `null` come out the same on both platforms, and `BIGINT` is a `bigint` on both. Some types differ:
 
-| DuckDB type | Node.js | Browser |
-|-------------|---------|---------|
-| `DATE` / `TIMESTAMP` | `Date` | epoch-millisecond `number` |
-| `DECIMAL` | `number` | Arrow's raw decimal value |
+| DuckDB type          | Node.js  | Browser                    |
+| -------------------- | -------- | -------------------------- |
+| `DATE` / `TIMESTAMP` | `Date`   | epoch-millisecond `number` |
+| `DECIMAL`            | `number` | Arrow's raw decimal value  |
 
 Cast in SQL (for example `price::DOUBLE`, `epoch_ms(created_at)`) when you need the same value on both.
 
 ### Example
 
 ```javascript
-import { duckdbConnect, duckdbQueryStream } from '@datastream/duckdb'
+import { duckdbConnect, duckdbQueryStream } from "@datastream/duckdb";
 
-const db = await duckdbConnect()
+const db = await duckdbConnect();
 
 for await (const row of duckdbQueryStream({
-  db,
-  sql: 'SELECT id, name FROM people WHERE id > ?',
-  params: [100],
+	db,
+	sql: "SELECT id, name FROM people WHERE id > ?",
+	params: [100],
 })) {
-  console.log(row.id, row.name)
+	console.log(row.id, row.name);
 }
 ```
 
@@ -106,27 +107,27 @@ for await (const row of duckdbQueryStream({
 There is no separate file API: DuckDB reads and writes these formats in SQL. Read a file with `read_parquet`, `read_csv` or `read_json` in `duckdbQueryStream`:
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { duckdbConnect, duckdbQueryStream } from '@datastream/duckdb'
+import { pipeline } from "@datastream/core";
+import { duckdbConnect, duckdbQueryStream } from "@datastream/duckdb";
 
-const db = await duckdbConnect()
+const db = await duckdbConnect();
 
 await pipeline([
-  duckdbQueryStream({
-    db,
-    sql: "SELECT * FROM read_parquet('events.parquet') WHERE type = ?",
-    params: ['click'],
-  }),
-  // ...transform / write rows
-])
+	duckdbQueryStream({
+		db,
+		sql: "SELECT * FROM read_parquet('events.parquet') WHERE type = ?",
+		params: ["click"],
+	}),
+	// ...transform / write rows
+]);
 ```
 
 Write a table or query out with `COPY` (`db.run` on Node.js, `db.query` in the browser):
 
 ```javascript
 await db.run(
-  "COPY (SELECT * FROM events WHERE type = 'click') TO 'clicks.parquet' (FORMAT parquet)",
-)
+	"COPY (SELECT * FROM events WHERE type = 'click') TO 'clicks.parquet' (FORMAT parquet)",
+);
 ```
 
 To turn a stream into a Parquet file, insert it with `duckdbAppenderStream` or `duckdbArrowInsertStream` first, then `COPY` the table. In the browser, the file paths refer to duckdb-wasm's virtual file system (register files with `db.bindings.registerFileURL` / `registerFileHandle`).
@@ -149,30 +150,30 @@ Appends array or object rows into an existing table using the DuckDB appender. R
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `db` | `Connection` | — | DuckDB connection from `duckdbConnect` (required) |
-| `table` | `string` | — | Target table name (required) |
-| `schema` | `Schema \| () => Schema` | — | Arrow schema; when provided and the table does not exist, the table is created from it |
+| Option   | Type                     | Default | Description                                                                            |
+| -------- | ------------------------ | ------- | -------------------------------------------------------------------------------------- |
+| `db`     | `Connection`             | —       | DuckDB connection from `duckdbConnect` (required)                                      |
+| `table`  | `string`                 | —       | Target table name (required)                                                           |
+| `schema` | `Schema \| () => Schema` | —       | Arrow schema; when provided and the table does not exist, the table is created from it |
 
 When no `schema` is given, the target table must already exist; its column names are read from the table. Array rows are inserted in column order, object rows by column name.
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { duckdbConnect, duckdbAppenderStream } from '@datastream/duckdb'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { duckdbConnect, duckdbAppenderStream } from "@datastream/duckdb";
 
-const db = await duckdbConnect()
-await db.run('CREATE TABLE people (id INTEGER, name VARCHAR)')
+const db = await duckdbConnect();
+await db.run("CREATE TABLE people (id INTEGER, name VARCHAR)");
 
 await pipeline([
-  createReadableStream([
-    { id: 1, name: 'Alice' },
-    { id: 2, name: 'Bob' },
-  ]),
-  await duckdbAppenderStream({ db, table: 'people' }),
-])
+	createReadableStream([
+		{ id: 1, name: "Alice" },
+		{ id: 2, name: "Bob" },
+	]),
+	await duckdbAppenderStream({ db, table: "people" }),
+]);
 ```
 
 ## `duckdbArrowInsertStream` <span class="badge">Writable</span>
@@ -181,12 +182,12 @@ Inserts Apache Arrow `RecordBatch` objects into a table. Returns a Promise resol
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `db` | `Connection` | — | DuckDB connection from `duckdbConnect` (required) |
-| `table` | `string` | — | Target table name (required) |
-| `schema` | `Schema \| () => Schema` | — | Arrow schema; when provided and the table does not exist, the table is created from it |
-| `batchRows` | `number` | `100000` | Browser only: rows buffered before each insert. Lower it to reduce memory use |
+| Option      | Type                     | Default  | Description                                                                            |
+| ----------- | ------------------------ | -------- | -------------------------------------------------------------------------------------- |
+| `db`        | `Connection`             | —        | DuckDB connection from `duckdbConnect` (required)                                      |
+| `table`     | `string`                 | —        | Target table name (required)                                                           |
+| `schema`    | `Schema \| () => Schema` | —        | Arrow schema; when provided and the table does not exist, the table is created from it |
+| `batchRows` | `number`                 | `100000` | Browser only: rows buffered before each insert. Lower it to reduce memory use          |
 
 On Node.js, batch fields are matched to table columns by name, ignoring case (a table column `ID` takes the Arrow field `id`). A batch with a missing column, or a different number of columns than the table, throws.
 
@@ -195,44 +196,47 @@ On Node.js, Arrow `Date` and `Timestamp` values are stored as DuckDB dates/times
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { arrowDetectSchemaStream, arrowBatchFromObjectStream } from '@datastream/arrow'
-import { duckdbConnect, duckdbArrowInsertStream } from '@datastream/duckdb'
+import { pipeline, createReadableStream } from "@datastream/core";
+import {
+	arrowDetectSchemaStream,
+	arrowBatchFromObjectStream,
+} from "@datastream/arrow";
+import { duckdbConnect, duckdbArrowInsertStream } from "@datastream/duckdb";
 
-const db = await duckdbConnect()
-const detect = arrowDetectSchemaStream()
+const db = await duckdbConnect();
+const detect = arrowDetectSchemaStream();
 
 await pipeline([
-  createReadableStream(rows),
-  detect,
-  arrowBatchFromObjectStream({ schema: () => detect.result().value.schema }),
-  await duckdbArrowInsertStream({
-    db,
-    table: 'events',
-    schema: () => detect.result().value.schema,
-  }),
-])
+	createReadableStream(rows),
+	detect,
+	arrowBatchFromObjectStream({ schema: () => detect.result().value.schema }),
+	await duckdbArrowInsertStream({
+		db,
+		table: "events",
+		schema: () => detect.result().value.schema,
+	}),
+]);
 ```
 
 ## Arrow type mapping
 
 When creating a table from an Arrow schema, types map to DuckDB columns as follows:
 
-| Arrow type | DuckDB type |
-|------------|-------------|
-| `Bool` | `BOOLEAN` |
-| `Int8` / `Int16` / `Int32` / `Int64` | `TINYINT` / `SMALLINT` / `INTEGER` / `BIGINT` |
-| `Uint8` / `Uint16` / `Uint32` / `Uint64` | `UTINYINT` / `USMALLINT` / `UINTEGER` / `UBIGINT` |
-| `Float32` / `Float64` | `REAL` / `DOUBLE` |
-| `DateDay` / `DateMillisecond` | `DATE` |
+| Arrow type                                                                                  | DuckDB type                                                   |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `Bool`                                                                                      | `BOOLEAN`                                                     |
+| `Int8` / `Int16` / `Int32` / `Int64`                                                        | `TINYINT` / `SMALLINT` / `INTEGER` / `BIGINT`                 |
+| `Uint8` / `Uint16` / `Uint32` / `Uint64`                                                    | `UTINYINT` / `USMALLINT` / `UINTEGER` / `UBIGINT`             |
+| `Float32` / `Float64`                                                                       | `REAL` / `DOUBLE`                                             |
+| `DateDay` / `DateMillisecond`                                                               | `DATE`                                                        |
 | `TimestampSecond` / `TimestampMillisecond` / `TimestampMicrosecond` / `TimestampNanosecond` | `TIMESTAMP_S` / `TIMESTAMP_MS` / `TIMESTAMP` / `TIMESTAMP_NS` |
-| anything else | `VARCHAR` |
+| anything else                                                                               | `VARCHAR`                                                     |
 
 ## Platform support
 
-| Feature | Node.js | Browser |
-|---------|---------|---------|
-| `duckdbConnect` | `@duckdb/node-api` | `@duckdb/duckdb-wasm` |
-| `duckdbQueryStream` | yes | yes |
-| `duckdbAppenderStream` | yes | yes |
-| `duckdbArrowInsertStream` | yes | yes (requires `apache-arrow`) |
+| Feature                   | Node.js            | Browser                       |
+| ------------------------- | ------------------ | ----------------------------- |
+| `duckdbConnect`           | `@duckdb/node-api` | `@duckdb/duckdb-wasm`         |
+| `duckdbQueryStream`       | yes                | yes                           |
+| `duckdbAppenderStream`    | yes                | yes                           |
+| `duckdbArrowInsertStream` | yes                | yes (requires `apache-arrow`) |

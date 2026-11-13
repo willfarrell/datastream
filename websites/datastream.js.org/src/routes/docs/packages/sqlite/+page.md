@@ -1,4 +1,5 @@
 ---
+
 title: sqlite
 description: SQLite query and insert streams built on Node's node:sqlite.
 ---
@@ -16,9 +17,9 @@ npm install @datastream/sqlite
 There is no connect helper. Open a `DatabaseSync` yourself and pass it as `db`:
 
 ```javascript
-import { DatabaseSync } from 'node:sqlite'
+import { DatabaseSync } from "node:sqlite";
 
-const db = new DatabaseSync('data.db') // or ':memory:'
+const db = new DatabaseSync("data.db"); // or ':memory:'
 ```
 
 You own the database: close it with `db.close()` once the streams are done.
@@ -29,11 +30,11 @@ Runs a query and streams each result row as an object.
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `db` | `DatabaseSync` | — | Open database (required) |
-| `sql` | `string` | — | Query to run (required) |
-| `params` | `array \| object \| null` | `[]` | An array binds positional `?` params in order. An object binds named params (`$id`, `:id`, `@id`) by key. `null` means no params |
+| Option   | Type                      | Default | Description                                                                                                                      |
+| -------- | ------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `db`     | `DatabaseSync`            | —       | Open database (required)                                                                                                         |
+| `sql`    | `string`                  | —       | Query to run (required)                                                                                                          |
+| `params` | `array \| object \| null` | `[]`    | An array binds positional `?` params in order. An object binds named params (`$id`, `:id`, `@id`) by key. `null` means no params |
 
 Rows are read one at a time, so large results are not loaded into memory. Destroying the stream early (for example, `break` in a `for await` loop) releases the statement.
 
@@ -44,16 +45,16 @@ Array params never treat an object value as named params: `[{}, 2]` throws inste
 ### Example
 
 ```javascript
-import { sqliteQueryStream } from '@datastream/sqlite'
+import { sqliteQueryStream } from "@datastream/sqlite";
 
 const rows = sqliteQueryStream({
-  db,
-  sql: 'SELECT id, name FROM people WHERE created > $since',
-  params: { since: '2026-01-01' },
-})
+	db,
+	sql: "SELECT id, name FROM people WHERE created > $since",
+	params: { since: "2026-01-01" },
+});
 
 for await (const { id, name } of rows) {
-  console.log(id, name)
+	console.log(id, name);
 }
 ```
 
@@ -63,11 +64,11 @@ Inserts object or array rows into an existing table.
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `db` | `DatabaseSync` | — | Open database (required) |
-| `table` | `string` | — | Target table name (required) |
-| `columns` | `string[]` | first row's keys | Columns to insert. Required for array rows |
+| Option    | Type           | Default          | Description                                |
+| --------- | -------------- | ---------------- | ------------------------------------------ |
+| `db`      | `DatabaseSync` | —                | Open database (required)                   |
+| `table`   | `string`       | —                | Target table name (required)               |
+| `columns` | `string[]`     | first row's keys | Columns to insert. Required for array rows |
 
 Object rows are inserted by column name. A missing key, or a key set to `undefined`, is stored as `NULL`. Only a row's own keys count, so a column named `constructor` or `toString` is not read from the object's prototype.
 
@@ -102,24 +103,24 @@ Use one of these instead:
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { sqliteInsertStream } from '@datastream/sqlite'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { sqliteInsertStream } from "@datastream/sqlite";
 
-db.exec('CREATE TABLE people (id INTEGER, name TEXT)')
+db.exec("CREATE TABLE people (id INTEGER, name TEXT)");
 
 await pipeline([
-  createReadableStream([
-    { id: 1, name: 'Alice' },
-    { id: 2, name: 'Bob' },
-  ]),
-  sqliteInsertStream({ db, table: 'people' }),
-])
+	createReadableStream([
+		{ id: 1, name: "Alice" },
+		{ id: 2, name: "Bob" },
+	]),
+	sqliteInsertStream({ db, table: "people" }),
+]);
 
 // Array rows need columns
 await pipeline([
-  createReadableStream([[3, 'Carol']]),
-  sqliteInsertStream({ db, table: 'people', columns: ['id', 'name'] }),
-])
+	createReadableStream([[3, "Carol"]]),
+	sqliteInsertStream({ db, table: "people", columns: ["id", "name"] }),
+]);
 ```
 
 ## Platform support

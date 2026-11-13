@@ -1,4 +1,5 @@
 ---
+
 title: string
 description: String manipulation streams for splitting, replacing, counting, and measuring text.
 ---
@@ -19,23 +20,20 @@ Counts the total character length of all chunks.
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option      | Type     | Default    | Description            |
+| ----------- | -------- | ---------- | ---------------------- |
 | `resultKey` | `string` | `"length"` | Key in pipeline result |
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { stringLengthStream } from '@datastream/string'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { stringLengthStream } from "@datastream/string";
 
-const length = stringLengthStream()
-const result = await pipeline([
-  createReadableStream('hello world'),
-  length,
-])
+const length = stringLengthStream();
+const result = await pipeline([createReadableStream("hello world"), length]);
 
-console.log(result)
+console.log(result);
 // { length: 11 }
 ```
 
@@ -45,24 +43,24 @@ Counts occurrences of a substring across all chunks.
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `substr` | `string` | — | Substring to count |
+| Option      | Type     | Default         | Description            |
+| ----------- | -------- | --------------- | ---------------------- |
+| `substr`    | `string` | —               | Substring to count     |
 | `resultKey` | `string` | `"stringCount"` | Key in pipeline result |
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { stringCountStream } from '@datastream/string'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { stringCountStream } from "@datastream/string";
 
-const count = stringCountStream({ substr: '\n' })
+const count = stringCountStream({ substr: "\n" });
 const result = await pipeline([
-  createReadableStream('line1\nline2\nline3'),
-  count,
-])
+	createReadableStream("line1\nline2\nline3"),
+	count,
+]);
 
-console.log(result)
+console.log(result);
 // { stringCount: 2 }
 ```
 
@@ -72,23 +70,28 @@ Splits streaming text by a separator, emitting one chunk per segment. Handles sp
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `separator` | `string` | — | String to split on |
+| Option          | Type             | Default    | Description                                                                                                    |
+| --------------- | ---------------- | ---------- | -------------------------------------------------------------------------------------------------------------- |
+| `separator`     | `string`         | —          | String to split on                                                                                             |
 | `maxBufferSize` | `number \| null` | `16777216` | Throws a `RangeError` if the text after the last separator grows past this many characters. `null` = unlimited |
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream, streamToArray, pipejoin } from '@datastream/core'
-import { stringSplitStream } from '@datastream/string'
+import {
+	pipeline,
+	createReadableStream,
+	streamToArray,
+	pipejoin,
+} from "@datastream/core";
+import { stringSplitStream } from "@datastream/string";
 
 const river = pipejoin([
-  createReadableStream('alice,bob,charlie'),
-  stringSplitStream({ separator: ',' }),
-])
+	createReadableStream("alice,bob,charlie"),
+	stringSplitStream({ separator: "," }),
+]);
 
-const output = await streamToArray(river)
+const output = await streamToArray(river);
 // ['alice', 'bob', 'charlie']
 ```
 
@@ -103,13 +106,13 @@ Replaces pattern matches in streaming text, including matches that span chunk bo
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `pattern` | `string \| RegExp` | — | Pattern to search for. A RegExp needs the `g` or `y` flag |
-| `replacement` | `string \| function` | — | Replacement template (`$$`, `$&`, `$1`–`$99`, `$<name>`, `` $` ``, `$'`) or function |
-| `maxMatchLength` | `number` | — | RegExp only. Longest possible match. Without it, a match longer than the latest chunk can be missed |
-| `lookbehind` | `number` | `16` | Number of already-emitted characters kept as context for lookbehind, `^` and `\b` |
-| `maxBufferSize` | `number \| null` | `16777216` | Throws a `RangeError` if the held-back text grows past this many characters. `null` = unlimited |
+| Option           | Type                 | Default    | Description                                                                                         |
+| ---------------- | -------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
+| `pattern`        | `string \| RegExp`   | —          | Pattern to search for. A RegExp needs the `g` or `y` flag                                           |
+| `replacement`    | `string \| function` | —          | Replacement template (`$$`, `$&`, `$1`–`$99`, `$<name>`, `` $` ``, `$'`) or function                |
+| `maxMatchLength` | `number`             | —          | RegExp only. Longest possible match. Without it, a match longer than the latest chunk can be missed |
+| `lookbehind`     | `number`             | `16`       | Number of already-emitted characters kept as context for lookbehind, `^` and `\b`                   |
+| `maxBufferSize`  | `number \| null`     | `16777216` | Throws a `RangeError` if the held-back text grows past this many characters. `null` = unlimited     |
 
 A template that uses `` $` `` or `$'` needs the whole stream, so the stream is buffered and replaced at flush (still limited by `maxBufferSize`).
 
@@ -118,9 +121,9 @@ A function replacement is called like a `String.prototype.replace` callback, `(m
 ### Example
 
 ```javascript
-import { stringReplaceStream } from '@datastream/string'
+import { stringReplaceStream } from "@datastream/string";
 
-stringReplaceStream({ pattern: /\t/g, replacement: ',' })
+stringReplaceStream({ pattern: /\t/g, replacement: "," });
 ```
 
 ## `stringMinimumFirstChunkSizeStream` <span class="badge">Transform</span>
@@ -129,8 +132,8 @@ Buffers data until the first chunk meets a minimum size, then passes all subsequ
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option      | Type     | Default      | Description                            |
+| ----------- | -------- | ------------ | -------------------------------------- |
 | `chunkSize` | `number` | `1024` (1KB) | Minimum first chunk size in characters |
 
 ## `stringMinimumChunkSizeStream` <span class="badge">Transform</span>
@@ -139,8 +142,8 @@ Buffers every chunk to meet a minimum size before emitting. Unlike `stringMinimu
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option      | Type     | Default      | Description                      |
+| ----------- | -------- | ------------ | -------------------------------- |
 | `chunkSize` | `number` | `1024` (1KB) | Minimum chunk size in characters |
 
 ## `stringSkipConsecutiveDuplicatesStream` <span class="badge">Transform</span>
@@ -148,7 +151,7 @@ Buffers every chunk to meet a minimum size before emitting. Unlike `stringMinimu
 Skips consecutive duplicate string chunks.
 
 ```javascript
-import { stringSkipConsecutiveDuplicatesStream } from '@datastream/string'
+import { stringSkipConsecutiveDuplicatesStream } from "@datastream/string";
 
 // Input chunks: 'a', 'a', 'b', 'a' → Output: 'a', 'b', 'a'
 ```

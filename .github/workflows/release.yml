@@ -5,7 +5,7 @@ on:
     types: [closed]
     branches: [main]
     paths:
-      - 'package.json'
+      - "package.json"
 
 env:
   NODE_VERSION: 26.x

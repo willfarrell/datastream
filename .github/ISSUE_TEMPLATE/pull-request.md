@@ -1,4 +1,5 @@
 ---
+
 name: Pull request
 about: Pull request
 title: ''
@@ -16,13 +17,15 @@ assignees: ''
 **Any relevant logs, error output, etc?**
 
 **Environment:**
- - Node.js: [e.g. 18]
- - @datastream/core: [e.g. 0.0.0]
- - Browser: [e.g. Firefox 100]
+
+- Node.js: [e.g. 18]
+- @datastream/core: [e.g. 0.0.0]
+- Browser: [e.g. Firefox 100]
 
 **Any other comments?**
 
 **Todo List:**
+
 - [ ] Feature/Fix fully implemented
 - [ ] Added tests
   - [ ] Unit tests

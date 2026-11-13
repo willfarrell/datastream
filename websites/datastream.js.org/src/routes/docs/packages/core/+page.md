@@ -1,4 +1,5 @@
 ---
+
 title: core
 description: Pipeline orchestration, stream factories, and utility functions for datastream.
 ---
@@ -21,10 +22,10 @@ The package ships separate types for each build, picked by export condition:
 
 ```json
 {
-  "compilerOptions": {
-    "moduleResolution": "bundler",
-    "customConditions": ["node"]
-  }
+	"compilerOptions": {
+		"moduleResolution": "bundler",
+		"customConditions": ["node"]
+	}
 }
 ```
 
@@ -36,26 +37,26 @@ Connects all streams, waits for completion, and returns combined `.result()` val
 
 #### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `highWaterMark` | `number` | — | Backpressure threshold |
-| `chunkSize` | `number` | — | Slice size when `createReadableStream` chunks a string or bytes |
-| `signal` | `AbortSignal` | — | Abort the pipeline. It rejects with an `AbortError`, also when the signal was already aborted when the streams were created |
+| Option          | Type          | Default | Description                                                                                                                 |
+| --------------- | ------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `highWaterMark` | `number`      | —       | Backpressure threshold                                                                                                      |
+| `chunkSize`     | `number`      | —       | Slice size when `createReadableStream` chunks a string or bytes                                                             |
+| `signal`        | `AbortSignal` | —       | Abort the pipeline. It rejects with an `AbortError`, also when the signal was already aborted when the streams were created |
 
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { objectCountStream } from '@datastream/object'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { objectCountStream } from "@datastream/object";
 
-const count = objectCountStream()
+const count = objectCountStream();
 
 const result = await pipeline([
-  createReadableStream([{ a: 1 }, { a: 2 }, { a: 3 }]),
-  count,
-])
+	createReadableStream([{ a: 1 }, { a: 2 }, { a: 3 }]),
+	count,
+]);
 
-console.log(result)
+console.log(result);
 // { objectCount: 3 }
 ```
 
@@ -68,23 +69,28 @@ If any stream in the chain fails, every stream is destroyed and the error surfac
 #### Example
 
 ```javascript
-import { pipejoin, streamToArray, createReadableStream, createTransformStream } from '@datastream/core'
+import {
+	pipejoin,
+	streamToArray,
+	createReadableStream,
+	createTransformStream,
+} from "@datastream/core";
 
 const river = pipejoin([
-  createReadableStream([1, 2, 3]),
-  createTransformStream((n, enqueue) => enqueue(n * 2)),
-])
+	createReadableStream([1, 2, 3]),
+	createTransformStream((n, enqueue) => enqueue(n * 2)),
+]);
 
-const output = await streamToArray(river)
+const output = await streamToArray(river);
 // [2, 4, 6]
 ```
 
 ```javascript
 // Errors from any stream in the chain reject the consumer
 try {
-  await streamToArray(pipejoin(streams))
+	await streamToArray(pipejoin(streams));
 } catch (error) {
-  console.error('pipeline failed', error)
+	console.error("pipeline failed", error);
 }
 ```
 
@@ -97,7 +103,7 @@ Iterates over streams and combines all `.result()` return values into a single o
 All consumers accept an optional second argument `{ maxBufferSize }`. It is unlimited by default and when set to `null`. When the collected size exceeds it, the consumer rejects with a `RangeError` (`… buffer exceeds maxBufferSize (…)`) instead of growing without bound. Size is counted in bytes for byte chunks, characters for string chunks, and 1 per chunk for anything else (objects, numbers).
 
 ```javascript
-await streamToArray(stream, { maxBufferSize: 10_000 }) // at most 10,000 object rows
+await streamToArray(stream, { maxBufferSize: 10_000 }); // at most 10,000 object rows
 ```
 
 ### `streamToArray(stream, options?)` <span class="badge">async</span>
@@ -105,10 +111,14 @@ await streamToArray(stream, { maxBufferSize: 10_000 }) // at most 10,000 object 
 Collects all chunks from a stream into an array.
 
 ```javascript
-import { pipejoin, streamToArray, createReadableStream } from '@datastream/core'
+import {
+	pipejoin,
+	streamToArray,
+	createReadableStream,
+} from "@datastream/core";
 
-const river = pipejoin([createReadableStream(['a', 'b', 'c'])])
-const output = await streamToArray(river)
+const river = pipejoin([createReadableStream(["a", "b", "c"])]);
+const output = await streamToArray(river);
 // ['a', 'b', 'c']
 ```
 
@@ -117,7 +127,7 @@ const output = await streamToArray(river)
 Concatenates all chunks into a single string. Byte chunks are decoded as UTF-8 with a streaming decoder, so multi-byte characters split across chunks decode correctly.
 
 ```javascript
-const output = await streamToString(river)
+const output = await streamToString(river);
 // 'abc'
 ```
 
@@ -126,8 +136,8 @@ const output = await streamToString(river)
 Merges all chunks into a single object using `Object.assign`.
 
 ```javascript
-const river = pipejoin([createReadableStream([{ a: 1 }, { b: 2 }])])
-const output = await streamToObject(river)
+const river = pipejoin([createReadableStream([{ a: 1 }, { b: 2 }])]);
+const output = await streamToObject(river);
 // { a: 1, b: 2 }
 ```
 
@@ -136,7 +146,7 @@ const output = await streamToObject(river)
 Collects all chunks into a single byte array: a `Buffer` on Node.js, a `Uint8Array` in the browser. String chunks are encoded as UTF-8.
 
 ```javascript
-const bytes = await streamToBuffer(createReadableStream(['a', 'b']))
+const bytes = await streamToBuffer(createReadableStream(["a", "b"]));
 // Node.js: <Buffer 61 62>, browser: Uint8Array [97, 98]
 ```
 
@@ -148,31 +158,31 @@ Creates a Readable stream from various input types. Call it with no input to get
 
 #### Input types
 
-| Type | Behavior |
-|------|----------|
-| `string` | Chunked at `chunkSize` (default 16KB) |
-| `Array` | Each element emitted as a chunk |
-| `AsyncIterable` / `Iterable` | Each yielded value emitted as a chunk |
-| `ArrayBuffer` / `SharedArrayBuffer` / any typed array or `DataView` | Raw bytes chunked into `Uint8Array`s at `chunkSize` (default 16KB) |
-| none (`undefined`) | Push mode: the stream stays open until you call `stream.push(null)` |
+| Type                                                                | Behavior                                                            |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `string`                                                            | Chunked at `chunkSize` (default 16KB)                               |
+| `Array`                                                             | Each element emitted as a chunk                                     |
+| `AsyncIterable` / `Iterable`                                        | Each yielded value emitted as a chunk                               |
+| `ArrayBuffer` / `SharedArrayBuffer` / any typed array or `DataView` | Raw bytes chunked into `Uint8Array`s at `chunkSize` (default 16KB)  |
+| none (`undefined`)                                                  | Push mode: the stream stays open until you call `stream.push(null)` |
 
 #### Example
 
 ```javascript
-import { createReadableStream } from '@datastream/core'
+import { createReadableStream } from "@datastream/core";
 
 // From string — auto-chunked
-const stream = createReadableStream('hello world')
+const stream = createReadableStream("hello world");
 
 // From array — one chunk per element
-const stream = createReadableStream([{ a: 1 }, { a: 2 }])
+const stream = createReadableStream([{ a: 1 }, { a: 2 }]);
 
 // From async generator
 async function* generate() {
-  yield 'chunk1'
-  yield 'chunk2'
+	yield "chunk1";
+	yield "chunk2";
 }
-const stream = createReadableStream(generate())
+const stream = createReadableStream(generate());
 ```
 
 #### Push mode
@@ -180,22 +190,22 @@ const stream = createReadableStream(generate())
 With no input, `createReadableStream()` returns a stream you write to with `stream.push(chunk)`, ending it with `stream.push(null)`. `push` throws once more than `highWaterMark` (default 1024) chunks are queued and unread, so a producer that outruns its consumer fails instead of buffering without limit.
 
 ```javascript
-import { createReadableStream, streamToArray } from '@datastream/core'
+import { createReadableStream, streamToArray } from "@datastream/core";
 
-const stream = createReadableStream()
-stream.push({ id: 1 })
-stream.push({ id: 2 })
-stream.push(null) // end of stream
+const stream = createReadableStream();
+stream.push({ id: 1 });
+stream.push({ id: 2 });
+stream.push(null); // end of stream
 
-await streamToArray(stream)
+await streamToArray(stream);
 // [{ id: 1 }, { id: 2 }]
 ```
 
 ```javascript
 // Explicit chunk size for strings and bytes
-createReadableStream('abcdefghij', { chunkSize: 4 })
+createReadableStream("abcdefghij", { chunkSize: 4 });
 // chunks: 'abcd', 'efgh', 'ij'
-createReadableStream(new Uint8Array([1, 2, 3, 4, 5]).buffer, { chunkSize: 2 })
+createReadableStream(new Uint8Array([1, 2, 3, 4, 5]).buffer, { chunkSize: 2 });
 // chunks: Uint8Array [1, 2], [3, 4], [5]
 ```
 
@@ -205,22 +215,22 @@ Creates a stream that observes each chunk without modifying it. The chunk is aut
 
 #### Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `fn` | `(chunk) => void` | Called for each chunk, return value ignored |
-| `flush` | `() => void` | Optional, called when stream ends |
-| `streamOptions` | `object` | Stream configuration (supports `signal` for abort) |
+| Parameter       | Type              | Description                                        |
+| --------------- | ----------------- | -------------------------------------------------- |
+| `fn`            | `(chunk) => void` | Called for each chunk, return value ignored        |
+| `flush`         | `() => void`      | Optional, called when stream ends                  |
+| `streamOptions` | `object`          | Stream configuration (supports `signal` for abort) |
 
 #### Example
 
 ```javascript
-import { createPassThroughStream } from '@datastream/core'
+import { createPassThroughStream } from "@datastream/core";
 
-let total = 0
+let total = 0;
 const counter = createPassThroughStream((chunk) => {
-  total += chunk.length
-})
-counter.result = () => ({ key: 'total', value: total })
+	total += chunk.length;
+});
+counter.result = () => ({ key: "total", value: total });
 ```
 
 ### `createTransformStream(fn, flush?, streamOptions)` <span class="badge">Transform</span>
@@ -229,28 +239,28 @@ Creates a stream that modifies chunks. Use `enqueue` to emit output — you can 
 
 #### Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `fn` | `(chunk, enqueue) => void` | Transform each chunk, call `enqueue(output)` to emit |
-| `flush` | `(enqueue) => void` | Optional, emit final chunks when stream ends |
-| `streamOptions` | `object` | Stream configuration (supports `signal` for abort) |
+| Parameter       | Type                       | Description                                          |
+| --------------- | -------------------------- | ---------------------------------------------------- |
+| `fn`            | `(chunk, enqueue) => void` | Transform each chunk, call `enqueue(output)` to emit |
+| `flush`         | `(enqueue) => void`        | Optional, emit final chunks when stream ends         |
+| `streamOptions` | `object`                   | Stream configuration (supports `signal` for abort)   |
 
 #### Example
 
 ```javascript
-import { createTransformStream } from '@datastream/core'
+import { createTransformStream } from "@datastream/core";
 
 // Filter: emit only matching chunks
 const filter = createTransformStream((chunk, enqueue) => {
-  if (chunk.age > 18) enqueue(chunk)
-})
+	if (chunk.age > 18) enqueue(chunk);
+});
 
 // Expand: emit multiple chunks per input
 const expand = createTransformStream((chunk, enqueue) => {
-  for (const item of chunk.items) {
-    enqueue(item)
-  }
-})
+	for (const item of chunk.items) {
+		enqueue(item);
+	}
+});
 ```
 
 ### `createWritableStream(fn, close?, streamOptions)` <span class="badge">Writable</span>
@@ -259,29 +269,29 @@ Creates a stream that consumes chunks at the end of a pipeline.
 
 #### Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `fn` | `(chunk) => void` | Called for each chunk |
-| `close` | `() => void` | Optional, called when stream ends |
-| `streamOptions` | `object` | Stream configuration (supports `signal` and `abort`) |
+| Parameter       | Type              | Description                                          |
+| --------------- | ----------------- | ---------------------------------------------------- |
+| `fn`            | `(chunk) => void` | Called for each chunk                                |
+| `close`         | `() => void`      | Optional, called when stream ends                    |
+| `streamOptions` | `object`          | Stream configuration (supports `signal` and `abort`) |
 
 `streamOptions.abort(reason)` runs once when the stream is torn down before it finishes, for any reason other than its own `fn`/`close` failing: an upstream error in a pipeline, an explicit abort (`writable.abort()` in the browser, `writable.destroy()` in Node.js), or `signal` firing. Use it to cancel work in flight, such as a pending request. It may be async, and any error it throws is ignored because the stream is already failing with `reason`. It is not called after a clean finish.
 
 #### Example
 
 ```javascript
-import { createWritableStream } from '@datastream/core'
+import { createWritableStream } from "@datastream/core";
 
-const rows = []
+const rows = [];
 const collector = createWritableStream((chunk) => {
-  rows.push(chunk)
-})
+	rows.push(chunk);
+});
 
 // Cancel an in-flight upload if the pipeline fails
-const controller = new AbortController()
+const controller = new AbortController();
 const upload = createWritableStream(write, close, {
-  abort: (reason) => controller.abort(reason),
-})
+	abort: (reason) => controller.abort(reason),
+});
 ```
 
 ## Utilities
@@ -304,22 +314,22 @@ Returns `true` if the stream is writable. The check, and the type it narrows to,
 
 Normalizes stream options for interoperability between Readable, Transform, and Writable streams.
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `highWaterMark` | `number` | Backpressure threshold, counted in chunks |
-| `signal` | `AbortSignal` | Abort signal |
+| Option          | Type          | Description                               |
+| --------------- | ------------- | ----------------------------------------- |
+| `highWaterMark` | `number`      | Backpressure threshold, counted in chunks |
+| `signal`        | `AbortSignal` | Abort signal                              |
 
 ### `timeout(ms, options)` <span class="badge">async</span>
 
 Returns a promise that resolves after `ms` milliseconds. Supports `AbortSignal` cancellation.
 
 ```javascript
-import { timeout } from '@datastream/core'
+import { timeout } from "@datastream/core";
 
-await timeout(1000) // wait 1 second
+await timeout(1000); // wait 1 second
 
-const controller = new AbortController()
-await timeout(5000, { signal: controller.signal }) // cancellable
+const controller = new AbortController();
+await timeout(5000, { signal: controller.signal }); // cancellable
 ```
 
 ### `resolveLazy(value)`
@@ -327,10 +337,10 @@ await timeout(5000, { signal: controller.signal }) // cancellable
 Returns `value()` if `value` is a function, otherwise `value`. Streams use it for options that can be given lazily, such as `csvDetectHeaderStream().result().value.header` behind an arrow function.
 
 ```javascript
-import { resolveLazy } from '@datastream/core'
+import { resolveLazy } from "@datastream/core";
 
-resolveLazy('a')       // 'a'
-resolveLazy(() => 'a') // 'a'
+resolveLazy("a"); // 'a'
+resolveLazy(() => "a"); // 'a'
 ```
 
 ### `createChunkDecoder(options?)`
@@ -338,14 +348,14 @@ resolveLazy(() => 'a') // 'a'
 Streaming UTF-8 decoder for transforms that accept both strings and bytes. Strings pass through unchanged; bytes go through one `TextDecoder` in streaming mode, so a multi-byte character split across chunks is decoded once it is complete. `flush()` returns any incomplete trailing sequence as `U+FFFD` (or `""`). `options` are `TextDecoder` options, such as `{ ignoreBOM: true }`.
 
 ```javascript
-import { createChunkDecoder } from '@datastream/core'
+import { createChunkDecoder } from "@datastream/core";
 
-const bytes = new TextEncoder().encode('é')
-const decoder = createChunkDecoder()
-decoder.decode(bytes.subarray(0, 1)) // ''
-decoder.decode(bytes.subarray(1))    // 'é'
-decoder.decode('plain')              // 'plain'
-decoder.flush()                      // ''
+const bytes = new TextEncoder().encode("é");
+const decoder = createChunkDecoder();
+decoder.decode(bytes.subarray(0, 1)); // ''
+decoder.decode(bytes.subarray(1)); // 'é'
+decoder.decode("plain"); // 'plain'
+decoder.flush(); // ''
 ```
 
 ### `concatBytes(chunks)`
@@ -353,9 +363,9 @@ decoder.flush()                      // ''
 Joins an array of `Uint8Array`s (views are respected) into one new `Uint8Array`.
 
 ```javascript
-import { concatBytes } from '@datastream/core'
+import { concatBytes } from "@datastream/core";
 
-concatBytes([Uint8Array.of(1, 2), Uint8Array.of(3)]) // Uint8Array [1, 2, 3]
+concatBytes([Uint8Array.of(1, 2), Uint8Array.of(3)]); // Uint8Array [1, 2, 3]
 ```
 
 ### `backpressureGauge(streams)` <span class="badge">Node.js only</span>
@@ -363,9 +373,12 @@ concatBytes([Uint8Array.of(1, 2), Uint8Array.of(3)]) // Uint8Array [1, 2, 3]
 Measures pause/resume timing across streams. Useful for identifying bottlenecks. Web Streams have no pause/resume events, so the browser build does not export it.
 
 ```javascript
-import { backpressureGauge } from '@datastream/core'
+import { backpressureGauge } from "@datastream/core";
 
-const metrics = backpressureGauge({ parse: parseStream, validate: validateStream })
+const metrics = backpressureGauge({
+	parse: parseStream,
+	validate: validateStream,
+});
 // After pipeline completes:
 // metrics.parse.total = { timestamp, duration }
 // metrics.parse.timeline = [{ timestamp, duration }, ...]

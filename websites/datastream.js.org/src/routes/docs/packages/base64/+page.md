@@ -1,4 +1,5 @@
 ---
+
 title: base64
 description: Base64 encoding and decoding streams.
 ---
@@ -20,12 +21,16 @@ Accepts string or byte (`Uint8Array`/`Buffer`) chunks. String chunks are encoded
 ### Example
 
 ```javascript
-import { pipejoin, createReadableStream, streamToString } from '@datastream/core'
-import { base64EncodeStream } from '@datastream/base64'
+import {
+	pipejoin,
+	createReadableStream,
+	streamToString,
+} from "@datastream/core";
+import { base64EncodeStream } from "@datastream/base64";
 
 const output = await streamToString(
-  pipejoin([createReadableStream('Hello, World!'), base64EncodeStream()]),
-)
+	pipejoin([createReadableStream("Hello, World!"), base64EncodeStream()]),
+);
 // 'SGVsbG8sIFdvcmxkIQ=='
 ```
 
@@ -42,11 +47,18 @@ Decoding is strict, in both builds. The stream errors with `Invalid base64 strin
 ### Example
 
 ```javascript
-import { pipejoin, createReadableStream, streamToString } from '@datastream/core'
-import { base64DecodeStream } from '@datastream/base64'
+import {
+	pipejoin,
+	createReadableStream,
+	streamToString,
+} from "@datastream/core";
+import { base64DecodeStream } from "@datastream/base64";
 
 const output = await streamToString(
-  pipejoin([createReadableStream('SGVsbG8sIFdvcmxkIQ=='), base64DecodeStream()]),
-)
+	pipejoin([
+		createReadableStream("SGVsbG8sIFdvcmxkIQ=="),
+		base64DecodeStream(),
+	]),
+);
 // 'Hello, World!'
 ```

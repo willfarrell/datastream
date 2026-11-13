@@ -2,12 +2,13 @@
 
 This document outlines security procedures and general policies for the datastream Open Source projects as found on https://github.com/willfarrell/datastream.
 
-* [Security Goals](#security-goals)
-* [Supported Versions](#supported-versions)
-* [Reporting a Vulnerability](#reporting-a-vulnerability)
-* [Disclosure Policy](#disclosure-policy)
+- [Security Goals](#security-goals)
+- [Supported Versions](#supported-versions)
+- [Reporting a Vulnerability](#reporting-a-vulnerability)
+- [Disclosure Policy](#disclosure-policy)
 
 ## Security Goals
+
 Our goal is to ensure OSS follows secure design principles and meets security best practices as outlined by the following [OWASP ASVS v5.0 Level 3](https://github.com/OWASP/ASVS/tree/master/5.0/en).
 
 Standards are evaluated using automated scans (Linting, Unit tests, SAST, SCA, DAST, Perf) and manual self-audits. 3rd party audits are welcome.
@@ -21,6 +22,7 @@ Standards are evaluated using automated scans (Linting, Unit tests, SAST, SCA, D
 - keep it simple
 
 ## Supported Versions
+
 Only the latest version is supported for security updates.
 
 ## Threat model
@@ -39,6 +41,7 @@ software. We appreciate your efforts and responsible disclosure and will
 make every effort to acknowledge your contributions.
 
 Report security vulnerabilities privately through [GitHub's private vulnerability reporting](https://github.com/willfarrell/datastream/security/advisories/new), or by emailing the lead maintainer at:
+
 ```
 willfarrell@proton.me
 ```
@@ -57,7 +60,7 @@ When the security team receives a security bug report, they will assign it
 to a primary handler. This person will coordinate the fix and release
 process, involving the following steps:
 
-  * Confirm the problem and determine the affected versions.
-  * Audit code to find any potential similar problems.
-  * Prepare fixes for all releases still under maintenance. These fixes
-    will be released as fast as possible to NPM.
+- Confirm the problem and determine the affected versions.
+- Audit code to find any potential similar problems.
+- Prepare fixes for all releases still under maintenance. These fixes
+  will be released as fast as possible to NPM.

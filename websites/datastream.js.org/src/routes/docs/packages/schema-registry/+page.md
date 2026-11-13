@@ -1,4 +1,5 @@
 ---
+
 title: schema-registry
 description: Confluent and AWS Glue Schema Registry framing streams.
 ---
@@ -23,19 +24,19 @@ npm install @datastream/schema-registry
 
 Prepends the Confluent header to each payload chunk.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `schemaId` | `number` | — | Unsigned 32-bit schema id (required) |
+| Option      | Type     | Default                    | Description                                         |
+| ----------- | -------- | -------------------------- | --------------------------------------------------- |
+| `schemaId`  | `number` | —                          | Unsigned 32-bit schema id (required)                |
 | `resultKey` | `string` | `"confluentFrameSchemaId"` | Key in pipeline result. The value is `{ schemaId }` |
 
 ### `confluentUnframeStream` <span class="badge">Transform</span>
 
 Validates the magic byte, reads the schema id, and emits a `{ schemaId, payload }` envelope. For a message object, the frame is read from `value` and the envelope also carries the message's other fields.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `maxSchemaIds` | `number \| null` | `1000` | Maximum distinct ids recorded in `.result()`; later new ids are counted in `untrackedSchemaIds` instead. `null` disables the limit |
-| `resultKey` | `string` | `"confluentSchemaId"` | Key in pipeline result |
+| Option         | Type             | Default               | Description                                                                                                                        |
+| -------------- | ---------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `maxSchemaIds` | `number \| null` | `1000`                | Maximum distinct ids recorded in `.result()`; later new ids are counted in `untrackedSchemaIds` instead. `null` disables the limit |
+| `resultKey`    | `string`         | `"confluentSchemaId"` | Key in pipeline result                                                                                                             |
 
 ### Emitted envelope
 
@@ -48,35 +49,35 @@ Validates the magic byte, reads the schema id, and emits a `{ schemaId, payload 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { confluentUnframeStream } from '@datastream/schema-registry'
-import { protobufDecodeStream } from '@datastream/protobuf'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { confluentUnframeStream } from "@datastream/schema-registry";
+import { protobufDecodeStream } from "@datastream/protobuf";
 
 await pipeline([
-  framedByteStream,
-  confluentUnframeStream(),
-  protobufDecodeStream({
-    // pick the Type per message from the envelope schemaId
-    Type: (envelope) => registry.get(envelope.schemaId),
-    payload: (envelope) => envelope.payload,
-  }),
-])
+	framedByteStream,
+	confluentUnframeStream(),
+	protobufDecodeStream({
+		// pick the Type per message from the envelope schemaId
+		Type: (envelope) => registry.get(envelope.schemaId),
+		payload: (envelope) => envelope.payload,
+	}),
+]);
 ```
 
 ### `confluentSchemaRegistryResolver`
 
 Returns an async `resolve(schemaId)` function that fetches a schema from a Confluent Schema Registry (`GET {url}/schemas/ids/{id}`) and caches it. It caches, evicts and dedupes like [`awsGlueSchemaRegistryResolver`](/docs/packages/aws), and both results carry `schemaDefinition` and `dataFormat`, so either can feed a decoder such as `avroDecodeStream({ resolveSchema })`. The id field differs: `schemaId` here, `schemaVersionId` for Glue.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `url` | `string` | — | Registry base URL (required). A trailing `/` on its path is dropped; a query string is kept, so `https://registry.example.com/?tenant=a` requests `/schemas/ids/7?tenant=a` |
-| `headers` | `object` | — | Request headers, such as `Authorization` |
-| `cacheExpiry` | `number` | `-1` | Cache TTL in ms. `-1` caches forever |
-| `maxCacheSize` | `number \| null` | `1000` | Maximum cached schemas; the oldest is evicted first. `0` disables caching, `null` means no limit |
-| `timeout` | `number` | `30000` | Time limit in ms for each lookup, including reading the response body. A lookup that runs over rejects with a `TimeoutError` |
-| `signal` | `AbortSignal` | — | Aborts in-flight lookups; they reject with the signal's reason |
-| `maxBodySize` | `number \| null` | `1048576` (1MiB) | Maximum response body size; a larger body rejects with a `RangeError`. `null` disables the limit |
-| `fetch` | `function` | `globalThis.fetch` | `fetch` implementation; it must return a `Response` |
+| Option         | Type             | Default            | Description                                                                                                                                                                 |
+| -------------- | ---------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`          | `string`         | —                  | Registry base URL (required). A trailing `/` on its path is dropped; a query string is kept, so `https://registry.example.com/?tenant=a` requests `/schemas/ids/7?tenant=a` |
+| `headers`      | `object`         | —                  | Request headers, such as `Authorization`                                                                                                                                    |
+| `cacheExpiry`  | `number`         | `-1`               | Cache TTL in ms. `-1` caches forever                                                                                                                                        |
+| `maxCacheSize` | `number \| null` | `1000`             | Maximum cached schemas; the oldest is evicted first. `0` disables caching, `null` means no limit                                                                            |
+| `timeout`      | `number`         | `30000`            | Time limit in ms for each lookup, including reading the response body. A lookup that runs over rejects with a `TimeoutError`                                                |
+| `signal`       | `AbortSignal`    | —                  | Aborts in-flight lookups; they reject with the signal's reason                                                                                                              |
+| `maxBodySize`  | `number \| null` | `1048576` (1MiB)   | Maximum response body size; a larger body rejects with a `RangeError`. `null` disables the limit                                                                            |
+| `fetch`        | `function`       | `globalThis.fetch` | `fetch` implementation; it must return a `Response`                                                                                                                         |
 
 `resolve(schemaId)` returns:
 
@@ -94,25 +95,25 @@ The registry leaves `schemaType` out for Avro schemas, so a missing `schemaType`
 #### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { kafkaConsumeStream, kafkaCommitStream } from '@datastream/kafka'
+import { pipeline } from "@datastream/core";
+import { kafkaConsumeStream, kafkaCommitStream } from "@datastream/kafka";
 import {
-  confluentSchemaRegistryResolver,
-  confluentUnframeStream,
-} from '@datastream/schema-registry'
-import { avroDecodeStream } from '@datastream/avro'
+	confluentSchemaRegistryResolver,
+	confluentUnframeStream,
+} from "@datastream/schema-registry";
+import { avroDecodeStream } from "@datastream/avro";
 
 const resolveSchema = confluentSchemaRegistryResolver({
-  url: 'https://registry.example.com',
-  headers: { Authorization: `Basic ${btoa(`${key}:${secret}`)}` },
-})
+	url: "https://registry.example.com",
+	headers: { Authorization: `Basic ${btoa(`${key}:${secret}`)}` },
+});
 
 await pipeline([
-  await kafkaConsumeStream({ consumer, topics: ['orders'] }),
-  confluentUnframeStream(), // { topic, partition, offset, ..., schemaId, payload }
-  avroDecodeStream({ resolveSchema }), // { topic, partition, offset, ..., schemaId, value }
-  await kafkaCommitStream({ consumer }),
-])
+	await kafkaConsumeStream({ consumer, topics: ["orders"] }),
+	confluentUnframeStream(), // { topic, partition, offset, ..., schemaId, payload }
+	avroDecodeStream({ resolveSchema }), // { topic, partition, offset, ..., schemaId, value }
+	await kafkaCommitStream({ consumer }),
+]);
 ```
 
 ## Glue format
@@ -123,22 +124,22 @@ await pipeline([
 
 Prepends the Glue header to each payload chunk, optionally deflating the payload.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `schemaVersionId` | `string` | — | Schema version UUID (required) |
-| `compression` | `"none" \| "zlib"` | `"none"` | Payload compression |
-| `maxOutputSize` | `number \| null` | `268435456` (256MiB) | Maximum compressed payload size per frame; aborts with a `RangeError` when exceeded. `null` disables the limit |
-| `resultKey` | `string` | `"glueFrameSchemaVersionId"` | Key in pipeline result. The value is `{ schemaVersionId }` |
+| Option            | Type               | Default                      | Description                                                                                                    |
+| ----------------- | ------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `schemaVersionId` | `string`           | —                            | Schema version UUID (required)                                                                                 |
+| `compression`     | `"none" \| "zlib"` | `"none"`                     | Payload compression                                                                                            |
+| `maxOutputSize`   | `number \| null`   | `268435456` (256MiB)         | Maximum compressed payload size per frame; aborts with a `RangeError` when exceeded. `null` disables the limit |
+| `resultKey`       | `string`           | `"glueFrameSchemaVersionId"` | Key in pipeline result. The value is `{ schemaVersionId }`                                                     |
 
 ### `glueUnframeStream` <span class="badge">Transform</span>
 
 Validates the magic byte, reads the schema version UUID and compression flag, inflates `zlib` payloads, and emits a `{ schemaVersionId, compression, payload }` envelope. For a message object, the frame is read from `value` and the envelope also carries the message's other fields.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `maxOutputSize` | `number \| null` | `268435456` (256MiB) | Maximum decompressed payload size per frame; aborts with a `RangeError` when exceeded. `null` disables the limit |
-| `maxSchemaIds` | `number \| null` | `1000` | Maximum distinct ids recorded in `.result()`; later new ids are counted in `untrackedSchemaVersionIds` instead. `null` disables the limit |
-| `resultKey` | `string` | `"glueSchemaVersionId"` | Key in pipeline result |
+| Option          | Type             | Default                 | Description                                                                                                                               |
+| --------------- | ---------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxOutputSize` | `number \| null` | `268435456` (256MiB)    | Maximum decompressed payload size per frame; aborts with a `RangeError` when exceeded. `null` disables the limit                          |
+| `maxSchemaIds`  | `number \| null` | `1000`                  | Maximum distinct ids recorded in `.result()`; later new ids are counted in `untrackedSchemaVersionIds` instead. `null` disables the limit |
+| `resultKey`     | `string`         | `"glueSchemaVersionId"` | Key in pipeline result                                                                                                                    |
 
 #### Decompression protection
 

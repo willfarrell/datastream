@@ -1,4 +1,5 @@
 ---
+
 title: aws
 description: AWS service streams for CloudWatch Logs, DynamoDB, DynamoDB Streams, Kinesis, Lambda, S3, SNS, and SQS, plus MSK IAM auth and Glue Schema Registry helpers.
 ---
@@ -19,18 +20,18 @@ The AWS SDK v3 clients are optional peer dependencies: install only the ones for
 
 Import each service from its own subpath, and install that subpath's peer dependencies:
 
-| Subpath | Peer dependencies |
-|---------|-------------------|
-| `@datastream/aws/cloudwatch-logs` | `@aws-sdk/client-cloudwatch-logs` |
-| `@datastream/aws/dynamodb` | `@aws-sdk/client-dynamodb` |
-| `@datastream/aws/dynamodb-streams` | `@aws-sdk/client-dynamodb-streams` |
-| `@datastream/aws/kinesis` | `@aws-sdk/client-kinesis` |
-| `@datastream/aws/lambda` | `@aws-sdk/client-lambda` |
-| `@datastream/aws/s3` | `@aws-sdk/client-s3` `@aws-sdk/lib-storage` |
-| `@datastream/aws/sns` | `@aws-sdk/client-sns` |
-| `@datastream/aws/sqs` | `@aws-sdk/client-sqs` |
-| `@datastream/aws/msk-iam` | `aws-msk-iam-sasl-signer-js` |
-| `@datastream/aws/glue-schema-registry` | `@aws-sdk/client-glue` |
+| Subpath                                | Peer dependencies                           |
+| -------------------------------------- | ------------------------------------------- |
+| `@datastream/aws/cloudwatch-logs`      | `@aws-sdk/client-cloudwatch-logs`           |
+| `@datastream/aws/dynamodb`             | `@aws-sdk/client-dynamodb`                  |
+| `@datastream/aws/dynamodb-streams`     | `@aws-sdk/client-dynamodb-streams`          |
+| `@datastream/aws/kinesis`              | `@aws-sdk/client-kinesis`                   |
+| `@datastream/aws/lambda`               | `@aws-sdk/client-lambda`                    |
+| `@datastream/aws/s3`                   | `@aws-sdk/client-s3` `@aws-sdk/lib-storage` |
+| `@datastream/aws/sns`                  | `@aws-sdk/client-sns`                       |
+| `@datastream/aws/sqs`                  | `@aws-sdk/client-sqs`                       |
+| `@datastream/aws/msk-iam`              | `aws-msk-iam-sasl-signer-js`                |
+| `@datastream/aws/glue-schema-registry` | `@aws-sdk/client-glue`                      |
 
 ```bash
 # for example, S3 only
@@ -38,7 +39,7 @@ npm install @datastream/aws @aws-sdk/client-s3 @aws-sdk/lib-storage
 ```
 
 ```javascript
-import { awsS3GetObjectStream } from '@datastream/aws/s3'
+import { awsS3GetObjectStream } from "@datastream/aws/s3";
 ```
 
 Avoid importing from the package root (`@datastream/aws`). The root statically imports the first eight subpaths above, so it fails to load unless all of their SDK clients are installed. `msk-iam` and `glue-schema-registry` are only available from their subpaths.
@@ -51,9 +52,12 @@ The batching writers (`awsCloudWatchLogsPutLogEventsStream`, `awsDynamoDBPutItem
 
 ```javascript
 try {
-  await pipeline([createReadableStream(messages), awsSQSSendMessageStream({ QueueUrl })], { signal })
+	await pipeline(
+		[createReadableStream(messages), awsSQSSendMessageStream({ QueueUrl })],
+		{ signal },
+	);
 } catch (err) {
-  requeue(err.failedMessages ?? [])
+	requeue(err.failedMessages ?? []);
 }
 ```
 
@@ -64,10 +68,10 @@ try {
 Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
-import { CloudWatchLogsClient } from '@aws-sdk/client-cloudwatch-logs'
-import { awsCloudWatchLogsSetClient } from '@datastream/aws/cloudwatch-logs'
+import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
+import { awsCloudWatchLogsSetClient } from "@datastream/aws/cloudwatch-logs";
 
-awsCloudWatchLogsSetClient(new CloudWatchLogsClient({ region: 'us-east-1' }))
+awsCloudWatchLogsSetClient(new CloudWatchLogsClient({ region: "us-east-1" }));
 ```
 
 ### `awsCloudWatchLogsGetLogEventsStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -78,25 +82,25 @@ Gets log events from a CloudWatch Logs log stream. Auto-paginates until no new e
 
 Accepts `GetLogEventsCommand` parameters plus:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `logGroupName` | `string` | — | Log group name |
-| `logStreamName` | `string` | — | Log stream name |
-| `pollingActive` | `boolean` | `false` | Keep polling for new events |
-| `pollingDelay` | `number` | `1000` | Delay (ms) between polls when no new events |
+| Option          | Type      | Default | Description                                 |
+| --------------- | --------- | ------- | ------------------------------------------- |
+| `logGroupName`  | `string`  | —       | Log group name                              |
+| `logStreamName` | `string`  | —       | Log stream name                             |
+| `pollingActive` | `boolean` | `false` | Keep polling for new events                 |
+| `pollingDelay`  | `number`  | `1000`  | Delay (ms) between polls when no new events |
 
 #### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { awsCloudWatchLogsGetLogEventsStream } from '@datastream/aws/cloudwatch-logs'
+import { pipeline } from "@datastream/core";
+import { awsCloudWatchLogsGetLogEventsStream } from "@datastream/aws/cloudwatch-logs";
 
 await pipeline([
-  await awsCloudWatchLogsGetLogEventsStream({
-    logGroupName: '/aws/lambda/my-function',
-    logStreamName: 'stream-id',
-  }),
-])
+	await awsCloudWatchLogsGetLogEventsStream({
+		logGroupName: "/aws/lambda/my-function",
+		logStreamName: "stream-id",
+	}),
+]);
 ```
 
 ### `awsCloudWatchLogsFilterLogEventsStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -107,25 +111,25 @@ Filters log events across log streams in a log group. Auto-paginates through all
 
 Accepts `FilterLogEventsCommand` parameters:
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `logGroupName` | `string` | Log group name |
+| Option          | Type     | Description                    |
+| --------------- | -------- | ------------------------------ |
+| `logGroupName`  | `string` | Log group name                 |
 | `filterPattern` | `string` | CloudWatch Logs filter pattern |
-| `startTime` | `number` | Start of time range (epoch ms) |
-| `endTime` | `number` | End of time range (epoch ms) |
+| `startTime`     | `number` | Start of time range (epoch ms) |
+| `endTime`       | `number` | End of time range (epoch ms)   |
 
 #### Example
 
 ```javascript
-import { streamToArray } from '@datastream/core'
-import { awsCloudWatchLogsFilterLogEventsStream } from '@datastream/aws/cloudwatch-logs'
+import { streamToArray } from "@datastream/core";
+import { awsCloudWatchLogsFilterLogEventsStream } from "@datastream/aws/cloudwatch-logs";
 
 const events = await streamToArray(
-  await awsCloudWatchLogsFilterLogEventsStream({
-    logGroupName: '/aws/lambda/my-function',
-    filterPattern: 'ERROR',
-  }),
-)
+	await awsCloudWatchLogsFilterLogEventsStream({
+		logGroupName: "/aws/lambda/my-function",
+		filterPattern: "ERROR",
+	}),
+);
 ```
 
 ### `awsCloudWatchLogsPutLogEventsStream` <span class="badge">Writable</span>
@@ -140,28 +144,28 @@ CloudWatch Logs can reject events that are too new, too old, or past the log gro
 
 Accepts `PutLogEventsCommand` parameters plus:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `client` | `CloudWatchLogsClient` | default client | Custom CloudWatch Logs client for this call |
-| `logGroupName` | `string` | — | Log group name |
-| `logStreamName` | `string` | — | Log stream name |
+| Option          | Type                   | Default        | Description                                 |
+| --------------- | ---------------------- | -------------- | ------------------------------------------- |
+| `client`        | `CloudWatchLogsClient` | default client | Custom CloudWatch Logs client for this call |
+| `logGroupName`  | `string`               | —              | Log group name                              |
+| `logStreamName` | `string`               | —              | Log stream name                             |
 
 #### Example
 
 ```javascript
-import { createReadableStream, pipeline } from '@datastream/core'
-import { awsCloudWatchLogsPutLogEventsStream } from '@datastream/aws/cloudwatch-logs'
+import { createReadableStream, pipeline } from "@datastream/core";
+import { awsCloudWatchLogsPutLogEventsStream } from "@datastream/aws/cloudwatch-logs";
 
 await pipeline([
-  createReadableStream([
-    { timestamp: Date.now(), message: 'job started' },
-    { timestamp: Date.now(), message: 'job finished' },
-  ]),
-  awsCloudWatchLogsPutLogEventsStream({
-    logGroupName: '/my-app/jobs',
-    logStreamName: 'nightly',
-  }),
-])
+	createReadableStream([
+		{ timestamp: Date.now(), message: "job started" },
+		{ timestamp: Date.now(), message: "job finished" },
+	]),
+	awsCloudWatchLogsPutLogEventsStream({
+		logGroupName: "/my-app/jobs",
+		logStreamName: "nightly",
+	}),
+]);
 ```
 
 ## S3
@@ -171,10 +175,10 @@ await pipeline([
 Set a custom S3 client. Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
-import { S3Client } from '@aws-sdk/client-s3'
-import { awsS3SetClient } from '@datastream/aws/s3'
+import { S3Client } from "@aws-sdk/client-s3";
+import { awsS3SetClient } from "@datastream/aws/s3";
 
-awsS3SetClient(new S3Client({ region: 'eu-west-1' }))
+awsS3SetClient(new S3Client({ region: "eu-west-1" }));
 ```
 
 ### `awsS3GetObjectStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -185,23 +189,23 @@ Downloads an object from S3 as a stream.
 
 Accepts all `GetObjectCommand` parameters plus:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option   | Type       | Default        | Description                    |
+| -------- | ---------- | -------------- | ------------------------------ |
 | `client` | `S3Client` | default client | Custom S3 client for this call |
-| `Bucket` | `string` | — | S3 bucket name |
-| `Key` | `string` | — | S3 object key |
+| `Bucket` | `string`   | —              | S3 bucket name                 |
+| `Key`    | `string`   | —              | S3 object key                  |
 
 #### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { awsS3GetObjectStream } from '@datastream/aws/s3'
-import { csvParseStream } from '@datastream/csv'
+import { pipeline } from "@datastream/core";
+import { awsS3GetObjectStream } from "@datastream/aws/s3";
+import { csvParseStream } from "@datastream/csv";
 
 await pipeline([
-  await awsS3GetObjectStream({ Bucket: 'my-bucket', Key: 'data.csv' }),
-  csvParseStream(),
-])
+	await awsS3GetObjectStream({ Bucket: "my-bucket", Key: "data.csv" }),
+	csvParseStream(),
+]);
 ```
 
 ### `awsS3ListObjectsStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -212,21 +216,21 @@ Lists the objects in a bucket. Each chunk is one `ListObjectsV2` `Contents` entr
 
 Accepts all `ListObjectsV2Command` parameters plus:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `client` | `S3Client` | default client | Custom S3 client for this call |
-| `Bucket` | `string` | — | S3 bucket name |
-| `Prefix` | `string` | — | Only list keys that start with this prefix |
+| Option   | Type       | Default        | Description                                |
+| -------- | ---------- | -------------- | ------------------------------------------ |
+| `client` | `S3Client` | default client | Custom S3 client for this call             |
+| `Bucket` | `string`   | —              | S3 bucket name                             |
+| `Prefix` | `string`   | —              | Only list keys that start with this prefix |
 
 #### Example
 
 ```javascript
-import { streamToArray } from '@datastream/core'
-import { awsS3ListObjectsStream } from '@datastream/aws/s3'
+import { streamToArray } from "@datastream/core";
+import { awsS3ListObjectsStream } from "@datastream/aws/s3";
 
 const objects = await streamToArray(
-  await awsS3ListObjectsStream({ Bucket: 'my-bucket', Prefix: 'exports/' }),
-)
+	await awsS3ListObjectsStream({ Bucket: "my-bucket", Prefix: "exports/" }),
+);
 ```
 
 ### `awsS3PutObjectStream` <span class="badge">PassThrough</span>
@@ -237,34 +241,34 @@ Uploads data to S3 using `Upload` from `@aws-sdk/lib-storage`: a single `PutObje
 
 Accepts all S3 PutObject parameters plus:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `client` | `S3Client` | default client | Custom S3 client |
-| `Bucket` | `string` | — | S3 bucket name |
-| `Key` | `string` | — | S3 object key |
-| `onProgress` | `(progress) => void` | — | Called with lib-storage's `httpUploadProgress` events: `{ loaded, total, part, Key, Bucket }` |
-| `tags` | `{ Key: string, Value: string }[]` | — | S3 object tags |
-| `partSize` | `number` | `17179870` | Multipart part size in bytes (minimum 5 MiB). Shared with `awsS3ChecksumStream` so default checksums match. An upload can have at most 10,000 parts, so the default caps an object at about 160 GiB; raise it for larger objects. Up to `partSize × queueSize` bytes are buffered in memory (about 66 MB by default) |
-| `queueSize` | `number` | `4` | Number of parts uploaded concurrently |
+| Option       | Type                               | Default        | Description                                                                                                                                                                                                                                                                                                          |
+| ------------ | ---------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client`     | `S3Client`                         | default client | Custom S3 client                                                                                                                                                                                                                                                                                                     |
+| `Bucket`     | `string`                           | —              | S3 bucket name                                                                                                                                                                                                                                                                                                       |
+| `Key`        | `string`                           | —              | S3 object key                                                                                                                                                                                                                                                                                                        |
+| `onProgress` | `(progress) => void`               | —              | Called with lib-storage's `httpUploadProgress` events: `{ loaded, total, part, Key, Bucket }`                                                                                                                                                                                                                        |
+| `tags`       | `{ Key: string, Value: string }[]` | —              | S3 object tags                                                                                                                                                                                                                                                                                                       |
+| `partSize`   | `number`                           | `17179870`     | Multipart part size in bytes (minimum 5 MiB). Shared with `awsS3ChecksumStream` so default checksums match. An upload can have at most 10,000 parts, so the default caps an object at about 160 GiB; raise it for larger objects. Up to `partSize × queueSize` bytes are buffered in memory (about 66 MB by default) |
+| `queueSize`  | `number`                           | `4`            | Number of parts uploaded concurrently                                                                                                                                                                                                                                                                                |
 
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { awsS3PutObjectStream } from '@datastream/aws/s3'
-import { gzipCompressStream } from '@datastream/compress'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { awsS3PutObjectStream } from "@datastream/aws/s3";
+import { gzipCompressStream } from "@datastream/compress";
 
 await pipeline([
-  createReadableStream('id,name\r\n1,Alice\r\n'),
-  gzipCompressStream(),
-  awsS3PutObjectStream({
-    Bucket: 'my-bucket',
-    Key: 'output.csv.gz',
-    partSize: 64 * 1024 * 1024, // 64 MiB parts: objects up to ~640 GiB
-    queueSize: 4,
-    onProgress: ({ loaded }) => console.log(`${loaded} bytes uploaded`),
-  }),
-])
+	createReadableStream("id,name\r\n1,Alice\r\n"),
+	gzipCompressStream(),
+	awsS3PutObjectStream({
+		Bucket: "my-bucket",
+		Key: "output.csv.gz",
+		partSize: 64 * 1024 * 1024, // 64 MiB parts: objects up to ~640 GiB
+		queueSize: 4,
+		onProgress: ({ loaded }) => console.log(`${loaded} bytes uploaded`),
+	}),
+]);
 ```
 
 ### `awsS3ChecksumStream` <span class="badge">PassThrough</span>
@@ -273,11 +277,11 @@ Computes a multi-part S3 checksum while data passes through, for example to send
 
 #### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `ChecksumAlgorithm` | `string` | `"SHA256"` | `"SHA1"` or `"SHA256"` |
-| `partSize` | `number` | `17179870` | Part size in bytes. The default matches `awsS3PutObjectStream`'s default part size |
-| `resultKey` | `string` | `"s3"` | Key in pipeline result |
+| Option              | Type     | Default    | Description                                                                        |
+| ------------------- | -------- | ---------- | ---------------------------------------------------------------------------------- |
+| `ChecksumAlgorithm` | `string` | `"SHA256"` | `"SHA1"` or `"SHA256"`                                                             |
+| `partSize`          | `number` | `17179870` | Part size in bytes. The default matches `awsS3PutObjectStream`'s default part size |
+| `resultKey`         | `string` | `"s3"`     | Key in pipeline result                                                             |
 
 #### Result
 
@@ -292,10 +296,10 @@ Computes a multi-part S3 checksum while data passes through, for example to send
 Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import { awsDynamoDBSetClient } from '@datastream/aws/dynamodb'
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { awsDynamoDBSetClient } from "@datastream/aws/dynamodb";
 
-awsDynamoDBSetClient(new DynamoDBClient({ region: 'us-east-1' }))
+awsDynamoDBSetClient(new DynamoDBClient({ region: "us-east-1" }));
 ```
 
 ### `awsDynamoDBQueryStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -306,25 +310,25 @@ Queries a DynamoDB table and auto-paginates through all results.
 
 Accepts all `QueryCommand` parameters:
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `TableName` | `string` | DynamoDB table name |
-| `KeyConditionExpression` | `string` | Query key condition |
-| `ExpressionAttributeValues` | `object` | Expression values |
+| Option                      | Type     | Description         |
+| --------------------------- | -------- | ------------------- |
+| `TableName`                 | `string` | DynamoDB table name |
+| `KeyConditionExpression`    | `string` | Query key condition |
+| `ExpressionAttributeValues` | `object` | Expression values   |
 
 #### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { awsDynamoDBQueryStream } from '@datastream/aws/dynamodb'
+import { pipeline } from "@datastream/core";
+import { awsDynamoDBQueryStream } from "@datastream/aws/dynamodb";
 
 await pipeline([
-  await awsDynamoDBQueryStream({
-    TableName: 'Users',
-    KeyConditionExpression: 'PK = :pk',
-    ExpressionAttributeValues: { ':pk': { S: 'USER#123' } },
-  }),
-])
+	await awsDynamoDBQueryStream({
+		TableName: "Users",
+		KeyConditionExpression: "PK = :pk",
+		ExpressionAttributeValues: { ":pk": { S: "USER#123" } },
+	}),
+]);
 ```
 
 ### `awsDynamoDBScanStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -332,12 +336,12 @@ await pipeline([
 Scans an entire DynamoDB table with automatic pagination.
 
 ```javascript
-import { streamToArray } from '@datastream/core'
-import { awsDynamoDBScanStream } from '@datastream/aws/dynamodb'
+import { streamToArray } from "@datastream/core";
+import { awsDynamoDBScanStream } from "@datastream/aws/dynamodb";
 
 const items = await streamToArray(
-  await awsDynamoDBScanStream({ TableName: 'Users' }),
-)
+	await awsDynamoDBScanStream({ TableName: "Users" }),
+);
 ```
 
 ### `awsDynamoDBExecuteStatementStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -348,23 +352,23 @@ Executes a PartiQL statement against DynamoDB with automatic pagination.
 
 Accepts `ExecuteStatementCommand` parameters:
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `Statement` | `string` | PartiQL statement |
+| Option       | Type       | Description          |
+| ------------ | ---------- | -------------------- |
+| `Statement`  | `string`   | PartiQL statement    |
 | `Parameters` | `object[]` | Statement parameters |
 
 #### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { awsDynamoDBExecuteStatementStream } from '@datastream/aws/dynamodb'
+import { pipeline } from "@datastream/core";
+import { awsDynamoDBExecuteStatementStream } from "@datastream/aws/dynamodb";
 
 await pipeline([
-  await awsDynamoDBExecuteStatementStream({
-    Statement: 'SELECT * FROM "Users" WHERE PK = ?',
-    Parameters: [{ S: 'USER#123' }],
-  }),
-])
+	await awsDynamoDBExecuteStatementStream({
+		Statement: 'SELECT * FROM "Users" WHERE PK = ?',
+		Parameters: [{ S: "USER#123" }],
+	}),
+]);
 ```
 
 ### `awsDynamoDBGetItemStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -373,16 +377,16 @@ Batch gets items by keys. Automatically retries unprocessed keys with exponentia
 
 #### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `TableName` | `string` | — | DynamoDB table name |
-| `Keys` | `object[]` | — | Array of key objects (at most 100, the `BatchGetItem` limit; more throws a `RangeError`) |
-| `ConsistentRead` | `boolean` | — | Sent in the table's `KeysAndAttributes` |
-| `ProjectionExpression` | `string` | — | Sent in the table's `KeysAndAttributes` |
-| `ExpressionAttributeNames` | `object` | — | Sent in the table's `KeysAndAttributes` |
-| `AttributesToGet` | `string[]` | — | Sent in the table's `KeysAndAttributes` |
-| `ReturnConsumedCapacity` | `string` | — | Sent at the `BatchGetItem` request level |
-| `retryMaxCount` | `number \| null` | `10` | Maximum retry attempts; `null` retries without limit |
+| Option                     | Type             | Default | Description                                                                              |
+| -------------------------- | ---------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `TableName`                | `string`         | —       | DynamoDB table name                                                                      |
+| `Keys`                     | `object[]`       | —       | Array of key objects (at most 100, the `BatchGetItem` limit; more throws a `RangeError`) |
+| `ConsistentRead`           | `boolean`        | —       | Sent in the table's `KeysAndAttributes`                                                  |
+| `ProjectionExpression`     | `string`         | —       | Sent in the table's `KeysAndAttributes`                                                  |
+| `ExpressionAttributeNames` | `object`         | —       | Sent in the table's `KeysAndAttributes`                                                  |
+| `AttributesToGet`          | `string[]`       | —       | Sent in the table's `KeysAndAttributes`                                                  |
+| `ReturnConsumedCapacity`   | `string`         | —       | Sent at the `BatchGetItem` request level                                                 |
+| `retryMaxCount`            | `number \| null` | `10`    | Maximum retry attempts; `null` retries without limit                                     |
 
 When keys are still unprocessed after the last retry, the error's `cause` is `{ TableName, UnprocessedKeysCount }`. Key values are left out because they may contain personal data.
 
@@ -392,28 +396,32 @@ Writes items to DynamoDB using `BatchWriteItem`. Automatically batches 25 items 
 
 #### Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `TableName` | `string` | DynamoDB table name |
+| Option          | Type             | Description                                                       |
+| --------------- | ---------------- | ----------------------------------------------------------------- |
+| `TableName`     | `string`         | DynamoDB table name                                               |
 | `retryMaxCount` | `number \| null` | Maximum retry attempts (default 10); `null` retries without limit |
 
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream, createTransformStream } from '@datastream/core'
-import { awsDynamoDBPutItemStream } from '@datastream/aws/dynamodb'
+import {
+	pipeline,
+	createReadableStream,
+	createTransformStream,
+} from "@datastream/core";
+import { awsDynamoDBPutItemStream } from "@datastream/aws/dynamodb";
 
 await pipeline([
-  createReadableStream(items),
-  createTransformStream((item, enqueue) => {
-    enqueue({
-      PK: { S: `USER#${item.id}` },
-      SK: { S: 'PROFILE' },
-      name: { S: item.name },
-    })
-  }),
-  awsDynamoDBPutItemStream({ TableName: 'Users' }),
-])
+	createReadableStream(items),
+	createTransformStream((item, enqueue) => {
+		enqueue({
+			PK: { S: `USER#${item.id}` },
+			SK: { S: "PROFILE" },
+			name: { S: item.name },
+		});
+	}),
+	awsDynamoDBPutItemStream({ TableName: "Users" }),
+]);
 ```
 
 ### `awsDynamoDBDeleteItemStream` <span class="badge">Writable</span>
@@ -422,17 +430,17 @@ Deletes items from DynamoDB using `BatchWriteItem`. Batches 25 items per request
 
 #### Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `TableName` | `string` | DynamoDB table name |
+| Option          | Type             | Description                                                       |
+| --------------- | ---------------- | ----------------------------------------------------------------- |
+| `TableName`     | `string`         | DynamoDB table name                                               |
 | `retryMaxCount` | `number \| null` | Maximum retry attempts (default 10); `null` retries without limit |
 
 #### Example
 
 ```javascript
-import { awsDynamoDBDeleteItemStream } from '@datastream/aws/dynamodb'
+import { awsDynamoDBDeleteItemStream } from "@datastream/aws/dynamodb";
 
-awsDynamoDBDeleteItemStream({ TableName: 'Users' })
+awsDynamoDBDeleteItemStream({ TableName: "Users" });
 // Input chunks: { PK: { S: 'USER#1' }, SK: { S: 'PROFILE' } }
 ```
 
@@ -443,10 +451,10 @@ awsDynamoDBDeleteItemStream({ TableName: 'Users' })
 Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
-import { DynamoDBStreamsClient } from '@aws-sdk/client-dynamodb-streams'
-import { awsDynamoDBStreamsSetClient } from '@datastream/aws/dynamodb-streams'
+import { DynamoDBStreamsClient } from "@aws-sdk/client-dynamodb-streams";
+import { awsDynamoDBStreamsSetClient } from "@datastream/aws/dynamodb-streams";
 
-awsDynamoDBStreamsSetClient(new DynamoDBStreamsClient({ region: 'us-east-1' }))
+awsDynamoDBStreamsSetClient(new DynamoDBStreamsClient({ region: "us-east-1" }));
 ```
 
 ### `awsDynamoDBStreamsGetRecordsStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -459,30 +467,30 @@ DynamoDB Streams `GetRecords` has no `MillisBehindLatest` field (unlike Kinesis)
 
 Accepts `GetRecordsCommand` parameters plus:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `client` | `DynamoDBStreamsClient` | default client | Custom client for this call |
-| `ShardIterator` | `string` | — | Shard iterator from `GetShardIterator` |
-| `pollingActive` | `boolean` | `false` | Keep polling for new records |
-| `pollingDelay` | `number` | `1000` | Delay (ms) between polls when no records |
+| Option          | Type                    | Default        | Description                              |
+| --------------- | ----------------------- | -------------- | ---------------------------------------- |
+| `client`        | `DynamoDBStreamsClient` | default client | Custom client for this call              |
+| `ShardIterator` | `string`                | —              | Shard iterator from `GetShardIterator`   |
+| `pollingActive` | `boolean`               | `false`        | Keep polling for new records             |
+| `pollingDelay`  | `number`                | `1000`         | Delay (ms) between polls when no records |
 
 `streamOptions.signal` aborts in-flight requests and the polling wait.
 
 #### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { awsDynamoDBStreamsGetRecordsStream } from '@datastream/aws/dynamodb-streams'
-import { objectCountStream } from '@datastream/object'
+import { pipeline } from "@datastream/core";
+import { awsDynamoDBStreamsGetRecordsStream } from "@datastream/aws/dynamodb-streams";
+import { objectCountStream } from "@datastream/object";
 
-const count = objectCountStream()
+const count = objectCountStream();
 
 const result = await pipeline([
-  await awsDynamoDBStreamsGetRecordsStream({
-    ShardIterator: 'arn:aws:dynamodb:...',
-  }),
-  count,
-])
+	await awsDynamoDBStreamsGetRecordsStream({
+		ShardIterator: "arn:aws:dynamodb:...",
+	}),
+	count,
+]);
 // each chunk is a stream record: { eventName: 'INSERT', dynamodb: { Keys, NewImage, ... }, ... }
 ```
 
@@ -493,10 +501,10 @@ const result = await pipeline([
 Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
-import { KinesisClient } from '@aws-sdk/client-kinesis'
-import { awsKinesisSetClient } from '@datastream/aws/kinesis'
+import { KinesisClient } from "@aws-sdk/client-kinesis";
+import { awsKinesisSetClient } from "@datastream/aws/kinesis";
 
-awsKinesisSetClient(new KinesisClient({ region: 'us-east-1' }))
+awsKinesisSetClient(new KinesisClient({ region: "us-east-1" }));
 ```
 
 ### `awsKinesisGetRecordsStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -509,25 +517,25 @@ After an empty page it waits `pollingDelay` before reading again. This applies b
 
 Accepts `GetRecordsCommand` parameters plus:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `ShardIterator` | `string` | — | Shard iterator |
-| `pollingActive` | `boolean` | `false` | Keep polling for new records |
-| `pollingDelay` | `number` | `1000` | Delay (ms) after an empty page, before the next `GetRecords` |
+| Option          | Type      | Default | Description                                                  |
+| --------------- | --------- | ------- | ------------------------------------------------------------ |
+| `ShardIterator` | `string`  | —       | Shard iterator                                               |
+| `pollingActive` | `boolean` | `false` | Keep polling for new records                                 |
+| `pollingDelay`  | `number`  | `1000`  | Delay (ms) after an empty page, before the next `GetRecords` |
 
 `streamOptions.signal` aborts in-flight requests and the wait.
 
 #### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { awsKinesisGetRecordsStream } from '@datastream/aws/kinesis'
+import { pipeline } from "@datastream/core";
+import { awsKinesisGetRecordsStream } from "@datastream/aws/kinesis";
 
 await pipeline([
-  await awsKinesisGetRecordsStream({
-    ShardIterator: 'AAA...',
-  }),
-])
+	await awsKinesisGetRecordsStream({
+		ShardIterator: "AAA...",
+	}),
+]);
 ```
 
 ### `awsKinesisPutRecordsStream` <span class="badge">Writable</span>
@@ -536,21 +544,21 @@ Writes records to a Kinesis stream. Batches 500 records per `PutRecordsCommand`.
 
 #### Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `StreamName` | `string` | Kinesis stream name |
+| Option          | Type             | Description                                                                          |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `StreamName`    | `string`         | Kinesis stream name                                                                  |
 | `retryMaxCount` | `number \| null` | Maximum retry attempts for failed records (default 10); `null` retries without limit |
 
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { awsKinesisPutRecordsStream } from '@datastream/aws/kinesis'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { awsKinesisPutRecordsStream } from "@datastream/aws/kinesis";
 
 await pipeline([
-  createReadableStream(records),
-  awsKinesisPutRecordsStream({ StreamName: 'my-stream' }),
-])
+	createReadableStream(records),
+	awsKinesisPutRecordsStream({ StreamName: "my-stream" }),
+]);
 ```
 
 ## Lambda
@@ -560,10 +568,10 @@ await pipeline([
 Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
-import { LambdaClient } from '@aws-sdk/client-lambda'
-import { awsLambdaSetClient } from '@datastream/aws/lambda'
+import { LambdaClient } from "@aws-sdk/client-lambda";
+import { awsLambdaSetClient } from "@datastream/aws/lambda";
 
-awsLambdaSetClient(new LambdaClient({ region: 'us-east-1' }))
+awsLambdaSetClient(new LambdaClient({ region: "us-east-1" }));
 ```
 
 ### `awsLambdaReadableStream` <span class="badge">Readable</span>
@@ -576,25 +584,25 @@ Also exported as `awsLambdaResponseStream`.
 
 Accepts `InvokeWithResponseStreamCommand` parameters. Pass an array to invoke multiple functions sequentially.
 
-| Option | Type | Description |
-|--------|------|-------------|
+| Option         | Type     | Description                 |
+| -------------- | -------- | --------------------------- |
 | `FunctionName` | `string` | Lambda function name or ARN |
-| `Payload` | `string` | JSON payload |
+| `Payload`      | `string` | JSON payload                |
 
 #### Example
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { awsLambdaReadableStream } from '@datastream/aws/lambda'
-import { csvParseStream } from '@datastream/csv'
+import { pipeline } from "@datastream/core";
+import { awsLambdaReadableStream } from "@datastream/aws/lambda";
+import { csvParseStream } from "@datastream/csv";
 
 await pipeline([
-  awsLambdaReadableStream({
-    FunctionName: 'data-processor',
-    Payload: JSON.stringify({ key: 'input.csv' }),
-  }),
-  csvParseStream(),
-])
+	awsLambdaReadableStream({
+		FunctionName: "data-processor",
+		Payload: JSON.stringify({ key: "input.csv" }),
+	}),
+	csvParseStream(),
+]);
 ```
 
 ## SNS
@@ -604,10 +612,10 @@ await pipeline([
 Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
-import { SNSClient } from '@aws-sdk/client-sns'
-import { awsSNSSetClient } from '@datastream/aws/sns'
+import { SNSClient } from "@aws-sdk/client-sns";
+import { awsSNSSetClient } from "@datastream/aws/sns";
 
-awsSNSSetClient(new SNSClient({ region: 'us-east-1' }))
+awsSNSSetClient(new SNSClient({ region: "us-east-1" }));
 ```
 
 ### `awsSNSPublishMessageStream` <span class="badge">Writable</span>
@@ -616,27 +624,33 @@ Publishes messages to an SNS topic. Batches up to 10 entries (and 256 KiB) per `
 
 #### Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `TopicArn` | `string` | SNS topic ARN |
+| Option          | Type             | Description                                                                          |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `TopicArn`      | `string`         | SNS topic ARN                                                                        |
 | `retryMaxCount` | `number \| null` | Maximum retry attempts for failed entries (default 10); `null` retries without limit |
 
 #### Example
 
 ```javascript
-import { pipeline, createReadableStream, createTransformStream } from '@datastream/core'
-import { awsSNSPublishMessageStream } from '@datastream/aws/sns'
+import {
+	pipeline,
+	createReadableStream,
+	createTransformStream,
+} from "@datastream/core";
+import { awsSNSPublishMessageStream } from "@datastream/aws/sns";
 
 await pipeline([
-  createReadableStream(events),
-  createTransformStream((event, enqueue) => {
-    enqueue({
-      Id: event.id,
-      Message: JSON.stringify(event),
-    })
-  }),
-  awsSNSPublishMessageStream({ TopicArn: 'arn:aws:sns:us-east-1:123:my-topic' }),
-])
+	createReadableStream(events),
+	createTransformStream((event, enqueue) => {
+		enqueue({
+			Id: event.id,
+			Message: JSON.stringify(event),
+		});
+	}),
+	awsSNSPublishMessageStream({
+		TopicArn: "arn:aws:sns:us-east-1:123:my-topic",
+	}),
+]);
 ```
 
 ## SQS
@@ -646,10 +660,10 @@ await pipeline([
 Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
-import { SQSClient } from '@aws-sdk/client-sqs'
-import { awsSQSSetClient } from '@datastream/aws/sqs'
+import { SQSClient } from "@aws-sdk/client-sqs";
+import { awsSQSSetClient } from "@datastream/aws/sqs";
 
-awsSQSSetClient(new SQSClient({ region: 'us-east-1' }))
+awsSQSSetClient(new SQSClient({ region: "us-east-1" }));
 ```
 
 ### `awsSQSReceiveMessageStream` <span class="badge">Readable</span> <span class="badge">async</span>
@@ -660,29 +674,32 @@ Polls an SQS queue and yields messages until the queue is empty.
 
 Accepts `ReceiveMessageCommand` parameters plus:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `QueueUrl` | `string` | — | SQS queue URL |
-| `MaxNumberOfMessages` | `number` | — | Max messages per poll (1-10) |
-| `pollingActive` | `boolean` | `false` | Keep polling even when queue is empty |
-| `pollingDelay` | `number` | `1000` | Delay (ms) between polls when queue is empty |
+| Option                | Type      | Default | Description                                  |
+| --------------------- | --------- | ------- | -------------------------------------------- |
+| `QueueUrl`            | `string`  | —       | SQS queue URL                                |
+| `MaxNumberOfMessages` | `number`  | —       | Max messages per poll (1-10)                 |
+| `pollingActive`       | `boolean` | `false` | Keep polling even when queue is empty        |
+| `pollingDelay`        | `number`  | `1000`  | Delay (ms) between polls when queue is empty |
 
 #### Example
 
 ```javascript
-import { pipeline, createTransformStream } from '@datastream/core'
-import { awsSQSReceiveMessageStream, awsSQSDeleteMessageStream } from '@datastream/aws/sqs'
+import { pipeline, createTransformStream } from "@datastream/core";
+import {
+	awsSQSReceiveMessageStream,
+	awsSQSDeleteMessageStream,
+} from "@datastream/aws/sqs";
 
-const QueueUrl = 'https://sqs.us-east-1.amazonaws.com/123/my-queue'
+const QueueUrl = "https://sqs.us-east-1.amazonaws.com/123/my-queue";
 
 await pipeline([
-  await awsSQSReceiveMessageStream({ QueueUrl }),
-  // process each message here, then map it to a delete batch entry
-  createTransformStream((message, enqueue) => {
-    enqueue({ Id: message.MessageId, ReceiptHandle: message.ReceiptHandle })
-  }),
-  awsSQSDeleteMessageStream({ QueueUrl }),
-])
+	await awsSQSReceiveMessageStream({ QueueUrl }),
+	// process each message here, then map it to a delete batch entry
+	createTransformStream((message, enqueue) => {
+		enqueue({ Id: message.MessageId, ReceiptHandle: message.ReceiptHandle });
+	}),
+	awsSQSDeleteMessageStream({ QueueUrl }),
+]);
 ```
 
 ### `awsSQSSendMessageStream` <span class="badge">Writable</span>
@@ -691,9 +708,9 @@ Sends messages to an SQS queue. Batches up to 10 entries (and 1 MiB) per `SendMe
 
 #### Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `QueueUrl` | `string` | SQS queue URL |
+| Option          | Type             | Description                                                                          |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `QueueUrl`      | `string`         | SQS queue URL                                                                        |
 | `retryMaxCount` | `number \| null` | Maximum retry attempts for failed entries (default 10); `null` retries without limit |
 
 ### `awsSQSDeleteMessageStream` <span class="badge">Writable</span>
@@ -702,9 +719,9 @@ Deletes messages from an SQS queue. Batches up to 10 entries per `DeleteMessageB
 
 #### Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `QueueUrl` | `string` | SQS queue URL |
+| Option          | Type             | Description                                                                          |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `QueueUrl`      | `string`         | SQS queue URL                                                                        |
 | `retryMaxCount` | `number \| null` | Maximum retry attempts for failed entries (default 10); `null` retries without limit |
 
 ## MSK IAM
@@ -717,20 +734,20 @@ Builds a kafkajs SASL `oauthbearer` configuration that signs Amazon MSK IAM auth
 npm install @datastream/aws aws-msk-iam-sasl-signer-js
 ```
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `region` | `string` | — | Required. AWS region of the MSK cluster; throws if missing |
+| Option          | Type      | Default | Description                                                                          |
+| --------------- | --------- | ------- | ------------------------------------------------------------------------------------ |
+| `region`        | `string`  | —       | Required. AWS region of the MSK cluster; throws if missing                           |
 | `awsDebugCreds` | `boolean` | `false` | Log credential details. Leaks credential material to your logs: local debugging only |
 
 ```javascript
-import { kafkaConnect } from '@datastream/kafka'
-import { awsMskIamMechanism } from '@datastream/aws/msk-iam'
+import { kafkaConnect } from "@datastream/kafka";
+import { awsMskIamMechanism } from "@datastream/aws/msk-iam";
 
 const { producer, disconnect } = await kafkaConnect({
-  brokers: ['b-1.my-cluster.kafka.us-east-1.amazonaws.com:9098'],
-  ssl: true,
-  sasl: awsMskIamMechanism({ region: 'us-east-1' }),
-})
+	brokers: ["b-1.my-cluster.kafka.us-east-1.amazonaws.com:9098"],
+	ssl: true,
+	sasl: awsMskIamMechanism({ region: "us-east-1" }),
+});
 ```
 
 ## Glue Schema Registry
@@ -740,10 +757,10 @@ const { producer, disconnect } = await kafkaConnect({
 Sets the Glue client used by every resolver that isn't given its own `client`. Mutates module-level state — not safe for concurrent multi-tenant use.
 
 ```javascript
-import { GlueClient } from '@aws-sdk/client-glue'
-import { awsGlueSchemaRegistrySetClient } from '@datastream/aws/glue-schema-registry'
+import { GlueClient } from "@aws-sdk/client-glue";
+import { awsGlueSchemaRegistrySetClient } from "@datastream/aws/glue-schema-registry";
 
-awsGlueSchemaRegistrySetClient(new GlueClient({ region: 'us-east-1' }))
+awsGlueSchemaRegistrySetClient(new GlueClient({ region: "us-east-1" }));
 ```
 
 ### `awsGlueSchemaRegistryResolver`
@@ -754,20 +771,22 @@ Returns an async `resolve(schemaVersionId)` function that looks up a schema vers
 npm install @datastream/aws @aws-sdk/client-glue
 ```
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `client` | `GlueClient` | set client, else a new one | Glue client for this resolver |
-| `clientOptions` | `object` | — | Options for the `GlueClient` created when no client is given or set |
-| `cacheExpiry` | `number` | `-1` | Cache lifetime in ms. `-1` caches forever (schema versions are immutable) |
-| `maxCacheSize` | `number` | `1000` | Max cached versions; the oldest is evicted first. `0` disables caching, `null` never evicts |
+| Option          | Type         | Default                    | Description                                                                                 |
+| --------------- | ------------ | -------------------------- | ------------------------------------------------------------------------------------------- |
+| `client`        | `GlueClient` | set client, else a new one | Glue client for this resolver                                                               |
+| `clientOptions` | `object`     | —                          | Options for the `GlueClient` created when no client is given or set                         |
+| `cacheExpiry`   | `number`     | `-1`                       | Cache lifetime in ms. `-1` caches forever (schema versions are immutable)                   |
+| `maxCacheSize`  | `number`     | `1000`                     | Max cached versions; the oldest is evicted first. `0` disables caching, `null` never evicts |
 
 ```javascript
-import { awsGlueSchemaRegistryResolver } from '@datastream/aws/glue-schema-registry'
+import { awsGlueSchemaRegistryResolver } from "@datastream/aws/glue-schema-registry";
 
-const resolve = awsGlueSchemaRegistryResolver({ clientOptions: { region: 'us-east-1' } })
+const resolve = awsGlueSchemaRegistryResolver({
+	clientOptions: { region: "us-east-1" },
+});
 
 const { schemaVersionId, schemaDefinition, dataFormat } = await resolve(
-  'b7b4a7f0-9c3d-4c1e-8a4b-2f6d7e8a9b0c',
-)
+	"b7b4a7f0-9c3d-4c1e-8a4b-2f6d7e8a9b0c",
+);
 // dataFormat: 'AVRO' | 'JSON' | 'PROTOBUF'
 ```

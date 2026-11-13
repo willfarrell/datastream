@@ -259,7 +259,6 @@ jobs:
         run: |
           ./node_modules/.bin/lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https
 
-
   # https://github.com/github/codeql-action
   codeql:
     name: "CodeQL: SAST"
@@ -485,7 +484,7 @@ jobs:
 
   # https://github.com/trufflesecurity/trufflehog
   trufflehog:
-    name: 'TruffleHog: secrets'
+    name: "TruffleHog: secrets"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: (github.actor != 'dependabot[bot]')
@@ -521,7 +520,7 @@ jobs:
 
   # https://github.com/gitleaks/gitleaks-action
   gitleaks:
-    name: 'gitleaks: secrets'
+    name: "gitleaks: secrets"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: (github.actor != 'dependabot[bot]')

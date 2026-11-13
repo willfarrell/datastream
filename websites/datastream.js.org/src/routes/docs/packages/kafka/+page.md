@@ -1,4 +1,5 @@
 ---
+
 title: kafka
 description: Kafka producer, consumer, and offset-commit streams built on kafkajs.
 ---
@@ -19,20 +20,22 @@ Creates a Kafka client and connects a producer and/or consumer. Returns a connec
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `brokers` | `string[]` | — | Broker addresses |
-| `clientId` | `string` | — | Client identifier |
-| `ssl` | `object` | — | TLS configuration |
-| `sasl` | `object` | — | SASL authentication (see `@datastream/aws` MSK IAM) |
-| `groupId` | `string` | — | Consumer group id; required to create a consumer |
-| `producer` | `object \| false` | `{}` | Producer options, or `false` to skip the producer |
-| `consumer` | `object` | `{}` | Additional consumer options |
+| Option     | Type              | Default | Description                                         |
+| ---------- | ----------------- | ------- | --------------------------------------------------- |
+| `brokers`  | `string[]`        | —       | Broker addresses                                    |
+| `clientId` | `string`          | —       | Client identifier                                   |
+| `ssl`      | `object`          | —       | TLS configuration                                   |
+| `sasl`     | `object`          | —       | SASL authentication (see `@datastream/aws` MSK IAM) |
+| `groupId`  | `string`          | —       | Consumer group id; required to create a consumer    |
+| `producer` | `object \| false` | `{}`    | Producer options, or `false` to skip the producer   |
+| `consumer` | `object`          | `{}`    | Additional consumer options                         |
 
 ### Result
 
 ```javascript
-{ kafka, producer, consumer, disconnect }
+{
+	kafka, producer, consumer, disconnect;
+}
 ```
 
 Call `await connection.disconnect()` to disconnect the producer and consumer.
@@ -40,13 +43,13 @@ Call `await connection.disconnect()` to disconnect the producer and consumer.
 ### Example
 
 ```javascript
-import { kafkaConnect } from '@datastream/kafka'
+import { kafkaConnect } from "@datastream/kafka";
 
 const { producer, consumer, disconnect } = await kafkaConnect({
-  brokers: ['localhost:9092'],
-  clientId: 'my-app',
-  groupId: 'my-group',
-})
+	brokers: ["localhost:9092"],
+	clientId: "my-app",
+	groupId: "my-group",
+});
 ```
 
 ## `kafkaProduceStream` <span class="badge">Writable</span>
@@ -55,32 +58,29 @@ Batches messages and sends them to a topic. Returns a Promise resolving to the w
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `producer` | `Producer` | — | Producer from `kafkaConnect` (required) |
-| `topic` | `string` | — | Destination topic (required) |
-| `batchSize` | `number` | `100` | Messages buffered before a `send` |
-| `acks` | `-1 \| 0 \| 1` | `-1` | Acknowledgements (`-1` = all in-sync replicas) |
-| `compression` | `0 \| 1 \| 2 \| 3 \| 4` | — | None, GZIP, Snappy, LZ4, ZSTD |
-| `timeout` | `number` | — | Per-request send timeout in ms |
+| Option        | Type                    | Default | Description                                    |
+| ------------- | ----------------------- | ------- | ---------------------------------------------- |
+| `producer`    | `Producer`              | —       | Producer from `kafkaConnect` (required)        |
+| `topic`       | `string`                | —       | Destination topic (required)                   |
+| `batchSize`   | `number`                | `100`   | Messages buffered before a `send`              |
+| `acks`        | `-1 \| 0 \| 1`          | `-1`    | Acknowledgements (`-1` = all in-sync replicas) |
+| `compression` | `0 \| 1 \| 2 \| 3 \| 4` | —       | None, GZIP, Snappy, LZ4, ZSTD                  |
+| `timeout`     | `number`                | —       | Per-request send timeout in ms                 |
 
 On a failed send the thrown error carries the un-sent batch on `err.failedMessages` so callers can re-queue instead of losing data.
 
 ### Example
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { kafkaConnect, kafkaProduceStream } from '@datastream/kafka'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { kafkaConnect, kafkaProduceStream } from "@datastream/kafka";
 
-const { producer } = await kafkaConnect({ brokers: ['localhost:9092'] })
+const { producer } = await kafkaConnect({ brokers: ["localhost:9092"] });
 
 await pipeline([
-  createReadableStream([
-    { value: 'event-1' },
-    { value: 'event-2' },
-  ]),
-  await kafkaProduceStream({ producer, topic: 'events' }),
-])
+	createReadableStream([{ value: "event-1" }, { value: "event-2" }]),
+	await kafkaProduceStream({ producer, topic: "events" }),
+]);
 ```
 
 ## `kafkaConsumeStream` <span class="badge">Readable</span>
@@ -89,25 +89,27 @@ Subscribes to one or more topics and emits each message as a chunk. Returns a Pr
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `consumer` | `Consumer` | — | Consumer from `kafkaConnect` (required) |
-| `topics` | `string \| string[]` | — | Topic(s) to subscribe to (required) |
-| `fromBeginning` | `boolean` | `false` | Start from the earliest offset |
-| `autoCommit` | `boolean` | `false` | Let kafkajs auto-commit offsets. See [Committing offsets](#committing-offsets) |
-| `partitionsConsumedConcurrently` | `number` | `1` | Concurrent partition processing |
+| Option                           | Type                 | Default | Description                                                                    |
+| -------------------------------- | -------------------- | ------- | ------------------------------------------------------------------------------ |
+| `consumer`                       | `Consumer`           | —       | Consumer from `kafkaConnect` (required)                                        |
+| `topics`                         | `string \| string[]` | —       | Topic(s) to subscribe to (required)                                            |
+| `fromBeginning`                  | `boolean`            | `false` | Start from the earliest offset                                                 |
+| `autoCommit`                     | `boolean`            | `false` | Let kafkajs auto-commit offsets. See [Committing offsets](#committing-offsets) |
+| `partitionsConsumedConcurrently` | `number`             | `1`     | Concurrent partition processing                                                |
 
 ### Stream options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `signal` | `AbortSignal` | — | Aborting stops the consumer, then ends the stream. Pending offsets are not committed. See [Shutdown](#shutdown). Passed in the second argument, like every datastream factory |
-| `highWaterMark` | `number` | `100` | Messages buffered before backpressure pauses kafkajs |
+| Option          | Type          | Default | Description                                                                                                                                                                   |
+| --------------- | ------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal`        | `AbortSignal` | —       | Aborting stops the consumer, then ends the stream. Pending offsets are not committed. See [Shutdown](#shutdown). Passed in the second argument, like every datastream factory |
+| `highWaterMark` | `number`      | `100`   | Messages buffered before backpressure pauses kafkajs                                                                                                                          |
 
 ### Emitted chunk
 
 ```javascript
-{ topic, partition, offset, key, value, headers, timestamp }
+{
+	topic, partition, offset, key, value, headers, timestamp;
+}
 ```
 
 ### Committing offsets
@@ -119,39 +121,43 @@ kafkajs auto-commits a message's offset as soon as its `eachMessage` handler ret
 With the default `autoCommit: false`, commit after processing by ending the pipeline with [`kafkaCommitStream`](#kafkacommitstream):
 
 ```javascript
-import { pipeline, createTransformStream } from '@datastream/core'
+import { pipeline, createTransformStream } from "@datastream/core";
 import {
-  kafkaCommitStream,
-  kafkaConnect,
-  kafkaConsumeStream,
-} from '@datastream/kafka'
+	kafkaCommitStream,
+	kafkaConnect,
+	kafkaConsumeStream,
+} from "@datastream/kafka";
 
 const { consumer, disconnect } = await kafkaConnect({
-  brokers: ['localhost:9092'],
-  groupId: 'my-group',
-})
+	brokers: ["localhost:9092"],
+	groupId: "my-group",
+});
 
-const source = await kafkaConsumeStream({ consumer, topics: 'events' })
+const source = await kafkaConsumeStream({ consumer, topics: "events" });
 // stop() drains the pipeline and commits the tail before leaving the group
-process.once('SIGTERM', () => source.stop())
+process.once("SIGTERM", () => source.stop());
 
 await pipeline([
-  source,
-  createTransformStream(async (message, enqueue) => {
-    console.log(message.value)
-    // Pass the message on: kafkaCommitStream needs its topic, partition and offset
-    enqueue(message)
-  }),
-  await kafkaCommitStream({ consumer, batchSize: 10 }),
-])
+	source,
+	createTransformStream(async (message, enqueue) => {
+		console.log(message.value);
+		// Pass the message on: kafkaCommitStream needs its topic, partition and offset
+		enqueue(message);
+	}),
+	await kafkaCommitStream({ consumer, batchSize: 10 }),
+]);
 
-await disconnect()
+await disconnect();
 ```
 
 To get the old behaviour back (at-most-once delivery: buffered messages can be lost on a crash), pass `autoCommit: true`:
 
 ```javascript
-const stream = await kafkaConsumeStream({ consumer, topics: 'events', autoCommit: true })
+const stream = await kafkaConsumeStream({
+	consumer,
+	topics: "events",
+	autoCommit: true,
+});
 ```
 
 ### Shutdown
@@ -178,10 +184,10 @@ Commits the offsets of processed messages. Place it at the end of a pipeline tha
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `consumer` | `Consumer` | — | The same consumer passed to `kafkaConsumeStream` (required) |
-| `batchSize` | `number` | `100` | Messages between commits |
+| Option      | Type       | Default | Description                                                 |
+| ----------- | ---------- | ------- | ----------------------------------------------------------- |
+| `consumer`  | `Consumer` | —       | The same consumer passed to `kafkaConsumeStream` (required) |
+| `batchSize` | `number`   | `100`   | Messages between commits                                    |
 
 ### Example
 

@@ -1,4 +1,5 @@
 ---
+
 title: file
 description: File read and write streams for Node.js and the browser.
 ---
@@ -20,31 +21,29 @@ Reads a file as a stream. Returns a Promise in both Node.js and the browser, so 
 
 ### Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `path` | `string` | File path (Node.js) |
-| `basePath` | `string` | When provided, enforces that `path` resolves within `basePath`. Prevents path traversal and rejects symbolic links |
-| `types` | `object[]` | File type filter for the file picker (see below) |
+| Option     | Type       | Description                                                                                                        |
+| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `path`     | `string`   | File path (Node.js)                                                                                                |
+| `basePath` | `string`   | When provided, enforces that `path` resolves within `basePath`. Prevents path traversal and rejects symbolic links |
+| `types`    | `object[]` | File type filter for the file picker (see below)                                                                   |
 
 ### Example — Node.js
 
 ```javascript
-import { pipeline } from '@datastream/core'
-import { fileReadStream } from '@datastream/file'
+import { pipeline } from "@datastream/core";
+import { fileReadStream } from "@datastream/file";
 
-await pipeline([
-  await fileReadStream({ path: './data.csv' }),
-])
+await pipeline([await fileReadStream({ path: "./data.csv" })]);
 ```
 
 ### Example — Browser
 
 ```javascript
-import { fileReadStream } from '@datastream/file'
+import { fileReadStream } from "@datastream/file";
 
 const stream = await fileReadStream({
-  types: [{ accept: { 'text/csv': ['.csv'] } }],
-})
+	types: [{ accept: { "text/csv": [".csv"] } }],
+});
 ```
 
 ## `fileWriteStream` <span class="badge">Writable</span> <span class="badge">async</span>
@@ -56,33 +55,33 @@ Writes a stream to a file. Returns a Promise in both Node.js and the browser, so
 
 ### Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `path` | `string` | File path (Node.js), suggested file name (Browser) |
-| `basePath` | `string` | When provided, enforces that `path` resolves within `basePath`. Prevents path traversal and rejects symbolic links |
-| `types` | `object[]` | File type filter |
+| Option     | Type       | Description                                                                                                        |
+| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `path`     | `string`   | File path (Node.js), suggested file name (Browser)                                                                 |
+| `basePath` | `string`   | When provided, enforces that `path` resolves within `basePath`. Prevents path traversal and rejects symbolic links |
+| `types`    | `object[]` | File type filter                                                                                                   |
 
 ### Example — Node.js
 
 ```javascript
-import { pipeline, createReadableStream } from '@datastream/core'
-import { fileWriteStream } from '@datastream/file'
+import { pipeline, createReadableStream } from "@datastream/core";
+import { fileWriteStream } from "@datastream/file";
 
 await pipeline([
-  createReadableStream('hello world'),
-  await fileWriteStream({ path: './output.txt' }),
-])
+	createReadableStream("hello world"),
+	await fileWriteStream({ path: "./output.txt" }),
+]);
 ```
 
 ### Example — Browser
 
 ```javascript
-import { fileWriteStream } from '@datastream/file'
+import { fileWriteStream } from "@datastream/file";
 
 const writable = await fileWriteStream({
-  path: 'output.csv',
-  types: [{ accept: { 'text/csv': ['.csv'] } }],
-})
+	path: "output.csv",
+	types: [{ accept: { "text/csv": [".csv"] } }],
+});
 ```
 
 ## Stream options (Node.js)
@@ -91,10 +90,10 @@ The second argument is passed to `fs.createReadStream` / `fs.createWriteStream`,
 
 ```javascript
 // Append instead of overwriting
-await fileWriteStream({ path: './log.csv' }, { flags: 'a' })
+await fileWriteStream({ path: "./log.csv" }, { flags: "a" });
 
 // Read strings instead of Buffers
-await fileReadStream({ path: './data.csv' }, { encoding: 'utf8' })
+await fileReadStream({ path: "./data.csv" }, { encoding: "utf8" });
 ```
 
 With `basePath`, the file is opened with `O_NOFOLLOW`, so `flags` and `mode` are applied at open time: a flag containing `a` appends (the file is not truncated) and a flag containing `x` fails with `EEXIST` if the file exists. Any other write truncates the file.
@@ -105,13 +104,13 @@ The `types` option validates file extensions (Node.js) and configures the file p
 
 ```javascript
 const types = [
-  {
-    accept: {
-      'text/csv': ['.csv'],
-      'application/json': ['.json'],
-    },
-  },
-]
+	{
+		accept: {
+			"text/csv": [".csv"],
+			"application/json": [".json"],
+		},
+	},
+];
 ```
 
 If `types` is provided and the file extension doesn't match any accepted extension, the Promise rejects with an `"Invalid extension"` error. This applies in Node.js and to the file picked in the browser. The match ignores case, so `REPORT.CSV` is accepted for `.csv` (and `.JSON` in `accept` matches `data.json`).
@@ -126,9 +125,9 @@ These checks run before the file is opened. A local attacker who can swap a pare
 
 ```javascript
 // Restrict reads to a specific directory
-await fileReadStream({ path: userInput, basePath: '/data/uploads', types })
+await fileReadStream({ path: userInput, basePath: "/data/uploads", types });
 
 // Convenience helper for cwd-scoped reads
 const safeFileRead = (path, types) =>
-  fileReadStream({ path, basePath: process.cwd(), types })
+	fileReadStream({ path, basePath: process.cwd(), types });
 ```
