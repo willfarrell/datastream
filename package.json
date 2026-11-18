@@ -76,7 +76,7 @@
 		"@commitlint/cli": "^21.2.4",
 		"@commitlint/config-conventional": "^21.2.4",
 		"@stryker-mutator/core": "^10.0.0",
-		"@types/node": "^26.6.2",
+		"@types/node": "^26.6.6",
 		"esbuild": "^0.28.2",
 		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
